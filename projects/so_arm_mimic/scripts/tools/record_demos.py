@@ -290,6 +290,7 @@ def setup_teleop_device(callbacks: dict[str, Callable]) -> tuple[object, object 
                 print("[INFO] Reset keyboard initialized. Press 'R' key to reset the episode.")
             else:
                 teleop_interface = create_teleop_device(args_cli.teleop_device, env_cfg.teleop_devices.devices, callbacks)
+                print(f"[INFO] Teleop device created via create_teleop_device: {type(teleop_interface).__name__}")
         else:
             omni.log.warn(f"No teleop device '{args_cli.teleop_device}' found in environment config. Creating default.")
             # Create fallback teleop device
@@ -500,6 +501,9 @@ def run_simulation_loop(
             # Perform action on environment
             if running_recording_instance:
                 # Compute actions based on environment
+                # print("actions: ", actions)
+                # print("joint_positions: ", env.scene["robot"].data.joint_pos)
+                # print("eef_pose: ", env.get_robot_eef_pose("so101"))
                 obv = env.step(actions)
                 if subtasks is not None:
                     if subtasks == {}:

@@ -42,6 +42,14 @@ python scripts/tools/record_demos.py \
     --enable_cameras
 ```
 
+```bash
+python scripts/tools/record_demos.py \
+    --task Isaac-PickPlace-SOArm-Rel-Mimic-v0 \
+    --teleop_device keyboard \
+    --num_demos 20 \
+    --enable_cameras
+```
+
 python scripts/tools/record_demos.py \
     --task PickPlace-SOArm-Camera-Mimic-v0 \
     --teleop_device leader_arm \
@@ -59,7 +67,17 @@ python scripts/tools/replay_demos.py \
     --enable_cameras
 ```
 
-### 3. Regenerating for Visual Training
+### 3. Merging Demonstrations
+
+Merge multiple HDF5 demonstration files into a single file.
+
+```bash
+python scripts/tools/merge_hdf5_datasets.py \
+--input_files datasets/dataset1.hdf5 datasets/dataset2.hdf5 datasets/dataset3.hdf5\
+--output_file datasets/dataset_merged.hdf5
+```
+
+### 4. Regenerating for Visual Training
 
 Replays actions from an existing HDF5 dataset in a new environment configuration and records new observations (e.g. images).
 
@@ -71,7 +89,7 @@ python scripts/tools/regenerate_demos.py \
     --enable_cameras
 ```
 
-### 4. Deleting Episodes
+### 5. Deleting Episodes
 
 Deletes episodes from an existing HDF5 dataset.
 
@@ -83,7 +101,7 @@ python scripts/tools/delete_episodes.py \
 ```
 
 
-### 5. Annotating Demonstrations
+### 6. Annotating Demonstrations
 
 Annotate demonstrations to add rewards and other information.
 
@@ -102,7 +120,7 @@ python scripts/isaaclab_mimic/generate_dataset.py \
     --output_file ./datasets/generated_dataset.hdf5
 ```
 
-### 6. Data Conversion (to LeRobot)
+### 7. Data Conversion (to LeRobot)
 
 Converts Isaac Lab HDF5 demonstration files to LeRobot dataset format for training imitation learning models.
 

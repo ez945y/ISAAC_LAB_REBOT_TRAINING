@@ -12,6 +12,8 @@ import gymnasium as gym
 from .stack_ik_abs_mimic_env import SO101CubeStackIKAbsMimicEnv
 from .stack_ik_abs_mimic_env_cfg import SO101CubeStackIKAbsMimicEnvCfg
 from .stack_ik_abs_camera_mimic_env_cfg import SO101CubeStackCameraMimicEnvCfg
+from .stack_ik_rel_mimic_env import SO101CubeStackRelMimicEnv
+from .stack_ik_rel_mimic_env_cfg import SO101CubeStackRelMimicEnvCfg
 
 ##
 # SO-ARM-101 Pick and Place - Joint Control
@@ -33,6 +35,18 @@ gym.register(
     entry_point="so_arm_mimic.source.envs.stack_ik_abs_mimic_env:SO101CubeStackIKAbsMimicEnv",
     kwargs={
         "env_cfg_entry_point": "so_arm_mimic.source.envs.stack_ik_abs_camera_mimic_env_cfg:SO101CubeStackCameraMimicEnvCfg",
+    },
+    disable_env_checker=True,
+)
+
+##
+# SO-ARM-101 Pick and Place - Camera/Visual Control with OpenXR Hand Tracking
+##
+gym.register(
+    id="Isaac-PickPlace-SOArm-Rel-Mimic-v0",
+    entry_point="so_arm_mimic.source.envs.stack_ik_rel_mimic_env:SO101CubeStackRelMimicEnv",
+    kwargs={
+        "env_cfg_entry_point": "so_arm_mimic.source.envs.stack_ik_rel_mimic_env_cfg:SO101CubeStackRelMimicEnvCfg",
     },
     disable_env_checker=True,
 )

@@ -29,8 +29,8 @@ class SO101CubeStackEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg):
         # The robot will use the URDF default pose or the teleop device's last pose instead
         self.events.init_arm_pose = None
         
-        self.scene.robot.actuators["arm"].stiffness = 17.8 * 4
-        self.scene.robot.actuators["arm"].damping = 0.6 * 4
+        self.scene.robot.actuators["arm"].stiffness = 17.8 * 5
+        self.scene.robot.actuators["arm"].damping = 0.6 * 5
         self.scene.robot.actuators["gripper"].stiffness = 17.8 * 2
         self.scene.robot.actuators["gripper"].damping = 0.6 * 2
 

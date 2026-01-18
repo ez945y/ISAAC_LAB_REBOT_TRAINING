@@ -27,7 +27,12 @@ class SO101CubeStackIKAbsMimicEnv(ManagerBasedRLMimicEnv):
         return PoseUtils.make_pose(eef_pos, PoseUtils.matrix_from_quat(eef_quat))
 
     def target_eef_pose_to_action(
-        self, target_eef_pose_dict: dict, gripper_action_dict: dict, noise: float | None = None, env_id: int = 0
+        self,
+        target_eef_pose_dict: dict,
+        gripper_action_dict: dict,
+        action_noise_dict: dict | None = None,
+        noise: float | None = None,  # Deprecated, kept for backward compatibility
+        env_id: int = 0,
     ) -> torch.Tensor:
         """Convert target pose to action.
 
@@ -46,8 +51,9 @@ class SO101CubeStackIKAbsMimicEnv(ManagerBasedRLMimicEnv):
                 with keys as eef names and values as pose tensors.
             gripper_action_dict: Dictionary containing gripper action(s),
                 with keys as eef names and values as action tensors.
-            noise: Optional noise magnitude to apply to the pose action for exploration.
+            action_noise_dict: Dictionary of noise magnitudes for each end-effector.
                 If provided, random noise is generated and added to the pose action.
+            noise: (Deprecated) Optional noise magnitude. Use action_noise_dict instead.
             env_id: Environment ID for multi-environment setups, defaults to 0.
 
         Returns:
@@ -60,11 +66,20 @@ class SO101CubeStackIKAbsMimicEnv(ManagerBasedRLMimicEnv):
         # get gripper action for single eef
         (gripper_action,) = gripper_action_dict.values()
 
-        # add noise to action
+        # Build pose action: [pos(3), quat(4)]
         pose_action = torch.cat([target_pos, PoseUtils.quat_from_matrix(target_rot)], dim=0)
-        if noise is not None:
-            noise = noise * torch.randn_like(pose_action)
-            pose_action += noise
+
+        # Add noise to pose action if specified
+        # Prioritize action_noise_dict over deprecated noise parameter
+        noise_scale = None
+        if action_noise_dict is not None:
+            noise_scale = list(action_noise_dict.values())[0]
+        elif noise is not None:
+            noise_scale = noise
+
+        if noise_scale is not None and noise_scale > 0:
+            noise_vec = noise_scale * torch.randn_like(pose_action)
+            pose_action = pose_action + noise_vec
 
         return torch.cat([pose_action, gripper_action], dim=0).unsqueeze(0)
 

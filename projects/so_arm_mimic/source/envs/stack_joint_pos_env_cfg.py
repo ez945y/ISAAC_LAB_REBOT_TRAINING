@@ -35,13 +35,13 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort: skip
 class EventCfg:
     """Configuration for events."""
 
-    init_arm_pose = EventTerm(
-        func=franka_stack_events.set_default_joint_pose,
-        mode="reset",
-        params={
-            "default_pose": [0.0, 0.0, 0.0, 0.0, -1.65, 0.0,],
-        },
-    )
+    # init_arm_pose = EventTerm(
+    #     func=franka_stack_events.set_default_joint_pose,
+    #     mode="reset",
+    #     params={
+    #         "default_pose": [0.0, 0.0, 0.0, 0.0, -1.65, 0.0,],
+    #     },
+    # )
     randomize_joint_state = EventTerm(
         func=franka_stack_events.randomize_joint_by_gaussian_offset,
         mode="reset",
@@ -56,7 +56,7 @@ class EventCfg:
         func=franka_stack_events.randomize_object_pose,
         mode="reset",
         params={
-            "pose_range": {"x": (0.18, 0.32), "y": (-0.10, 0.10), "z": (0.0203, 0.0203), "yaw": (-1.0, 1, 0)},
+            "pose_range": {"x": (0.2, 0.28), "y": (-0.10, 0.10), "z": (0.0203, 0.0203), "yaw": (-1.0, 1, 0)},
             "min_separation": 0.1,
             "asset_cfgs": [SceneEntityCfg("cube_1"), SceneEntityCfg("cube_2"), SceneEntityCfg("cube_3")],
         },
@@ -113,7 +113,6 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
 
         self.terminations.success = DoneTerm(func=so_arm_mimic_mdp.cubes_stacked)
 
-        # Set Franka as robot
         self.scene.robot = ArticulationCfg(
             prim_path="{ENV_REGEX_NS}/Robot",
             spawn=sim_utils.UsdFileCfg(
@@ -121,17 +120,21 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
                 articulation_props=sim_utils.ArticulationRootPropertiesCfg(
                     fix_root_link=True,
                 ),
+                rigid_props=RigidBodyPropertiesCfg(
+                    disable_gravity=True,
+                ),
+                semantic_tags=[("class", "robot")],
             ),
             init_state=ArticulationCfg.InitialStateCfg(
                 pos=(0.0, 0.0, 0.0),
-                # joint_pos={
-                #     "shoulder_pan": 0.0,
-                #     "shoulder_lift": -1.65,
-                #     "elbow_flex": 1.665,
-                #     "wrist_flex": 1.233,
-                #     "wrist_roll": -0.077,
-                #     "gripper": -0.17,  # Closed gripper for start
-                # },
+                joint_pos={
+                    "shoulder_pan": 0.0,  
+                    "shoulder_lift": 0.0,
+                    "elbow_flex": 0.0,
+                    "wrist_flex": 1.658,
+                    "wrist_roll": 0.0,
+                    "gripper": 1.7,
+                },
             ),
             actuators={
                 "arm": ImplicitActuatorCfg(
@@ -148,7 +151,6 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
                 ),
             },
         )
-        self.scene.robot.spawn.semantic_tags = [("class", "robot")]
 
         # Add semantics to table
         self.scene.table.spawn.semantic_tags = [("class", "table")]
@@ -215,7 +217,7 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
 
         # Listens to the required transforms
         marker_cfg = FRAME_MARKER_CFG.copy()
-        marker_cfg.markers["frame"].scale = (0.05, 0.05, 0.05)
+        marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
         marker_cfg.prim_path = "/Visuals/FrameTransformer"
 
         self.scene.ee_frame = FrameTransformerCfg(

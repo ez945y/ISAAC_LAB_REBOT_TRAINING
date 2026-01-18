@@ -27,7 +27,7 @@ class SO101CubeStackIKAbsMimicEnvCfg(SO101CubeStackEnvCfg, MimicEnvCfg):
         self.datagen_config.generation_transform_first_robot_pose = False
         self.datagen_config.generation_interpolate_from_last_target_pose = True
         self.datagen_config.max_num_failures = 25
-        self.datagen_config.seed = 1
+        self.datagen_config.seed = 2
 
         # The following are the subtask configurations for the stack task.
         subtask_configs = []
@@ -38,9 +38,9 @@ class SO101CubeStackIKAbsMimicEnvCfg(SO101CubeStackEnvCfg, MimicEnvCfg):
                 subtask_term_offset_range=(10, 20),
                 selection_strategy="nearest_neighbor_object",
                 selection_strategy_kwargs={"nn_k": 3},
-                action_noise=0.01,
-                num_interpolation_steps=5,
-                num_fixed_steps=0,
+                action_noise=0.0,
+                num_interpolation_steps=20,
+                num_fixed_steps=5,
                 apply_noise_during_interpolation=False,
             )
         )
@@ -51,8 +51,8 @@ class SO101CubeStackIKAbsMimicEnvCfg(SO101CubeStackEnvCfg, MimicEnvCfg):
                 subtask_term_offset_range=(10, 20),
                 selection_strategy="nearest_neighbor_object",
                 selection_strategy_kwargs={"nn_k": 3},
-                action_noise=0.01,
-                num_interpolation_steps=5,
+                action_noise=0.0,
+                num_interpolation_steps=20,
                 num_fixed_steps=0,
                 apply_noise_during_interpolation=False,
             )
@@ -64,8 +64,8 @@ class SO101CubeStackIKAbsMimicEnvCfg(SO101CubeStackEnvCfg, MimicEnvCfg):
                 subtask_term_offset_range=(10, 20),
                 selection_strategy="nearest_neighbor_object",
                 selection_strategy_kwargs={"nn_k": 3},
-                action_noise=0.01,
-                num_interpolation_steps=5,
+                action_noise=0.0,
+                num_interpolation_steps=20,
                 num_fixed_steps=0,
                 apply_noise_during_interpolation=False,
             )
@@ -77,10 +77,13 @@ class SO101CubeStackIKAbsMimicEnvCfg(SO101CubeStackEnvCfg, MimicEnvCfg):
                 subtask_term_offset_range=(0, 0),
                 selection_strategy="nearest_neighbor_object",
                 selection_strategy_kwargs={"nn_k": 3},
-                action_noise=0.01,
-                num_interpolation_steps=5,
+                action_noise=0.0,
+                num_interpolation_steps=20,
                 num_fixed_steps=0,
                 apply_noise_during_interpolation=False,
             )
         )
         self.subtask_configs["so101"] = subtask_configs
+
+        # Enable debug visualization for the end-effector frame
+        self.scene.ee_frame.debug_vis = True
