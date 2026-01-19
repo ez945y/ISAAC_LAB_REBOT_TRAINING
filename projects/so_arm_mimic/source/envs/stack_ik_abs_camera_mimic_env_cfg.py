@@ -15,6 +15,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import CameraCfg
 from isaaclab.utils import configclass
 
+from so_arm_mimic.source import mdp as so_arm_mimic_mdp
 from .stack_ik_abs_mimic_env_cfg import SO101CubeStackIKAbsMimicEnvCfg
 
 
@@ -54,19 +55,21 @@ class SO101CubeStackCameraMimicEnvCfg(SO101CubeStackIKAbsMimicEnvCfg):
             spawn=None,  # Camera already exists in USD
         )
         
-        # === Modify Observations ===
-        # Remove ground-truth cube positions and orientations (no cheating!)
-        self.observations.policy.cube_positions = None
-        self.observations.policy.cube_orientations = None
+        self.observations.policy.concatenate_terms = True
+
+        # self.observations.policy.cube_positions = None
+        # self.observations.policy.cube_orientations = None
         
-        # Add camera observations
+
+        # self.observations.policy.rgb_camera = None
+        
         self.observations.policy.wrist_rgb = ObsTerm(
-            func=lambda env, asset_cfg: env.scene[asset_cfg.name].data.output["rgb"].view(env.num_envs, -1),
+            func=so_arm_mimic_mdp.wrist_camera_rgb,
             params={"asset_cfg": SceneEntityCfg("wrist_camera")},
         )
-        
+
         self.observations.policy.front_rgb = ObsTerm(
-            func=lambda env, asset_cfg: env.scene[asset_cfg.name].data.output["rgb"].view(env.num_envs, -1),
+            func=so_arm_mimic_mdp.front_camera_rgb,
             params={"asset_cfg": SceneEntityCfg("front_camera")},
         )
         

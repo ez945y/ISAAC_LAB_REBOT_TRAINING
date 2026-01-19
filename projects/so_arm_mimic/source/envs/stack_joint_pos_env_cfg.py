@@ -35,13 +35,13 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort: skip
 class EventCfg:
     """Configuration for events."""
 
-    # init_arm_pose = EventTerm(
-    #     func=franka_stack_events.set_default_joint_pose,
-    #     mode="reset",
-    #     params={
-    #         "default_pose": [0.0, 0.0, 0.0, 0.0, -1.65, 0.0,],
-    #     },
-    # )
+    init_arm_pose = EventTerm(
+        func=franka_stack_events.set_default_joint_pose,
+        mode="reset",
+        params={
+            "default_pose": [0.0, 0.0, 0.0, 0.0, -1.65, 0.0,],
+        },
+    )
     randomize_joint_state = EventTerm(
         func=franka_stack_events.randomize_joint_by_gaussian_offset,
         mode="reset",
@@ -121,7 +121,7 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
                     fix_root_link=True,
                 ),
                 rigid_props=RigidBodyPropertiesCfg(
-                    disable_gravity=True,
+                    disable_gravity=False,
                 ),
                 semantic_tags=[("class", "robot")],
             ),

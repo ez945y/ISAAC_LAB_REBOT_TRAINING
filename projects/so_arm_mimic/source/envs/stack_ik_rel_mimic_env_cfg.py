@@ -76,7 +76,7 @@ class SO101CubeStackRelMimicEnvCfg(SO101CubeStackCameraMimicEnvCfg):
             devices={
                 "keyboard": Se3KeyboardCfg(
                     pos_sensitivity=0.05,
-                    rot_sensitivity=0.05,
+                    rot_sensitivity=0.25,
                     sim_device=self.sim.device,
                 ),
             }
@@ -92,4 +92,4 @@ class SO101CubeStackRelMimicEnvCfg(SO101CubeStackCameraMimicEnvCfg):
         self.datagen_config.name = "demo_src_stack_isaac_lab_rel_D0"
 
         # Enable debug visualization for the end-effector frame
-        self.scene.ee_frame.debug_vis = True
+        self.scene.ee_frame.debug_vis = False

@@ -5,7 +5,9 @@
 
 """MDP components for SO-ARM-101 environments."""
 
-from .observations import gripper_pos, object_grasped, object_stacked
+from .observations import gripper_pos, object_grasped, object_stacked, wrist_camera_rgb, front_camera_rgb
 from .terminations import cubes_stacked
 
-__all__ = ["gripper_pos", "object_grasped", "object_stacked", "cubes_stacked"]
+from .rewards import *
+
+__all__ = ["gripper_pos", "object_grasped", "object_stacked", "wrist_camera_rgb", "front_camera_rgb", "object_ee_distance", "object_is_lifted"]

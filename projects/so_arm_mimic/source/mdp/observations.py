@@ -19,8 +19,6 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
-__all__ = ["gripper_pos", "object_grasped", "object_stacked"]
-
 # Gripper joint limits from URDF (Jaw joint)
 # lower: -0.174533 (open), upper: 1.74533 (closed)
 GRIPPER_LOWER = -0.174533
@@ -110,3 +108,19 @@ def object_stacked(
         raise ValueError("No gripper_joint_names found in environment config")
 
     return stacked
+
+
+def wrist_camera_rgb(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """取得 wrist camera 的 RGB 影像，展平為 vector"""
+    camera = env.scene[asset_cfg.name]
+    rgb = camera.data.output["rgb"]           # shape: (num_envs, h, w, 4) or (num_envs, h, w, 3)
+    rgb = rgb[..., :3]                        # 拿掉 alpha channel（如果有）
+    return rgb.view(env.num_envs, -1)         # → (num_envs, h*w*3)
+
+
+def front_camera_rgb(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """取得 front camera 的 RGB 影像，展平為 vector"""
+    camera = env.scene[asset_cfg.name]
+    rgb = camera.data.output["rgb"]
+    rgb = rgb[..., :3]
+    return rgb.view(env.num_envs, -1)

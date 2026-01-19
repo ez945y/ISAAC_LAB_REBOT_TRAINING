@@ -29,10 +29,10 @@ class SO101CubeStackEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg):
         # The robot will use the URDF default pose or the teleop device's last pose instead
         self.events.init_arm_pose = None
         
-        self.scene.robot.actuators["arm"].stiffness = 17.8 * 5
-        self.scene.robot.actuators["arm"].damping = 0.6 * 5
-        self.scene.robot.actuators["gripper"].stiffness = 17.8 * 2
-        self.scene.robot.actuators["gripper"].damping = 0.6 * 2
+        self.scene.robot.actuators["arm"].stiffness = 17.8   # 降低剛度
+        self.scene.robot.actuators["arm"].damping = 0.6   # 增加阻尼
+        self.scene.robot.actuators["gripper"].stiffness = 17.8
+        self.scene.robot.actuators["gripper"].damping = 0.6
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = DifferentialInverseKinematicsActionCfg(
