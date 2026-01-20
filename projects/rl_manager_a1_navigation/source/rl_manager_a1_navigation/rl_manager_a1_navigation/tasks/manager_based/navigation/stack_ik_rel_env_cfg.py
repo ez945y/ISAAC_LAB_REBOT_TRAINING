@@ -212,4 +212,24 @@ class SO101CubeStackRelEnvCfg(SO101CubeStackEnvCfg):
         self.sim.render_interval = 2
         self.sim.gpu_collision_stack_size = 4 * (2**30) - 1
         self.sim.dt = 1 / 120
+
+        self.sim = SimulationCfg(
+            dt=1 / 120,
+            gravity=(0.0, 0.0, -9.81),
+            physx=PhysxCfg(
+                solver_type=1,
+                max_position_iteration_count=192,
+                max_velocity_iteration_count=1,
+                bounce_threshold_velocity=0.2,
+                friction_offset_threshold=0.01,
+                friction_correlation_distance=0.00625,
+                gpu_max_rigid_contact_count=2**24,                # 加大
+                gpu_max_rigid_patch_count=2**24,
+                gpu_collision_stack_size = 4 * (2**30) - 1,
+                gpu_found_lost_pairs_capacity=1024 * 1024 * 64,
+                gpu_found_lost_aggregate_pairs_capacity=1024 * 1024 * 64,
+                gpu_total_aggregate_pairs_capacity=128 * 1024,
+                gpu_max_num_partitions=1,
+            ),
+        )
         
