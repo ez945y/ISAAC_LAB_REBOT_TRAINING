@@ -27,7 +27,6 @@ class SO101CubeStackEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg):
         # Disable the init_arm_pose event that resets robot to joints=0 pose
         # This prevents the robot from jumping to a different pose after reset
         # The robot will use the URDF default pose or the teleop device's last pose instead
-        self.events.init_arm_pose = None
         
         self.scene.robot.actuators["arm"].stiffness = 17.8   # 降低剛度
         self.scene.robot.actuators["arm"].damping = 0.6   # 增加阻尼

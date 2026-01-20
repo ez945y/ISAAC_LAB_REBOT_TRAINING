@@ -40,7 +40,7 @@ class NavigationRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class CubeStackRelPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 1500
+    max_iterations = 500
     save_interval = 50
     experiment_name = "cube_stack_rel"
     policy = RslRlPpoActorCriticCfg(
