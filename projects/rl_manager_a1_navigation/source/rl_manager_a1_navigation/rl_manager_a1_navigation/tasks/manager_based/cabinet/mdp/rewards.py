@@ -33,6 +33,7 @@ def approach_ee_handle(env: ManagerBasedRLEnv, threshold: float) -> torch.Tensor
 
     # Compute the distance of the end-effector to the handle
     distance = torch.norm(handle_pos - ee_tcp_pos, dim=-1, p=2)
+    
 
     # Reward the robot for reaching the handle
     reward = 1.0 / (1.0 + distance**2)
@@ -130,9 +131,13 @@ def grasp_handle(
     gripper_joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
 
     distance = torch.norm(handle_pos - ee_tcp_pos, dim=-1, p=2)
-    is_close = distance <= threshold
+    closeness = 1.0 / (1.0 + distance ** 2)
+    closeness = torch.pow(closeness, 2)
+    closeness = torch.where(distance > threshold, torch.zeros_like(closeness), closeness)
 
-    return is_close * torch.sum(open_joint_pos - gripper_joint_pos, dim=-1)
+    closing_amount = torch.sum(open_joint_pos - gripper_joint_pos, dim=-1).clamp(0.0, open_joint_pos)
+
+    return closeness * closing_amount
 
 
 def open_drawer_bonus(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
@@ -158,5 +163,45 @@ def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     open_easy = (drawer_pos > 0.01) * 0.5
     open_medium = (drawer_pos > 0.2) * is_graspable
     open_hard = (drawer_pos > 0.3) * is_graspable
+    # open_release = (drawer_pos > 0.35) * (1.0 - is_graspable)
 
     return open_easy + open_medium + open_hard
+
+def penalize_early_release(
+    env: ManagerBasedRLEnv,
+    asset_cfg_robot: SceneEntityCfg,
+    asset_cfg_cabinet: SceneEntityCfg,
+    open_joint_threshold: float = 0.4,
+    threshold: float = 0.3,
+) -> torch.Tensor:
+    drawer_pos = env.scene[asset_cfg_cabinet.name].data.joint_pos[:, asset_cfg_cabinet.joint_ids[0]]
+    gripper_pos = env.scene[asset_cfg_robot.name].data.joint_pos[:, asset_cfg_robot.joint_ids[0]]
+
+    is_released = gripper_pos > open_joint_threshold
+    is_grasp_aligned = align_grasp_around_handle(env).float()
+
+    not_opened = drawer_pos < threshold
+    penalize_release = not_opened * (is_released + (1.0 - is_grasp_aligned))
+
+    return penalize_release
+
+
+def penalize_ee_x_exceed_handle(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    tolerance: float = 0.02,
+) -> torch.Tensor:
+    """
+    Penalize when ee_tcp's x position exceeds handle's x position.
+    Assumes x-axis is the forward direction (ee x should not be larger than handle x).
+    
+    - If ee_x > handle_x + tolerance → quadratic penalty
+    """
+    drawer_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids[0]]
+    ee_tcp_x = env.scene["ee_frame"].data.target_pos_w[:, 0, 0]     # ee_tcp 的 x
+    handle_x  = env.scene["cabinet_frame"].data.target_pos_w[:, 0, 0]  # handle 的 x
+    exceed_amount = ee_tcp_x - handle_x
+    opened = (drawer_pos > 0.3)
+
+    penalty = torch.clamp(exceed_amount - tolerance, min=0.0)
+    return (penalty * 1000) ** 2 * opened

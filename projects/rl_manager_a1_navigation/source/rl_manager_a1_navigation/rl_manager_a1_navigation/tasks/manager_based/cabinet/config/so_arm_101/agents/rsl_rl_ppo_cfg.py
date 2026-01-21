@@ -13,7 +13,7 @@ class SOArm101CabinetPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     """PPO runner configuration for SO-ARM-101 opening a cabinet drawer using IK control."""
     
     num_steps_per_env = 96
-    max_iterations = 400
+    max_iterations = 200
     save_interval = 50
     experiment_name = "so_arm_101_open_drawer"
     
@@ -24,8 +24,8 @@ class SOArm101CabinetPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         noise_std_type="log",  # Ensures std is always positive via exp()
         actor_obs_normalization=True,  # Normalize observations for smaller robot
         critic_obs_normalization=True,
-        actor_hidden_dims=[256, 128, 64],
-        critic_hidden_dims=[256, 128, 64],
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
         activation="elu",
     )
     

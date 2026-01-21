@@ -31,7 +31,7 @@ from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
 
 FRAME_MARKER_SMALL_CFG = FRAME_MARKER_CFG.copy()
-FRAME_MARKER_SMALL_CFG.markers["frame"].scale = (0.10, 0.10, 0.10)
+FRAME_MARKER_SMALL_CFG.markers["frame"].scale = (0.01, 0.01, 0.01)
 
 
 ##
@@ -94,7 +94,7 @@ class CabinetSceneCfg(InteractiveSceneCfg):
                 prim_path="{ENV_REGEX_NS}/Cabinet/drawer_handle_top",
                 name="drawer_handle_top",
                 offset=OffsetCfg(
-                    pos=(0.305, 0.0, 0.01),
+                    pos=(0.17, 0.0, 0.01),
                     rot=(0.5, 0.5, -0.5, -0.5),  # align with end-effector frame
                 ),
             ),
@@ -204,7 +204,7 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # 1. Approach the handle
-    approach_ee_handle = RewTerm(func=mdp.approach_ee_handle, weight=2.0, params={"threshold": 0.2})
+    approach_ee_handle = RewTerm(func=mdp.approach_ee_handle, weight=2.0, params={"threshold": 0.1})
     align_ee_handle = RewTerm(func=mdp.align_ee_handle, weight=0.5)
 
     # 2. Grasp the handle
@@ -212,7 +212,7 @@ class RewardsCfg:
     align_grasp_around_handle = RewTerm(func=mdp.align_grasp_around_handle, weight=0.125)
     grasp_handle = RewTerm(
         func=mdp.grasp_handle,
-        weight=0.5,
+        weight=1.0,
         params={
             "threshold": 0.03,
             "open_joint_pos": MISSING,
@@ -228,13 +228,33 @@ class RewardsCfg:
     )
     multi_stage_open_drawer = RewTerm(
         func=mdp.multi_stage_open_drawer,
-        weight=1.0,
+        weight=2.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_top_joint"])},
     )
 
     # 4. Penalize actions for cosmetic reasons
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-0.0001)
+
+    penalize_ee_x_exceed_handle = RewTerm(
+        func=mdp.penalize_ee_x_exceed_handle,
+        weight=-1.0,
+        params={
+            "asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_top_joint"]),
+            "tolerance": 0.01,
+        },
+    )
+
+    # penalize_early_release = RewTerm(
+    #     func=mdp.penalize_early_release,
+    #     weight=-4.0,
+    #     params={
+    #         "asset_cfg_robot": SceneEntityCfg("robot", joint_names=["gripper"]),
+    #         "asset_cfg_cabinet": SceneEntityCfg("cabinet", joint_names=["drawer_top_joint"]),
+    #         "open_joint_threshold": 0.4,
+    #         "threshold": 0.3,
+    #     },
+    # )
 
 
 @configclass

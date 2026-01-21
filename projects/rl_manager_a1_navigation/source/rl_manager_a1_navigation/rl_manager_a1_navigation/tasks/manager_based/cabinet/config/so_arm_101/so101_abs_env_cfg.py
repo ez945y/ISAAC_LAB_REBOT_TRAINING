@@ -8,7 +8,7 @@ from isaaclab.utils import configclass
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
 # from isaaclab.controllers.operational_space_cfg import OperationalSpaceControllerCfg
-from isaaclab.envs.mdp.actions.actions_cfg import OperationalSpaceControllerActionCfg, BinaryJointPositionActionCfg
+from isaaclab.envs.mdp.actions.actions_cfg import OperationalSpaceControllerActionCfg, BinaryJointPositionActionCfg, JointPositionActionCfg
 from isaaclab.managers import SceneEntityCfg
 
 from rl_manager_a1_navigation.tasks.manager_based.cabinet.cabinet_env_cfg import CabinetEnvCfg, FRAME_MARKER_SMALL_CFG
@@ -40,14 +40,14 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                 semantic_tags=[("class", "robot")],
             ),
             init_state=ArticulationCfg.InitialStateCfg(
-                pos=(-0.02, 0.0, 0.6),
+                pos=(-0.08, 0.0, 0.6),
                 joint_pos={
                     "shoulder_pan": 0.0,  
                     "shoulder_lift": 0.0,
                     "elbow_flex": 0.0,
-                    "wrist_flex": 1.658,
+                    "wrist_flex": 0.0,
                     "wrist_roll": 0.0,
-                    "gripper": 1.7,
+                    "gripper": 0.0,
                 },
             ),
             actuators={
@@ -100,11 +100,18 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
             scale=0.5,
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.0]),
         )
-        self.actions.gripper_action = BinaryJointPositionActionCfg(
+        # self.actions.gripper_action = BinaryJointPositionActionCfg(
+        #     asset_name="robot",
+        #     joint_names=["gripper"],
+        #     open_command_expr={"gripper": 1.7},
+        #     close_command_expr={"gripper": -0.1},
+        # )
+        self.actions.gripper_action = JointPositionActionCfg(
             asset_name="robot",
             joint_names=["gripper"],
-            open_command_expr={"gripper": 1.7},
-            close_command_expr={"gripper": 0.3},
+            scale=0.9,
+            offset=0.8,
+            use_default_offset=False,
         )
 
         # Frame for observations
@@ -116,28 +123,28 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="ee_tcp",
-                    offset=OffsetCfg(
-                        pos=(0.0, 0.0, 0.0),
-                    ),
+                    offset=OffsetCfg(pos=(0.002, 0.0, -0.07812)),
                 ),
-                # Index 1: 左指 (固定/虛擬) - 綁定在手掌 (wrist_link)
-                FrameTransformerCfg.FrameCfg(
-                    prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
-                    name="tool_leftfinger",
-                    offset=OffsetCfg(pos=(0.0, 0.0, 0.0)),
-                ),
-                # Index 2: 右指 (活動/真實) - 綁定在 gripper_link
+                # 綁定在可動關節 (wrist_link)
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
+                    name="tool_leftfinger",
+                    offset=OffsetCfg(pos=(-0.01, -0.055, 0.01727)),
+                ),
+                # 綁定在 gripper_link
+                FrameTransformerCfg.FrameCfg(
+                    prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="tool_rightfinger",
-                    offset=OffsetCfg(pos=(0.0, 0.0, 0.0)),
+                    offset=OffsetCfg(
+                        pos=(-0.008, 0.0, -0.07812),
+                    ),
                 ),
             ],
         )
 
 
-        # Rewards overrides
-        self.rewards.approach_gripper_handle.params["offset"] = 0.05
+        # # Rewards overrides
+        self.rewards.approach_gripper_handle.params["offset"] = 0.02
         self.rewards.grasp_handle.params["open_joint_pos"] = 1.74
         self.rewards.grasp_handle.params["asset_cfg"].joint_names = ["gripper"]
 
@@ -159,7 +166,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
 
         # self.sim.gpu_collision_stack_size = 4 * (2**30) - 1
 
-        self.scene.num_envs = 512
+        self.scene.num_envs = 1024
         self.sim = SimulationCfg(
             dt=1 / 120,
             gravity=(0.0, 0.0, -9.81),
