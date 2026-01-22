@@ -5,13 +5,10 @@
 
 import gymnasium as gym
 
-# from .so_arm_stack_joint_mimic_env import SOArmStackJointMimicEnv
-# from .so_arm_stack_joint_mimic_env_cfg import SOArmStackJointMimicEnvCfg
-# from .so_arm_stack_camera_mimic_env_cfg import SOArmStackCameraMimicEnvCfg
-
 from .stack_ik_abs_mimic_env import SO101CubeStackIKAbsMimicEnv
 from .stack_ik_abs_mimic_env_cfg import SO101CubeStackIKAbsMimicEnvCfg
-from .stack_ik_abs_camera_mimic_env_cfg import SO101CubeStackCameraMimicEnvCfg
+from .stack_ik_camera_mimic_env import SO101CubeStackCameraMimicEnv
+from .stack_ik_camera_mimic_env_cfg import SO101CubeStackCameraMimicEnvCfg
 from .stack_ik_rel_mimic_env import SO101CubeStackRelMimicEnv
 from .stack_ik_rel_mimic_env_cfg import SO101CubeStackRelMimicEnvCfg
 
@@ -32,9 +29,9 @@ gym.register(
 ##
 gym.register(
     id="Isaac-PickPlace-SOArm-Camera-Mimic-v0",
-    entry_point="so_arm_mimic.source.envs.stack_ik_abs_mimic_env:SO101CubeStackIKAbsMimicEnv",
+    entry_point="so_arm_mimic.source.envs.stack_ik_camera_mimic_env:SO101CubeStackCameraMimicEnv",
     kwargs={
-        "env_cfg_entry_point": "so_arm_mimic.source.envs.stack_ik_abs_camera_mimic_env_cfg:SO101CubeStackCameraMimicEnvCfg",
+        "env_cfg_entry_point": "so_arm_mimic.source.envs.stack_ik_camera_mimic_env_cfg:SO101CubeStackCameraMimicEnvCfg",
     },
     disable_env_checker=True,
 )

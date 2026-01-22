@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "controll_scripts"
+name = "isaaclab_robot_training"
 version = "0.1.0"
 description = "Robot Control Library for Isaac Lab"
 readme = "README.md"
@@ -13,9 +13,14 @@ dependencies = [
     "numpy",
 ]
 
-[tool.setuptools.packages.find]
-where = ["tools"]
-include = ["controll_scripts*"]
+[tool.setuptools]
+packages = ["controll_scripts", "rl_manager", "rl_direct", "so_arm_mimic"]
+
+[tool.setuptools.package-dir]
+controll_scripts = "tools/controll_scripts"
+rl_manager = "projects/rl_manager/source/rl_manager/rl_manager"
+rl_direct  = "projects/rl_direct/source/rl_direct/rl_direct"
+so_arm_mimic = "projects/so_arm_mimic"
 
 [tool.setuptools.package-data]
 controll_scripts = [

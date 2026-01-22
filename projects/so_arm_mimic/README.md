@@ -4,9 +4,10 @@ This extension provides environment configurations and tools for the SO-ARM 101 
 
 ## Installation
 
+Follow the [Isaac Lab Installation Guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
+
 ```bash
 cd projects/so_arm_mimic
-pip install -e .
 ```
 
 ## Directory Structure

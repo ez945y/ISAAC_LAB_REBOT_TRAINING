@@ -19,11 +19,15 @@ from isaaclab.devices.openxr.retargeters.manipulator.se3_abs_retargeter import S
 
 from isaaclab.envs.mdp.actions.actions_cfg import BinaryJointPositionActionCfg
 from isaaclab.utils import configclass
-from .stack_ik_abs_camera_mimic_env_cfg import SO101CubeStackCameraMimicEnvCfg
+from .stack_ik_camera_mimic_env_cfg import SO101CubeStackCameraMimicEnvCfg
 
 from controll_scripts.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from controll_scripts.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 
+from rl_manager.tasks.manager_based.cabinet.config.so_arm_101.feature_extractor import (
+    FeatureExtractor,
+    FeatureExtractorCfg,
+)
 
 @configclass
 class SO101CubeStackRelMimicEnvCfg(SO101CubeStackCameraMimicEnvCfg):
@@ -34,6 +38,8 @@ class SO101CubeStackRelMimicEnvCfg(SO101CubeStackCameraMimicEnvCfg):
     - Changes teleop device to OpenXR hand tracking
     - Changes gripper action to binary (open/close)
     """
+    feature_extractor_cfg: FeatureExtractorCfg = FeatureExtractorCfg(train=True, load_checkpoint=False)
+
 
     def __post_init__(self):
         super().__post_init__()

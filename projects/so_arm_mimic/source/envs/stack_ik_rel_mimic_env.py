@@ -8,12 +8,29 @@ from collections.abc import Sequence
 
 import isaaclab.utils.math as PoseUtils
 from isaaclab.envs import ManagerBasedRLMimicEnv
+from rl_manager.tasks.manager_based.cabinet.config.so_arm_101.feature_extractor import (
+    FeatureExtractor,
+)
 
 
 class SO101CubeStackRelMimicEnv(ManagerBasedRLMimicEnv):
     """
     Isaac Lab Mimic environment wrapper class for SO101 Cube Stack IK Rel env.
     """
+    def load_managers(self):
+        """Load managers with feature extractor initialized first.
+        
+        The feature extractor must be initialized before the observation manager
+        because observation functions need to access it to compute embedding shapes.
+        """
+        log_dir = getattr(self.cfg, 'log_dir', None)
+        self.feature_extractor = FeatureExtractor(
+            self.cfg.feature_extractor_cfg, 
+            self.device, 
+            log_dir
+        )
+        # Now call parent to load all managers (including ObservationManager)
+        super().load_managers()
 
     def get_robot_eef_pose(self, eef_name: str, env_ids: Sequence[int] | None = None) -> torch.Tensor:
         """Get current robot end effector pose."""

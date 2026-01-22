@@ -43,14 +43,9 @@ cd ISAAC_LAB_REBOT_TRAINING
 ### 2. Install Project Dependencies
 ```bash
 
-# Install control scripts
+# Install
 pip install -e .
 
-# Install SO-ARM Mimic environment
-pip install -e projects/so_arm_mimic
-
-
-```
 
 ### 3. Quick Start - Record Demos
 ```bash
