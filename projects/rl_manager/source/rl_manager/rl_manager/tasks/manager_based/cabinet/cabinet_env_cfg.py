@@ -95,7 +95,6 @@ class CabinetSceneCfg(InteractiveSceneCfg):
                 name="drawer_handle_bottom",
                 offset=OffsetCfg(
                     pos=(0.165, 0.0, 0.01),
-                    rot=(0.5, 0.5, -0.5, -0.5),  # align with end-effector frame
                 ),
             ),
             FrameTransformerCfg.FrameCfg(
@@ -103,7 +102,6 @@ class CabinetSceneCfg(InteractiveSceneCfg):
                 name="drawer_handle_top",
                 offset=OffsetCfg(
                     pos=(0.165, 0.0, 0.01),
-                    rot=(0.5, 0.5, -0.5, -0.5),  # align with end-effector frame
                 ),
             ),
             FrameTransformerCfg.FrameCfg(
@@ -111,7 +109,6 @@ class CabinetSceneCfg(InteractiveSceneCfg):
                 name="door_left_nob_link",
                 offset=OffsetCfg(
                     pos=(0.015, 0.195, 0.1),
-                    rot=(0.5, 0.5, -0.5, -0.5),  # align with end-effector frame
                 ),
             ),
             FrameTransformerCfg.FrameCfg(
@@ -119,7 +116,6 @@ class CabinetSceneCfg(InteractiveSceneCfg):
                 name="door_right_nob_link",
                 offset=OffsetCfg(
                     pos=(0.015, -0.195, 0.1),
-                    rot=(0.5, 0.5, -0.5, -0.5),  # align with end-effector frame
                 ),
             ),
         ],
@@ -228,7 +224,7 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # 1. Approach the handle
-    approach_ee_handle = RewTerm(func=mdp.approach_ee_handle, weight=1.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint", "door_left_joint", "door_right_joint"]), "threshold": 0.1})
+    approach_ee_handle = RewTerm(func=mdp.approach_ee_handle, weight=2.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint", "door_left_joint", "door_right_joint"]), "threshold": 0.1})
     align_ee_handle = RewTerm(func=mdp.align_ee_handle, weight=0.5, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint", "door_left_joint", "door_right_joint"])})
 
     # 2. Grasp the handle
@@ -236,7 +232,7 @@ class RewardsCfg:
     align_grasp_around_handle = RewTerm(func=mdp.align_grasp_around_handle, weight=0.125, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint", "door_left_joint", "door_right_joint"])})
     grasp_handle = RewTerm(
         func=mdp.grasp_handle,
-        weight=1.0,
+        weight=0.5,
         params={
             "asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint", "door_left_joint", "door_right_joint"]),
             "threshold": 0.03,
@@ -253,7 +249,7 @@ class RewardsCfg:
     )
     multi_stage_open_drawer = RewTerm(
         func=mdp.multi_stage_open_drawer,
-        weight=2.0,
+        weight=1.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint", "door_left_joint", "door_right_joint"])},
     )
 

@@ -21,8 +21,8 @@ def _get_process(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Ten
     drawer_pos_left   = joint_pos[:, 2]
     drawer_pos_right  = joint_pos[:, 3]
     
-    stage_one   = drawer_pos_bottom > 0.38
-    stage_two   = (drawer_pos_top > 0.2) & stage_one
+    stage_one   = drawer_pos_bottom > 0.3
+    stage_two   = (drawer_pos_top > 0.3) & stage_one
     stage_three = (drawer_pos_left < -1.5) & stage_two
     
     # 使用 torch.where 明確設定優先級
@@ -175,16 +175,11 @@ def grasp_handle(
     ee_tcp_pos = env.scene["ee_frame"].data.target_pos_w[..., 0, :]
     handle_pos = _get_handle_pos(env, asset_cfg)
     gripper_joint_pos = env.scene[robot_cfg.name].data.joint_pos[:, robot_cfg.joint_ids]
-
+    
     distance = torch.norm(handle_pos - ee_tcp_pos, dim=-1, p=2)
-    closeness = 1.0 / (1.0 + distance ** 2)
-    closeness = torch.pow(closeness, 2)
-    closeness = torch.where(distance > threshold, torch.zeros_like(closeness), closeness)
+    is_close = distance <= threshold
 
-    closing_amount = torch.sum(open_joint_pos - gripper_joint_pos, dim=-1).clamp(0.0, open_joint_pos)
-    is_graspable = align_grasp_around_handle(env, asset_cfg).float()
-    return closeness * closing_amount * is_graspable
-
+    return is_close * torch.sum(open_joint_pos - gripper_joint_pos, dim=-1)
 
 def open_drawer_bonus(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Bonus for opening the drawer given by the joint position of the drawer.
@@ -213,13 +208,18 @@ def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     open_easy = (drawer_pos_bottom > 0.01) * 0.5
     open_medium = (drawer_pos_bottom > 0.2) * is_graspable
     open_hard = (drawer_pos_bottom > 0.3) * is_graspable
-    open_both = (drawer_pos_top > 0.3) * (drawer_pos_bottom > 0.3) * is_graspable
-    second_open_easy = (drawer_pos_left < -0.01 + drawer_pos_right > 0.01) * open_both * 0.5
-    second_open_medium = (drawer_pos_left < -0.5 + drawer_pos_right > 0.5) * is_graspable * open_both
-    second_open_hard= (drawer_pos_left < -1.5 + drawer_pos_right > 1.5) * is_graspable * open_both
+    open_both = (drawer_pos_top > 0.3) * (drawer_pos_bottom > 0.3) * 0.25
 
-    return open_easy + open_medium + open_hard + open_both * 0.5 + second_open_easy * 0.5 + second_open_medium + second_open_hard
+    second_stage = is_graspable * open_both
 
+    second_open_easy_left = (drawer_pos_left < -0.01) * open_both * 0.5
+    second_open_medium_left = (drawer_pos_left < -0.5) * second_stage
+    second_open_hard_left = (drawer_pos_left < -1.5) * second_stage
+    second_open_easy_right = (drawer_pos_right > 0.01) * open_both * 0.5
+    second_open_medium_right = (drawer_pos_right > 0.5) * second_stage
+    second_open_hard_right = (drawer_pos_right > 1.5) * second_stage
+
+    return open_easy + open_medium + open_hard + open_both + second_open_easy_left + second_open_medium_left + second_open_hard_left + second_open_easy_right + second_open_medium_right + second_open_hard_right
 
 # def penalize_early_release(
 #     env: ManagerBasedRLEnv,

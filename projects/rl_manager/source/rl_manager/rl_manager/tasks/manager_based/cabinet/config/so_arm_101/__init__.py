@@ -55,6 +55,25 @@ gym.register(
     disable_env_checker=True,
 )
 
+gym.register(
+    id="Isaac-Cabinet-SOARM101-RRel-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.so101_rrel_env_cfg:SOArm101CabinetEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:SOArm101CabinetPPORunnerCfg",
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-Cabinet-SOARM101-RRel-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.so101_rrel_env_cfg:SOArm101CabinetEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:SOArm101CabinetPPORunnerCfg",
+    },
+    disable_env_checker=True,
+)
 # ==============================================================================
 # Camera-based RL Environments (Visual observations with CNN embeddings)
 # ==============================================================================

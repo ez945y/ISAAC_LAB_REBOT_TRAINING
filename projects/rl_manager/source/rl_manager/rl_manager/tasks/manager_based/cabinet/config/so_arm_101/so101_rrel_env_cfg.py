@@ -11,7 +11,7 @@ from isaaclab.assets import ArticulationCfg
 from isaaclab.envs.mdp.actions.actions_cfg import OperationalSpaceControllerActionCfg, BinaryJointPositionActionCfg, JointPositionActionCfg
 from isaaclab.managers import SceneEntityCfg
 
-from rl_manager.tasks.manager_based.cabinet.cabinet_env_cfg import CabinetEnvCfg, FRAME_MARKER_SMALL_CFG
+from rl_manager.tasks.manager_based.cabinet.cabinet_env_cfg_reverse import CabinetEnvCfg, FRAME_MARKER_SMALL_CFG
 from controll_scripts.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from controll_scripts.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 

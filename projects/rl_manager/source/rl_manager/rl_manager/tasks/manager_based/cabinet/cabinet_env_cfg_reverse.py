@@ -23,6 +23,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 from . import mdp
+from rl_manager.tasks.manager_based.cabinet.mdp import rewards_reverse
 
 ##
 # Pre-defined configs
@@ -228,14 +229,14 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # 1. Approach the handle
-    approach_ee_handle = RewTerm(func=mdp.approach_ee_handle, weight=1.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"]), "threshold": 0.1})
-    align_ee_handle = RewTerm(func=mdp.align_ee_handle, weight=0.5, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"])})
+    approach_ee_handle = RewTerm(func=rewards_reverse.approach_ee_handle, weight=1.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"]), "threshold": 0.1})
+    align_ee_handle = RewTerm(func=rewards_reverse.align_ee_handle, weight=0.5, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"])})
 
     # 2. Grasp the handle
-    approach_gripper_handle = RewTerm(func=mdp.approach_gripper_handle, weight=5.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"]), "offset": MISSING})
-    align_grasp_around_handle = RewTerm(func=mdp.align_grasp_around_handle, weight=0.125, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"])})
+    approach_gripper_handle = RewTerm(func=rewards_reverse.approach_gripper_handle, weight=5.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"]), "offset": MISSING})
+    align_grasp_around_handle = RewTerm(func=rewards_reverse.align_grasp_around_handle, weight=0.125, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"])})
     grasp_handle = RewTerm(
-        func=mdp.grasp_handle,
+        func=rewards_reverse.grasp_handle,
         weight=1.0,
         params={
             "asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"]),
@@ -247,12 +248,12 @@ class RewardsCfg:
 
     # 3. Open the drawer
     open_drawer_bonus = RewTerm(
-        func=mdp.open_drawer_bonus,
+        func=rewards_reverse.open_drawer_bonus,
         weight=7.5,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"])},
     )
     multi_stage_open_drawer = RewTerm(
-        func=mdp.multi_stage_open_drawer,
+        func=rewards_reverse.multi_stage_open_drawer,
         weight=2.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["door_left_joint", "door_right_joint", "drawer_bottom_joint", "drawer_top_joint"])},
     )
