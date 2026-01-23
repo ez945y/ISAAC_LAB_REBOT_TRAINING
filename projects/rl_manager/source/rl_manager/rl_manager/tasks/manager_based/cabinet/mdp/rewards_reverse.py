@@ -16,17 +16,15 @@ if TYPE_CHECKING:
 
 def _get_process(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
-    drawer_pos_bottom = joint_pos[:, 0]
-    drawer_pos_top    = joint_pos[:, 1]
-    drawer_pos_left   = joint_pos[:, 2]
-    drawer_pos_right  = joint_pos[:, 3]
+    drawer_pos_left = joint_pos[:, 0]
+    drawer_pos_right    = joint_pos[:, 1]
+    drawer_pos_bottom   = joint_pos[:, 2]
     
-    stage_one   = drawer_pos_bottom > 0.38
-    stage_two   = (drawer_pos_top > 0.2) & stage_one
-    stage_three = (drawer_pos_left < -1.5) & stage_two
+    stage_one   = (drawer_pos_left < -1.5)
+    stage_two   = (drawer_pos_right > 1.5) & stage_one
+    stage_three = (drawer_pos_bottom > 0.2) & stage_two
     
-    # 使用 torch.where 明確設定優先級
-    process = torch.zeros_like(drawer_pos_bottom, dtype=torch.long)
+    process = torch.zeros_like(drawer_pos_left, dtype=torch.long)
     process = torch.where(stage_three, 3, process)
     process = torch.where(stage_two & ~stage_three, 2, process)
     process = torch.where(stage_one & ~stage_two, 1, process)
@@ -204,21 +202,28 @@ def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     This helps the agent to learn to open the drawer in a controlled manner.
     """
     joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
-    drawer_pos_bottom = joint_pos[:, 0]
-    drawer_pos_top = joint_pos[:, 1]
-    drawer_pos_left = joint_pos[:, 2]
-    drawer_pos_right = joint_pos[:, 3]
+    drawer_pos_left = joint_pos[:, 0]
+    drawer_pos_right = joint_pos[:, 1]
+    drawer_pos_bottom = joint_pos[:, 2]
+    drawer_pos_top = joint_pos[:, 3]
+
     
     is_graspable = align_grasp_around_handle(env, asset_cfg).float()
-    open_easy = (drawer_pos_bottom > 0.01) * 0.5
-    open_medium = (drawer_pos_bottom > 0.2) * is_graspable
-    open_hard = (drawer_pos_bottom > 0.3) * is_graspable
-    open_both = (drawer_pos_top > 0.3) * (drawer_pos_bottom > 0.3) * is_graspable
-    second_open_easy = (drawer_pos_left < -0.01 + drawer_pos_right > 0.01) * open_both * 0.5
-    second_open_medium = (drawer_pos_left < -0.5 + drawer_pos_right > 0.5) * is_graspable * open_both
-    second_open_hard= (drawer_pos_left < -1.5 + drawer_pos_right > 1.5) * is_graspable * open_both
+    
+    open_easy_left = (drawer_pos_left < -0.01) * 0.5
+    open_medium_left = (drawer_pos_left < -0.2) * is_graspable
+    open_hard_left= (drawer_pos_left < -0.5) * is_graspable
+    open_easy_right = (drawer_pos_right > 0.01) * 0.5 * open_hard_left
+    open_medium_right = (drawer_pos_right > 0.2) * is_graspable * open_hard_left
+    open_hard_right= (drawer_pos_right > 0.5) * is_graspable * open_hard_left
+    open_both = (drawer_pos_left < -1.0) * (drawer_pos_right > 1.0) * is_graspable * 0.5
 
-    return open_easy + open_medium + open_hard + open_both * 0.5 + second_open_easy * 0.5 + second_open_medium + second_open_hard
+    second_open_easy = (drawer_pos_bottom > 0.01) * open_both * 0.5
+    second_open_medium = (drawer_pos_bottom > 0.2) * open_both * is_graspable
+    second_open_hard = (drawer_pos_bottom > 0.3) * open_both * is_graspable
+
+
+    return open_easy_left + open_medium_left + open_hard_left + open_easy_right + open_medium_right + open_hard_right + open_both + second_open_easy + second_open_medium + second_open_hard
 
 
 # def penalize_early_release(

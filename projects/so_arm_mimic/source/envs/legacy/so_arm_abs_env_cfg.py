@@ -62,27 +62,32 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
             visualizer_cfg=FRAME_MARKER_SMALL_CFG.replace(prim_path="/Visuals/EndEffectorFrameTransformer"),
             target_frames=[
                 FrameTransformerCfg.FrameCfg(
-                    prim_path=f"{ENV_REGEX_NS}/Robot/{so_arm_config.ee_body_name}",
+                    prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="ee_tcp",
                     offset=OffsetCfg(
-                        pos=(0.0, 0.0, 0.0),
-                        rot=(1.0, 0.0, 0.0, 0.0),
+                        pos=(0.002, 0.0, -0.07812),
+                        rot=(0.0, 0.7071068, 0.7071068, 0.0)
                     ),
                 ),
-                # Index 1: 左指 (固定/虛擬) - 綁定在手掌 (wrist_link)
+                # 綁定在可動關節 (wrist_link)
                 FrameTransformerCfg.FrameCfg(
-                    prim_path=f"{ENV_REGEX_NS}/Robot/wrist_link",
+                    prim_path="{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
                     name="tool_leftfinger",
-                    offset=OffsetCfg(pos=(0.0, 0.0, 0.03)),
+                    offset=OffsetCfg(
+                        pos=(-0.01, -0.055, 0.01727),
+                        rot=(-0.5, -0.5, -0.5, 0.5)
+                    ),
                 ),
-                # Index 2: 右指 (活動/真實) - 綁定在 gripper_link
+                # 綁定在 gripper_link
                 FrameTransformerCfg.FrameCfg(
-                    prim_path=f"{ENV_REGEX_NS}/Robot/gripper_link",
+                    prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="tool_rightfinger",
-                    offset=OffsetCfg(pos=(0.0, 0.0, 0.0)),
+                    offset=OffsetCfg(
+                        pos=(-0.008, 0.0, -0.07812),
+                        rot=(0.0, 0.7071068, 0.7071068, 0.0)
+                    ),
                 ),
             ],
-        )
 
         # Rewards overrides
         self.rewards.approach_gripper_handle.params["offset"] = 0.05

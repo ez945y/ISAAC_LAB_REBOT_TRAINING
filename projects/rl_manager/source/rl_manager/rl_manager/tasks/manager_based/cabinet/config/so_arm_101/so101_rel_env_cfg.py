@@ -40,7 +40,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                 semantic_tags=[("class", "robot")],
             ),
             init_state=ArticulationCfg.InitialStateCfg(
-                pos=(-0.08, 0.0, 0.6),
+                pos=(-0.04, 0.0, 0.6),
                 joint_pos={
                     "shoulder_pan": 0.0,  
                     "shoulder_lift": 0.0,
@@ -104,13 +104,19 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="ee_tcp",
-                    offset=OffsetCfg(pos=(0.002, 0.0, -0.07812)),
+                    offset=OffsetCfg(
+                        pos=(0.002, 0.0, -0.07812),
+                        rot=(0.0, 0.7071068, 0.7071068, 0.0)
+                    ),
                 ),
                 # 綁定在可動關節 (wrist_link)
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
                     name="tool_leftfinger",
-                    offset=OffsetCfg(pos=(-0.01, -0.055, 0.01727)),
+                    offset=OffsetCfg(
+                        pos=(-0.01, -0.055, 0.01727),
+                        rot=(-0.5, -0.5, -0.5, 0.5)
+                    ),
                 ),
                 # 綁定在 gripper_link
                 FrameTransformerCfg.FrameCfg(
@@ -118,6 +124,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                     name="tool_rightfinger",
                     offset=OffsetCfg(
                         pos=(-0.008, 0.0, -0.07812),
+                        rot=(0.0, 0.7071068, 0.7071068, 0.0)
                     ),
                 ),
             ],
@@ -127,7 +134,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
         # # Rewards overrides
         self.rewards.approach_gripper_handle.params["offset"] = 0.02
         self.rewards.grasp_handle.params["open_joint_pos"] = 1.74
-        self.rewards.grasp_handle.params["asset_cfg"].joint_names = ["gripper"]
+        self.rewards.grasp_handle.params["robot_cfg"].joint_names = ["gripper"]
 
         # Observations
         self.observations.policy.joint_pos.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[

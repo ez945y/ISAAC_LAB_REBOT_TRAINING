@@ -802,10 +802,28 @@ class SOArmStackJointMimicEnvCfg(ManagerBasedRLEnvCfg, MimicEnvCfg):
             target_frames=[
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
-                    name="end_effector",
+                    name="ee_tcp",
                     offset=OffsetCfg(
-                        pos=(0.0, 0.0, 0.0),
-                        rot=(1.0, 0.0, 0.0, 0.0),
+                        pos=(0.002, 0.0, -0.07812),
+                        rot=(0.0, 0.7071068, 0.7071068, 0.0)
+                    ),
+                ),
+                # 綁定在可動關節 (wrist_link)
+                FrameTransformerCfg.FrameCfg(
+                    prim_path="{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
+                    name="tool_leftfinger",
+                    offset=OffsetCfg(
+                        pos=(-0.01, -0.055, 0.01727),
+                        rot=(-0.5, -0.5, -0.5, 0.5)
+                    ),
+                ),
+                # 綁定在 gripper_link
+                FrameTransformerCfg.FrameCfg(
+                    prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
+                    name="tool_rightfinger",
+                    offset=OffsetCfg(
+                        pos=(-0.008, 0.0, -0.07812),
+                        rot=(0.0, 0.7071068, 0.7071068, 0.0)
                     ),
                 ),
             ],
