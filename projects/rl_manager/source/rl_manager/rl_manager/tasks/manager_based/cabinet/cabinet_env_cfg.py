@@ -204,7 +204,7 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # 1. Approach the handle
-    approach_ee_handle = RewTerm(func=mdp.approach_ee_handle, weight=2.0, params={"threshold": 0.1})
+    approach_ee_handle = RewTerm(func=mdp.approach_ee_handle, weight=1.0, params={"threshold": 0.1})
     align_ee_handle = RewTerm(func=mdp.align_ee_handle, weight=0.5)
 
     # 2. Grasp the handle
@@ -232,18 +232,18 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_top_joint"])},
     )
 
-    # 4. Penalize actions for cosmetic reasons
+    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1e-6)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-0.0001)
 
-    penalize_ee_x_exceed_handle = RewTerm(
-        func=mdp.penalize_ee_x_exceed_handle,
-        weight=-1.0,
-        params={
-            "asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_top_joint"]),
-            "tolerance": 0.01,
-        },
-    )
+    # penalize_ee_x_exceed_handle = RewTerm(
+    #     func=mdp.penalize_ee_x_exceed_handle,
+    #     weight=-1.0,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_top_joint"]),
+    #     },
+    # )
 
     # penalize_early_release = RewTerm(
     #     func=mdp.penalize_early_release,

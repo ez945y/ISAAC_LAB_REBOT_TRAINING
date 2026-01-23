@@ -18,7 +18,7 @@ from isaaclab.devices.openxr.retargeters.manipulator.se3_abs_retargeter import S
 
 from isaaclab.envs.mdp.actions.actions_cfg import BinaryJointPositionActionCfg
 from isaaclab.utils import configclass
-from so_arm_mimic.source.envs.stack_joint_pos_env_cfg import SO101CubeStackEnvCfg
+from .stack_joint_pos_env_cfg import SO101CubeStackEnvCfg
 from controll_scripts.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from controll_scripts.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 

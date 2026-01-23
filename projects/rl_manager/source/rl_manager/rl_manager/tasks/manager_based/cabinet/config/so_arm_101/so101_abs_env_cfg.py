@@ -100,12 +100,6 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                     name="ee_tcp",
                     offset=OffsetCfg(pos=(0.002, 0.0, -0.07812)),
                 ),
-                # 綁定在可動關節 (wrist_link)
-                FrameTransformerCfg.FrameCfg(
-                    prim_path="{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
-                    name="tool_leftfinger",
-                    offset=OffsetCfg(pos=(-0.01, -0.055, 0.01727)),
-                ),
                 # 綁定在 gripper_link
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
@@ -113,6 +107,12 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                     offset=OffsetCfg(
                         pos=(-0.008, 0.0, -0.07812),
                     ),
+                ),
+                # 綁定在可動關節 (wrist_link)
+                FrameTransformerCfg.FrameCfg(
+                    prim_path="{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
+                    name="tool_leftfinger",
+                    offset=OffsetCfg(pos=(-0.01, -0.055, 0.01727)),
                 ),
             ],
         )

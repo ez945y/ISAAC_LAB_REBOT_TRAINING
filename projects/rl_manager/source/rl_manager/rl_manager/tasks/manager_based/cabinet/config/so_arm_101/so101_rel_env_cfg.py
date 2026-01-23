@@ -35,7 +35,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                     fix_root_link=True,
                 ),
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                    disable_gravity=False,
+                    disable_gravity=True,
                 ),
                 semantic_tags=[("class", "robot")],
             ),
@@ -82,18 +82,18 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
             scale=0.5,
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.0]),
         )
-        # self.actions.gripper_action = BinaryJointPositionActionCfg(
-        #     asset_name="robot",
-        #     joint_names=["gripper"],
-        #     open_command_expr={"gripper": 1.7},
-        #     close_command_expr={"gripper": -0.1},
-        # )
-        self.actions.gripper_action = JointPositionActionCfg(
+        self.actions.gripper_action = BinaryJointPositionActionCfg(
             asset_name="robot",
             joint_names=["gripper"],
-            scale=0.5,
-            use_default_offset=True,
+            open_command_expr={"gripper": 1.7},
+            close_command_expr={"gripper": -0.1},
         )
+        # self.actions.gripper_action = JointPositionActionCfg(
+        #     asset_name="robot",
+        #     joint_names=["gripper"],
+        #     scale=0.5,
+        #     use_default_offset=True,
+        # )
 
         # Frame for observations
         self.scene.ee_frame = FrameTransformerCfg(

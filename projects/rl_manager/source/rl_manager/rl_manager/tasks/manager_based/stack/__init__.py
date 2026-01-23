@@ -14,7 +14,7 @@ from . import agents
 
 
 gym.register(
-    id="Isaac-PickPlace-SOArm-Rel-v0",
+    id="Isaac-PickPlace-SOARM101-Rel-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": f"{__name__}.stack_ik_rel_env_cfg:SO101CubeStackRelEnvCfg",

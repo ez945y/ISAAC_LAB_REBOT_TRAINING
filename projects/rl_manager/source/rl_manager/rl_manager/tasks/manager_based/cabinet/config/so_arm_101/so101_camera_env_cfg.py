@@ -19,7 +19,7 @@ from rl_manager.tasks.manager_based.cabinet.config.so_arm_101.feature_extractor 
     FeatureExtractor,
     FeatureExtractorCfg,
 )
-from .so101_abs_env_cfg import SOArm101CabinetEnvCfg
+from .so101_rel_env_cfg import SOArm101CabinetEnvCfg
 
 
 @configclass

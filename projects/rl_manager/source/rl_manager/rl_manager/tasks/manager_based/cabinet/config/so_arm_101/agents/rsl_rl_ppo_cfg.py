@@ -49,7 +49,7 @@ class SOArm101CameraPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     """PPO runner configuration for SO-ARM-101 opening a cabinet drawer using IK control."""
     
     num_steps_per_env = 96
-    max_iterations = 500
+    max_iterations = 300
     save_interval = 50
     experiment_name = "so_arm_101_camera_open_drawer"
     
