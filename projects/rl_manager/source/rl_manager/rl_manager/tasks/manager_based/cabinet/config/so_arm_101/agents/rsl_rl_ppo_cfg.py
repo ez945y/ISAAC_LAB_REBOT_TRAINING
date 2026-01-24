@@ -12,15 +12,15 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 class SOArm101CabinetPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     """PPO runner configuration for SO-ARM-101 opening a cabinet drawer using IK control."""
     
-    num_steps_per_env = 96
-    max_iterations = 400
+    num_steps_per_env = 24
+    max_iterations = 1500
     save_interval = 50
     experiment_name = "so_arm_101_open_drawer"
     
     policy = RslRlPpoActorCriticCfg(
         # Use 'log' noise type to prevent negative std values
         # This is critical for numerical stability
-        init_noise_std=0.5,  # Lower initial noise for IK control
+        init_noise_std=1.0,  # Lower initial noise for IK control
         noise_std_type="log",  # Ensures std is always positive via exp()
         actor_obs_normalization=True,  # Normalize observations for smaller robot
         critic_obs_normalization=True,
@@ -33,30 +33,31 @@ class SOArm101CabinetPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=1e-3,
+        entropy_coef=0.01,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=3.0e-4,  # Slightly lower learning rate for stability
+        learning_rate=1.0e-3,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
-        desired_kl=0.01,  # Lower desired KL for more stable training
+        desired_kl=0.01,
         max_grad_norm=1.0,
     )
+
 
 @configclass
 class SOArm101CameraPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     """PPO runner configuration for SO-ARM-101 opening a cabinet drawer using IK control."""
     
-    num_steps_per_env = 96
-    max_iterations = 300
+    num_steps_per_env = 24
+    max_iterations = 400
     save_interval = 50
     experiment_name = "so_arm_101_camera_open_drawer"
     
     policy = RslRlPpoActorCriticCfg(
         # Use 'log' noise type to prevent negative std values
         # This is critical for numerical stability
-        init_noise_std=0.5,  # Lower initial noise for IK control
+        init_noise_std=1.0,  # Lower initial noise for IK control
         noise_std_type="log",  # Ensures std is always positive via exp()
         actor_obs_normalization=True,  # Normalize observations for smaller robot
         critic_obs_normalization=True,
@@ -69,13 +70,13 @@ class SOArm101CameraPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=1e-3,
+        entropy_coef=0.01,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=3.0e-4,  # Slightly lower learning rate for stability
+        learning_rate=1.0e-3,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
-        desired_kl=0.01,  # Lower desired KL for more stable training
+        desired_kl=0.01,
         max_grad_norm=1.0,
     )

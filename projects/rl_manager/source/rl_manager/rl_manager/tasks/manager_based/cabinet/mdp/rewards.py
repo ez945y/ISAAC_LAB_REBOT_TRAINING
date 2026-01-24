@@ -14,28 +14,29 @@ from isaaclab.utils.math import matrix_from_quat
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
-def _get_process(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+def _get_progress(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
     drawer_pos_bottom = joint_pos[:, 0]
-    drawer_pos_top    = joint_pos[:, 1]
-    drawer_pos_left   = joint_pos[:, 2]
-    drawer_pos_right  = joint_pos[:, 3]
+    # drawer_pos_top    = joint_pos[:, 1]
+    # drawer_pos_left   = joint_pos[:, 2]
+    # drawer_pos_right  = joint_pos[:, 3]
     
     stage_one   = drawer_pos_bottom > 0.3
-    stage_two   = (drawer_pos_top > 0.3) & stage_one
-    stage_three = (drawer_pos_left < -1.5) & stage_two
+    # stage_two   = (drawer_pos_top > 0.3) & stage_one
+    # stage_three = (drawer_pos_left < -1.5) & stage_two
     
     # 使用 torch.where 明確設定優先級
     process = torch.zeros_like(drawer_pos_bottom, dtype=torch.long)
-    process = torch.where(stage_three, 3, process)
-    process = torch.where(stage_two & ~stage_three, 2, process)
-    process = torch.where(stage_one & ~stage_two, 1, process)
+    process = torch.where(stage_one, 1, process)
+    # process = torch.where(stage_three, 3, process)
+    # process = torch.where(stage_two & ~stage_three, 2, process)
+    # process = torch.where(stage_one & ~stage_two, 1, process)
     
     return process
 
 
 def _get_handle_pos(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    process_idx = _get_process(env, asset_cfg)
+    process_idx = _get_progress(env, asset_cfg)
     batch_idx = torch.arange(
         env.scene["cabinet_frame"].data.target_pos_w.shape[0],
         device=process_idx.device
@@ -44,7 +45,7 @@ def _get_handle_pos(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.
 
 
 def _get_handle_quat(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    process_idx = _get_process(env, asset_cfg)
+    process_idx = _get_progress(env, asset_cfg)
     batch_idx = torch.arange(
         env.scene["cabinet_frame"].data.target_quat_w.shape[0],
         device=process_idx.device
@@ -53,12 +54,20 @@ def _get_handle_quat(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch
 
 
 def _get_drawer_pos(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    process_idx = _get_process(env, asset_cfg)
+    process_idx = _get_progress(env, asset_cfg)
     batch_idx = torch.arange(
         env.scene[asset_cfg.name].data.joint_pos.shape[0],
         device=process_idx.device
     )
     return env.scene[asset_cfg.name].data.joint_pos[batch_idx, process_idx]
+
+def _get_drawer_vel(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    process_idx = _get_progress(env, asset_cfg)
+    batch_idx = torch.arange(
+        env.scene[asset_cfg.name].data.joint_vel.shape[0],
+        device=process_idx.device
+    )
+    return env.scene[asset_cfg.name].data.joint_vel[batch_idx, process_idx]
 
 
 def approach_ee_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, threshold: float) -> torch.Tensor:
@@ -120,22 +129,18 @@ def align_ee_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.
 
 
 def align_grasp_around_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """Bonus for correct hand orientation around the handle.
-
-    The correct hand orientation is when the left finger is above the handle and the right finger is below the handle.
-    """
-    # Target object position: (num_envs, 3)
     handle_pos = _get_handle_pos(env, asset_cfg)
-    # Fingertips position: (num_envs, n_fingertips, 3)
     ee_fingertips_w = env.scene["ee_frame"].data.target_pos_w[..., 1:, :]
     lfinger_pos = ee_fingertips_w[..., 0, :]
     rfinger_pos = ee_fingertips_w[..., 1, :]
 
-    # Check if hand is in a graspable pose
-    is_graspable = (rfinger_pos[:, 2] < handle_pos[:, 2]) & (lfinger_pos[:, 2] > handle_pos[:, 2])
+    # Soft alignment score: 0~1
+    l_above = torch.clamp((lfinger_pos[:, 2] - handle_pos[:, 2]) / 0.04 + 0.5, 0.0, 1.0)  # 理想: +0.02 ~ +0.04 以上滿分
+    r_below = torch.clamp((handle_pos[:, 2] - rfinger_pos[:, 2]) / 0.04 + 0.5, 0.0, 1.0)
+    height_diff_bonus = torch.clamp((lfinger_pos[:, 2] - rfinger_pos[:, 2]) / 0.06, 0.0, 1.0)  # 高度差越大越好，但 cap at 1
 
-    # bonus if left finger is above the drawer handle and right below
-    return is_graspable
+    grasp_score = (l_above * r_below * height_diff_bonus) ** 0.5
+    return grasp_score
 
 
 def approach_gripper_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, offset: float = 0.04) -> torch.Tensor:
@@ -152,13 +157,13 @@ def approach_gripper_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, o
     rfinger_pos = ee_fingertips_w[..., 1, :]
 
     # Compute the distance of each finger from the handle
-    lfinger_dist = torch.abs(lfinger_pos[:, 2] - handle_pos[:, 2])
-    rfinger_dist = torch.abs(rfinger_pos[:, 2] - handle_pos[:, 2])
+    l_score = torch.clamp((offset - torch.abs(lfinger_pos[:, 2] - handle_pos[:, 2])) / offset, 0.0, 1.0)
+    r_score = torch.clamp((offset - torch.abs(rfinger_pos[:, 2] - handle_pos[:, 2])) / offset, 0.0, 1.0)
 
     # Check if hand is in a graspable pose
-    is_graspable = (rfinger_pos[:, 2] < handle_pos[:, 2]) & (lfinger_pos[:, 2] > handle_pos[:, 2])
+    is_graspable = align_grasp_around_handle(env, asset_cfg)
 
-    return is_graspable * ((offset - lfinger_dist) + (offset - rfinger_dist))
+    return is_graspable * (l_score + r_score)
 
 
 def grasp_handle(
@@ -178,8 +183,10 @@ def grasp_handle(
     
     distance = torch.norm(handle_pos - ee_tcp_pos, dim=-1, p=2)
     is_close = distance <= threshold
+    close_amount = torch.sum(open_joint_pos - gripper_joint_pos, dim=-1)
+    is_graspable = align_grasp_around_handle(env, asset_cfg)
 
-    return is_close * torch.sum(open_joint_pos - gripper_joint_pos, dim=-1)
+    return is_close * close_amount * is_graspable
 
 def open_drawer_bonus(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Bonus for opening the drawer given by the joint position of the drawer.
@@ -191,7 +198,6 @@ def open_drawer_bonus(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torc
 
     return (is_graspable + 1.0) * drawer_pos
 
-
 def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Multi-stage bonus for opening the drawer.
 
@@ -201,53 +207,91 @@ def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
     drawer_pos_bottom = joint_pos[:, 0]
     drawer_pos_top = joint_pos[:, 1]
-    drawer_pos_left = joint_pos[:, 2]
-    drawer_pos_right = joint_pos[:, 3]
+    # drawer_pos_left = joint_pos[:, 2]
+    # drawer_pos_right = joint_pos[:, 3]
+
+    def _compute_stage_reward(drawer_pos, is_graspable):
+        open_easy = (drawer_pos > 0.01) * 0.4
+        open_medium = (drawer_pos > 0.2)
+        open_hard = (drawer_pos > 0.3)
+        return open_easy + open_medium + open_hard
     
     is_graspable = align_grasp_around_handle(env, asset_cfg).float()
-    open_easy = (drawer_pos_bottom > 0.01) * 0.5
-    open_medium = (drawer_pos_bottom > 0.2) * is_graspable
+    # stage_mask_one = 1.0 - _get_progress(env, asset_cfg)
+    stage_mask_two = _get_progress(env, asset_cfg)
+
+    one_stage_open = _compute_stage_reward(drawer_pos_bottom, is_graspable)
+    second_stage_open = _compute_stage_reward(drawer_pos_top, is_graspable) * stage_mask_two
+
+    # second_stage = is_graspable * open_both
+    # second_open_easy_left = (drawer_pos_left < -0.01) * open_both * 0.5
+    # second_open_medium_left = (drawer_pos_left < -0.5) * second_stage
+    # second_open_hard_left = (drawer_pos_left < -1.5) * second_stage
+    # second_open_easy_right = (drawer_pos_right > 0.01) * open_both * 0.5
+    # second_open_medium_right = (drawer_pos_right > 0.5) * second_stage
+    # second_open_hard_right = (drawer_pos_right > 1.5) * second_stage
+
+    return one_stage_open + second_stage_open
+
+def punish_drawers_not_open(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
+    pos_bottom = joint_pos[:, 0].clamp(0.0, 0.4)
+    pos_top    = joint_pos[:, 1].clamp(0.0, 0.4)
+
+    bottom_incomplete = 1.0 - torch.clamp(pos_bottom / 0.35, 0.0, 1.0)
+    top_incomplete = 1.0 - torch.clamp(pos_top / 0.35, 0.0, 1.0)
+
+    bottom_punish = bottom_incomplete
+    top_punish    = top_incomplete
+    return bottom_punish + top_punish
+
+def punish_bottom_not_done_when_top(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
+    pos_bottom = joint_pos[:, 0].clamp(min=0.0, max=0.4)
+    pos_top    = joint_pos[:, 1].clamp(min=0.0, max=0.4)
+
+    bottom_incomplete = 1.0 - torch.clamp(pos_bottom / 0.35, 0.0, 1.0)
+    top_opened = torch.clamp(pos_top / 0.35, 0.0, 1.0)
+    return bottom_incomplete * top_opened * 10.0
+    
+def punish_idle_near_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    handle_pos = _get_handle_pos(env, asset_cfg)
+    ee_tcp_pos = env.scene["ee_frame"].data.target_pos_w[..., 0, :]
+    drawer_vel = _get_drawer_vel(env, asset_cfg).abs()
+    drawer_pos = _get_drawer_pos(env, asset_cfg)
+    
+    distance = torch.norm(handle_pos - ee_tcp_pos, dim=-1)
+    is_near = distance < 0.04
+    is_idle = drawer_vel < 0.01
+    is_close = drawer_pos < 0.02
+    
+    return is_near & is_idle & is_close
+
+def multi_stage_open_drawer_v1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Multi-stage bonus for opening the drawer.
+
+    Depending on the drawer's position, the reward is given in three stages: easy, medium, and hard.
+    This helps the agent to learn to open the drawer in a controlled manner.
+    """
+    joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
+    drawer_pos_bottom = joint_pos[:, 0]
+    drawer_pos_top = joint_pos[:, 1]
+    # drawer_pos_left = joint_pos[:, 2]
+    # drawer_pos_right = joint_pos[:, 3]
+    
+    is_graspable = align_grasp_around_handle(env, asset_cfg).float()
+    open_easy = (drawer_pos_bottom > 0.01) * 0.4
+    open_medium = (drawer_pos_bottom > 0.2) * is_graspable * 0.6
     open_hard = (drawer_pos_bottom > 0.3) * is_graspable
-    open_both = (drawer_pos_top > 0.3) * (drawer_pos_bottom > 0.3) * 0.25
+    open_both = (drawer_pos_top > 0.35) + (drawer_pos_bottom > 0.35)
 
     second_stage = is_graspable * open_both
 
-    second_open_easy_left = (drawer_pos_left < -0.01) * open_both * 0.5
-    second_open_medium_left = (drawer_pos_left < -0.5) * second_stage
-    second_open_hard_left = (drawer_pos_left < -1.5) * second_stage
-    second_open_easy_right = (drawer_pos_right > 0.01) * open_both * 0.5
-    second_open_medium_right = (drawer_pos_right > 0.5) * second_stage
-    second_open_hard_right = (drawer_pos_right > 1.5) * second_stage
+    # second_open_easy_left = (drawer_pos_left < -0.01) * open_both * 0.5
+    # second_open_medium_left = (drawer_pos_left < -0.5) * second_stage
+    # second_open_hard_left = (drawer_pos_left < -1.5) * second_stage
+    # second_open_easy_right = (drawer_pos_right > 0.01) * open_both * 0.5
+    # second_open_medium_right = (drawer_pos_right > 0.5) * second_stage
+    # second_open_hard_right = (drawer_pos_right > 1.5) * second_stage
 
-    return open_easy + open_medium + open_hard + open_both + second_open_easy_left + second_open_medium_left + second_open_hard_left + second_open_easy_right + second_open_medium_right + second_open_hard_right
-
-# def penalize_early_release(
-#     env: ManagerBasedRLEnv,
-#     asset_cfg_robot: SceneEntityCfg,
-#     asset_cfg_cabinet: SceneEntityCfg,
-#     open_joint_threshold: float = 0.4,
-#     threshold: float = 0.3,
-# ) -> torch.Tensor:
-#     drawer_pos = env.scene[asset_cfg_cabinet.name].data.joint_pos[:, asset_cfg_cabinet.joint_ids[0]]
-#     gripper_pos = env.scene[asset_cfg_robot.name].data.joint_pos[:, asset_cfg_robot.joint_ids[0]]
-
-#     is_released = gripper_pos > open_joint_threshold
-#     is_grasp_aligned = align_grasp_around_handle(env, asset_cfg_cabinet).float()
-
-#     not_opened = drawer_pos < threshold
-#     penalize_release = not_opened * (is_released + (1.0 - is_grasp_aligned))
-
-#     return penalize_release
-
-
-# def penalize_ee_x_exceed_handle(
-#     env: ManagerBasedRLEnv,
-#     asset_cfg: SceneEntityCfg,
-# ) -> torch.Tensor:
-#     drawer_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids[0]]
-#     ee_tcp_x = env.scene["ee_frame"].data.target_pos_w[:, 0, 0]     # ee_tcp 的 x
-#     handle_x  = env.scene["cabinet_frame"].data.target_pos_w[:, 0, 0]  # handle 的 x
-#     exceed_amount = ee_tcp_x - handle_x
-
-#     penalty = torch.clamp(exceed_amount, min=0.0)
-#     return penalty ** 100
+    return open_easy + open_medium + open_hard + open_both * 0.1
