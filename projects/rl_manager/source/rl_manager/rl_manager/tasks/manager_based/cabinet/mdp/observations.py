@@ -25,11 +25,34 @@ def rel_ee_object_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
 
 
 def rel_ee_drawer_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """The distance between the end-effector and the object."""
+    """The distance between the end-effector and the current target drawer handle."""
     ee_tf_data: FrameTransformerData = env.scene["ee_frame"].data
     cabinet_tf_data: FrameTransformerData = env.scene["cabinet_frame"].data
+    
+    cmd = env.command_manager.get_term("drawer_order")
+    batch_idx = torch.arange(env.num_envs, device=cmd.current_frame_idx.device)
+    
+    handle_pos = cabinet_tf_data.target_pos_w[batch_idx, cmd.current_frame_idx, :]
+    return handle_pos - ee_tf_data.target_pos_w[..., 0, :]
 
-    return cabinet_tf_data.target_pos_w[..., 0, :] - ee_tf_data.target_pos_w[..., 0, :]
+
+def current_drawer_target(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """The current target drawer index from the drawer order command.
+    
+    Returns:
+        torch.Tensor: Shape (num_envs, 1), values 0 (bottom) or 1 (top)
+    """
+    return env.command_manager.get_command("drawer_order")
+
+
+def initial_drawer_order(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """The initial drawer order assigned at episode reset.
+    
+    Returns:
+        torch.Tensor: Shape (num_envs, 1), values 0 (bottom first) or 1 (top first)
+    """
+    drawer_order_cmd = env.command_manager.get_term("drawer_order")
+    return drawer_order_cmd.drawer_order.unsqueeze(-1).float()
 
 
 def fingertips_pos(env: ManagerBasedRLEnv) -> torch.Tensor:

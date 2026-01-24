@@ -142,6 +142,19 @@ class CabinetSceneCfg(InteractiveSceneCfg):
 
 
 @configclass
+class CommandsCfg:
+    """Command specifications for the MDP."""
+
+    drawer_order = mdp.DrawerOrderCommandCfg(
+        cabinet_cfg=SceneEntityCfg(
+            "cabinet",
+            joint_names=["drawer_bottom_joint", "drawer_top_joint"]
+        ),
+        done_threshold=0.3,
+    )
+
+
+@configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
 
@@ -168,6 +181,8 @@ class ObservationsCfg:
             params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_top_joint", "drawer_bottom_joint"])},
         )
         rel_ee_drawer_distance = ObsTerm(func=mdp.rel_ee_drawer_distance)
+        drawer_target = ObsTerm(func=mdp.current_drawer_target)
+        drawer_order = ObsTerm(func=mdp.initial_drawer_order)
 
         actions = ObsTerm(func=mdp.last_action)
 
@@ -260,12 +275,12 @@ class RewardsCfg:
     
     punish_drawers_not_open = RewTerm(
         func=mdp.punish_drawers_not_open,
-        weight=-1.0,
+        weight=-0.5,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
     )
 
-    punish_bottom_not_done_when_top = RewTerm(
-        func=mdp.punish_bottom_not_done_when_top,
+    punish_first_not_done_when_second = RewTerm(
+        func=mdp.punish_first_not_done_when_second,
         weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
     )
@@ -290,6 +305,7 @@ class CabinetEnvCfg(ManagerBasedRLEnvCfg):
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()
     # MDP settings
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()

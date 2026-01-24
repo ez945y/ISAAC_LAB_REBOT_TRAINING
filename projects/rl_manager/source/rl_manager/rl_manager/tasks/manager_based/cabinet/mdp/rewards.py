@@ -14,60 +14,34 @@ from isaaclab.utils.math import matrix_from_quat
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
-def _get_progress(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
-    drawer_pos_bottom = joint_pos[:, 0]
-    # drawer_pos_top    = joint_pos[:, 1]
-    # drawer_pos_left   = joint_pos[:, 2]
-    # drawer_pos_right  = joint_pos[:, 3]
-    
-    stage_one   = drawer_pos_bottom > 0.3
-    # stage_two   = (drawer_pos_top > 0.3) & stage_one
-    # stage_three = (drawer_pos_left < -1.5) & stage_two
-    
-    # 使用 torch.where 明確設定優先級
-    process = torch.zeros_like(drawer_pos_bottom, dtype=torch.long)
-    process = torch.where(stage_one, 1, process)
-    # process = torch.where(stage_three, 3, process)
-    # process = torch.where(stage_two & ~stage_three, 2, process)
-    # process = torch.where(stage_one & ~stage_two, 1, process)
-    
-    return process
+
+def _get_drawer_command(env: ManagerBasedRLEnv):
+    """Get the drawer order command term."""
+    return env.command_manager.get_term("drawer_order")
 
 
 def _get_handle_pos(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    process_idx = _get_progress(env, asset_cfg)
-    batch_idx = torch.arange(
-        env.scene["cabinet_frame"].data.target_pos_w.shape[0],
-        device=process_idx.device
-    )
-    return env.scene["cabinet_frame"].data.target_pos_w[batch_idx, process_idx, :]
+    cmd = _get_drawer_command(env)
+    batch_idx = torch.arange(env.num_envs, device=cmd.current_frame_idx.device)
+    return env.scene["cabinet_frame"].data.target_pos_w[batch_idx, cmd.current_frame_idx, :]
 
 
 def _get_handle_quat(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    process_idx = _get_progress(env, asset_cfg)
-    batch_idx = torch.arange(
-        env.scene["cabinet_frame"].data.target_quat_w.shape[0],
-        device=process_idx.device
-    )
-    return env.scene["cabinet_frame"].data.target_quat_w[batch_idx, process_idx, :]
+    cmd = _get_drawer_command(env)
+    batch_idx = torch.arange(env.num_envs, device=cmd.current_frame_idx.device)
+    return env.scene["cabinet_frame"].data.target_quat_w[batch_idx, cmd.current_frame_idx, :]
 
 
 def _get_drawer_pos(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    process_idx = _get_progress(env, asset_cfg)
-    batch_idx = torch.arange(
-        env.scene[asset_cfg.name].data.joint_pos.shape[0],
-        device=process_idx.device
-    )
-    return env.scene[asset_cfg.name].data.joint_pos[batch_idx, process_idx]
+    cmd = _get_drawer_command(env)
+    batch_idx = torch.arange(env.num_envs, device=cmd.current_joint_id.device)
+    return env.scene[asset_cfg.name].data.joint_pos[batch_idx, cmd.current_joint_id]
+
 
 def _get_drawer_vel(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    process_idx = _get_progress(env, asset_cfg)
-    batch_idx = torch.arange(
-        env.scene[asset_cfg.name].data.joint_vel.shape[0],
-        device=process_idx.device
-    )
-    return env.scene[asset_cfg.name].data.joint_vel[batch_idx, process_idx]
+    cmd = _get_drawer_command(env)
+    batch_idx = torch.arange(env.num_envs, device=cmd.current_joint_id.device)
+    return env.scene[asset_cfg.name].data.joint_vel[batch_idx, cmd.current_joint_id]
 
 
 def approach_ee_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, threshold: float) -> torch.Tensor:
@@ -207,52 +181,76 @@ def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
     drawer_pos_bottom = joint_pos[:, 0]
     drawer_pos_top = joint_pos[:, 1]
-    # drawer_pos_left = joint_pos[:, 2]
-    # drawer_pos_right = joint_pos[:, 3]
 
-    def _compute_stage_reward(drawer_pos, is_graspable):
+    def _compute_stage_reward(drawer_pos):
         open_easy = (drawer_pos > 0.01) * 0.4
         open_medium = (drawer_pos > 0.2)
         open_hard = (drawer_pos > 0.3)
         return open_easy + open_medium + open_hard
     
+    # Get the initial drawer order from command
+    drawer_order_cmd = env.command_manager.get_term("drawer_order")
+    initial_order = drawer_order_cmd.drawer_order  # 0 = bottom first, 1 = top first
+    
+    # Get current target drawer index
+    # order=0: first=bottom, second=top
+    # order=1: first=top, second=bottom
+    current_target = drawer_order_cmd.current_target
+    first_drawer_pos = torch.where(initial_order == 0, drawer_pos_bottom, drawer_pos_top)
+    second_drawer_pos = torch.where(initial_order == 0, drawer_pos_top, drawer_pos_bottom)
+    
+    # stage_mask_two = 1 when we're on the second drawer
+    stage_mask_two = (current_target != initial_order).float()
     is_graspable = align_grasp_around_handle(env, asset_cfg).float()
-    # stage_mask_one = 1.0 - _get_progress(env, asset_cfg)
-    stage_mask_two = _get_progress(env, asset_cfg)
+    first_stage_open = _compute_stage_reward(first_drawer_pos) * is_graspable
+    second_stage_open = _compute_stage_reward(second_drawer_pos) * is_graspable * stage_mask_two
 
-    one_stage_open = _compute_stage_reward(drawer_pos_bottom, is_graspable)
-    second_stage_open = _compute_stage_reward(drawer_pos_top, is_graspable) * stage_mask_two
-
-    # second_stage = is_graspable * open_both
-    # second_open_easy_left = (drawer_pos_left < -0.01) * open_both * 0.5
-    # second_open_medium_left = (drawer_pos_left < -0.5) * second_stage
-    # second_open_hard_left = (drawer_pos_left < -1.5) * second_stage
-    # second_open_easy_right = (drawer_pos_right > 0.01) * open_both * 0.5
-    # second_open_medium_right = (drawer_pos_right > 0.5) * second_stage
-    # second_open_hard_right = (drawer_pos_right > 1.5) * second_stage
-
-    return one_stage_open + second_stage_open
+    return first_stage_open + second_stage_open
 
 def punish_drawers_not_open(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
     pos_bottom = joint_pos[:, 0].clamp(0.0, 0.4)
     pos_top    = joint_pos[:, 1].clamp(0.0, 0.4)
 
-    bottom_incomplete = 1.0 - torch.clamp(pos_bottom / 0.35, 0.0, 1.0)
-    top_incomplete = 1.0 - torch.clamp(pos_top / 0.35, 0.0, 1.0)
-
-    bottom_punish = bottom_incomplete
-    top_punish    = top_incomplete
+    decay_rate = 10.0  # 越大衰減越快
+    bottom_punish = torch.exp(-decay_rate * pos_bottom)
+    top_punish = torch.exp(-decay_rate * pos_top)
+    
     return bottom_punish + top_punish
 
-def punish_bottom_not_done_when_top(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+def punish_first_not_done_when_second(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Punish opening the second drawer before completing the first one.
+    
+    This function respects the random drawer order from DrawerOrderCommand.
+    If order=0: punish if top is opened while bottom is incomplete
+    If order=1: punish if bottom is opened while top is incomplete
+    """
     joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
     pos_bottom = joint_pos[:, 0].clamp(min=0.0, max=0.4)
     pos_top    = joint_pos[:, 1].clamp(min=0.0, max=0.4)
-
-    bottom_incomplete = 1.0 - torch.clamp(pos_bottom / 0.35, 0.0, 1.0)
-    top_opened = torch.clamp(pos_top / 0.35, 0.0, 1.0)
-    return bottom_incomplete * top_opened * 10.0
+    
+    # Get the initial drawer order from command
+    drawer_order_cmd = env.command_manager.get_term("drawer_order")
+    initial_order = drawer_order_cmd.drawer_order  # 0 = bottom first, 1 = top first
+    
+    # Calculate completion rates
+    bottom_completion = torch.clamp(pos_bottom / 0.3, 0.0, 1.0)
+    top_completion = torch.clamp(pos_top / 0.3, 0.0, 1.0)
+    
+    # For order=0: first=bottom, second=top
+    # For order=1: first=top, second=bottom
+    first_incomplete = torch.where(
+        initial_order == 0,
+        1.0 - bottom_completion,
+        1.0 - top_completion
+    )
+    second_opened = torch.where(
+        initial_order == 0,
+        top_completion,
+        bottom_completion
+    )
+    
+    return first_incomplete * second_opened * 10.0
     
 def punish_idle_near_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     handle_pos = _get_handle_pos(env, asset_cfg)
@@ -283,7 +281,7 @@ def multi_stage_open_drawer_v1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg
     open_easy = (drawer_pos_bottom > 0.01) * 0.4
     open_medium = (drawer_pos_bottom > 0.2) * is_graspable * 0.6
     open_hard = (drawer_pos_bottom > 0.3) * is_graspable
-    open_both = (drawer_pos_top > 0.35) + (drawer_pos_bottom > 0.35)
+    open_both = (drawer_pos_top > 0.3) + (drawer_pos_bottom > 0.3)
 
     second_stage = is_graspable * open_both
 

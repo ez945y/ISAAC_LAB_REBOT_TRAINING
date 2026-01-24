@@ -132,7 +132,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
 
 
         # # Rewards overrides
-        self.rewards.approach_gripper_handle.params["offset"] = 0.04
+        self.rewards.approach_gripper_handle.params["offset"] = 0.02
         self.rewards.grasp_handle.params["open_joint_pos"] = 1.74
         self.rewards.grasp_handle.params["robot_cfg"].joint_names = ["gripper"]
 
