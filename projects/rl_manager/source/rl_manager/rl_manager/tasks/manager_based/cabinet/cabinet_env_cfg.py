@@ -94,14 +94,14 @@ class CabinetSceneCfg(InteractiveSceneCfg):
                 prim_path="{ENV_REGEX_NS}/Cabinet/drawer_handle_bottom",
                 name="drawer_handle_bottom",
                 offset=OffsetCfg(
-                    pos=(0.17, 0.0, 0.01),
+                    pos=(0.185, 0.0, 0.01),
                 ),
             ),
             FrameTransformerCfg.FrameCfg(
                 prim_path="{ENV_REGEX_NS}/Cabinet/drawer_handle_top",
                 name="drawer_handle_top",
                 offset=OffsetCfg(
-                    pos=(0.17, 0.0, 0.01),
+                    pos=(0.185, 0.0, 0.01),
                 ),
             ),
             # FrameTransformerCfg.FrameCfg(
@@ -145,12 +145,12 @@ class CabinetSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
 
-    drawer_order = mdp.DrawerOrderCommandCfg(
+    drawer_task = mdp.DrawerTaskCommandCfg(
         cabinet_cfg=SceneEntityCfg(
             "cabinet",
             joint_names=["drawer_bottom_joint", "drawer_top_joint"]
         ),
-        done_threshold=0.3,
+        done_threshold=0.27,
     )
 
 
@@ -182,7 +182,6 @@ class ObservationsCfg:
         )
         rel_ee_drawer_distance = ObsTerm(func=mdp.rel_ee_drawer_distance)
         drawer_target = ObsTerm(func=mdp.current_drawer_target)
-        drawer_order = ObsTerm(func=mdp.initial_drawer_order)
 
         actions = ObsTerm(func=mdp.last_action)
 
@@ -244,7 +243,7 @@ class RewardsCfg:
 
     # 2. Grasp the handle
     approach_gripper_handle = RewTerm(func=mdp.approach_gripper_handle, weight=5.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"]), "offset": MISSING})
-    align_grasp_around_handle = RewTerm(func=mdp.align_grasp_around_handle, weight=2.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])})
+    align_grasp_around_handle = RewTerm(func=mdp.align_grasp_around_handle, weight=0.5, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])})
     grasp_handle = RewTerm(
         func=mdp.grasp_handle,
         weight=1.0,
@@ -259,7 +258,7 @@ class RewardsCfg:
     # 3. Open the drawer
     open_drawer_bonus = RewTerm(
         func=mdp.open_drawer_bonus,
-        weight=7.5,
+        weight=2.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])},
     )
     multi_stage_open_drawer = RewTerm(
@@ -268,6 +267,19 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])},
     )
 
+    drawer_completion_bonus = RewTerm(
+        func=mdp.drawer_completion_bonus,
+        weight=50.0,
+        params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
+    )
+
+    reward_drawer_movement = RewTerm(
+        func=mdp.reward_drawer_movement,
+        weight=20.0,
+        params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
+    )
+
+
     # dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     # dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1e-6)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
@@ -275,13 +287,25 @@ class RewardsCfg:
     
     punish_drawers_not_open = RewTerm(
         func=mdp.punish_drawers_not_open,
-        weight=-0.5,
+        weight=-2.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
     )
 
-    punish_first_not_done_when_second = RewTerm(
-        func=mdp.punish_first_not_done_when_second,
+    punish_open_without_grasp = RewTerm(
+        func=mdp.punish_open_without_grasp,
+        weight=-2.0,
+        params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
+    )
+
+    punish_idle_near_handle = RewTerm(
+        func=mdp.punish_idle_near_handle,
         weight=-1.0,
+        params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
+    )
+
+    punish_ee_yz_deviation = RewTerm(
+        func=mdp.punish_ee_yz_deviation,
+        weight=-2.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
     )
 @configclass
@@ -315,7 +339,7 @@ class CabinetEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 2
-        self.episode_length_s = 8.0
+        self.episode_length_s = 30.0
         self.viewer.eye = (-2.0, 2.0, 2.0)
         self.viewer.lookat = (0.8, 0.0, 0.5)
         # simulation settings

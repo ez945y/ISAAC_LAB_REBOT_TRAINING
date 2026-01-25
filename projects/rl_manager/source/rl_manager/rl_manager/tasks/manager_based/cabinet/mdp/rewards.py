@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 
 def _get_drawer_command(env: ManagerBasedRLEnv):
-    """Get the drawer order command term."""
-    return env.command_manager.get_term("drawer_order")
+    """Get the drawer task command term."""
+    return env.command_manager.get_term("drawer_task")
 
 
 def _get_handle_pos(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
@@ -98,7 +98,7 @@ def align_ee_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.
     # and the x direction of the gripper should be close to the -y direction of the handle
     # dot product of z and x should be large
     align_z = torch.bmm(ee_tcp_z.unsqueeze(1), -handle_x.unsqueeze(-1)).squeeze(-1).squeeze(-1)
-    align_x = torch.bmm(ee_tcp_x.unsqueeze(1), -handle_y.unsqueeze(-1)).squeeze(-1).squeeze(-1)
+    align_x = torch.bmm(ee_tcp_x.unsqueeze(1), handle_y.unsqueeze(-1)).squeeze(-1).squeeze(-1)
     return 0.5 * (torch.sign(align_z) * align_z**2 + torch.sign(align_x) * align_x**2)
 
 
@@ -143,114 +143,99 @@ def approach_gripper_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, o
 def grasp_handle(
     env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg, threshold: float, open_joint_pos: float
 ) -> torch.Tensor:
-    """Reward for closing the fingers when being close to the handle.
-
-    The :attr:`threshold` is the distance from the handle at which the fingers should be closed.
-    The :attr:`open_joint_pos` is the joint position when the fingers are open.
-
-    Note:
-        It is assumed that zero joint position corresponds to the fingers being closed.
-    """
+    """Reward for closing the fingers when being close to the handle."""
     ee_tcp_pos = env.scene["ee_frame"].data.target_pos_w[..., 0, :]
     handle_pos = _get_handle_pos(env, asset_cfg)
     gripper_joint_pos = env.scene[robot_cfg.name].data.joint_pos[:, robot_cfg.joint_ids]
     
     distance = torch.norm(handle_pos - ee_tcp_pos, dim=-1, p=2)
-    is_close = distance <= threshold
-    close_amount = torch.sum(open_joint_pos - gripper_joint_pos, dim=-1)
+    is_close = (distance <= threshold).float()
+    
+    # 夾爪關閉程度：current_pos / open_joint_pos
+    # open (pos=1.74): close_ratio = 1 - 1.74/1.74 = 0
+    # closed (pos=0): close_ratio = 1 - 0/1.74 = 1
+    current_pos = gripper_joint_pos.sum(dim=-1).clamp(min=0.0)  # clamp 避免負值
+    close_ratio = torch.clamp(1.0 - current_pos / open_joint_pos, 0.0, 1.0)
+    
     is_graspable = align_grasp_around_handle(env, asset_cfg)
-
-    return is_close * close_amount * is_graspable
+    
+    # 獎勵 = 靠近 * 關閉程度 * 抓握姿勢對齊
+    return is_close * close_ratio * is_graspable
 
 def open_drawer_bonus(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """Bonus for opening the drawer given by the joint position of the drawer.
+    """Bonus for opening the drawer given by the joint position of the drawer."""
+    cmd = _get_drawer_command(env)
+    drawer_pos = _get_drawer_pos(env, asset_cfg)
+    is_graspable = align_grasp_around_handle(env, asset_cfg).float()
+    result = (is_graspable * 1.5 + 1.0) * drawer_pos
+    
+    # DEBUG: print env 0 every 100 steps
+    if env.common_step_counter % 100 == 0:
+        print(f"[open_drawer_bonus] env0: drawer_pos={drawer_pos[0].item():.4f}, "
+              f"is_graspable={is_graspable[0].item():.4f}, result={result[0].item():.4f}, "
+              f"joint_id={cmd.current_joint_id[0].item()}")
+    
+    return result
 
-    The bonus is given when the drawer is open. If the grasp is around the handle, the bonus is doubled.
-    """
+
+def drawer_completion_bonus(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """稀疏獎勵：完成一個抽屜時給大獎勵"""
+    cmd = _get_drawer_command(env)
+    return cmd.just_completed.float() * 100.0
+
+
+def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Multi-stage bonus for opening the current target drawer."""
+    cmd = _get_drawer_command(env)
     drawer_pos = _get_drawer_pos(env, asset_cfg)
     is_graspable = align_grasp_around_handle(env, asset_cfg).float()
 
-    return (is_graspable + 1.0) * drawer_pos
-
-def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """Multi-stage bonus for opening the drawer.
-
-    Depending on the drawer's position, the reward is given in three stages: easy, medium, and hard.
-    This helps the agent to learn to open the drawer in a controlled manner.
-    """
-    joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
-    drawer_pos_bottom = joint_pos[:, 0]
-    drawer_pos_top = joint_pos[:, 1]
-
-    def _compute_stage_reward(drawer_pos):
-        open_easy = (drawer_pos > 0.01) * 0.4
-        open_medium = (drawer_pos > 0.2)
-        open_hard = (drawer_pos > 0.3)
-        return open_easy + open_medium + open_hard
+    # Stage rewards (max drawer pos ~0.27)
+    open_medium = (drawer_pos > 0.15).float()
+    open_hard = (drawer_pos > 0.22).float()
+    result = (open_medium * 0.3 + open_hard * 0.7) * is_graspable
     
-    # Get the initial drawer order from command
-    drawer_order_cmd = env.command_manager.get_term("drawer_order")
-    initial_order = drawer_order_cmd.drawer_order  # 0 = bottom first, 1 = top first
-    
-    # Get current target drawer index
-    # order=0: first=bottom, second=top
-    # order=1: first=top, second=bottom
-    current_target = drawer_order_cmd.current_target
-    first_drawer_pos = torch.where(initial_order == 0, drawer_pos_bottom, drawer_pos_top)
-    second_drawer_pos = torch.where(initial_order == 0, drawer_pos_top, drawer_pos_bottom)
-    
-    # stage_mask_two = 1 when we're on the second drawer
-    stage_mask_two = (current_target != initial_order).float()
-    is_graspable = align_grasp_around_handle(env, asset_cfg).float()
-    first_stage_open = _compute_stage_reward(first_drawer_pos) * is_graspable
-    second_stage_open = _compute_stage_reward(second_drawer_pos) * is_graspable * stage_mask_two
+    # DEBUG: print env 0 every 100 steps
+    if env.common_step_counter % 100 == 0:
+        print(f"[multi_stage] env0: drawer_pos={drawer_pos[0].item():.4f}, "
+              f"is_graspable={is_graspable[0].item():.4f}, result={result[0].item():.4f}, "
+              f"target={cmd.current_target[0].item()}, completed={cmd.completed_count[0].item()}")
 
-    return first_stage_open + second_stage_open
+    return result
 
 def punish_drawers_not_open(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
-    pos_bottom = joint_pos[:, 0].clamp(0.0, 0.4)
-    pos_top    = joint_pos[:, 1].clamp(0.0, 0.4)
+    """懲罰當前目標抽屜沒開，完成後（>=0.27）不懲罰"""
+    drawer_pos = _get_drawer_pos(env, asset_cfg)
+    done_threshold = 0.27
+    # 線性衰減：pos=0 時懲罰=1，pos>=done_threshold 時懲罰=0
+    return torch.clamp(1.0 - drawer_pos / done_threshold, min=0.0, max=1.0)
 
-    decay_rate = 10.0  # 越大衰減越快
-    bottom_punish = torch.exp(-decay_rate * pos_bottom)
-    top_punish = torch.exp(-decay_rate * pos_top)
+def punish_open_without_grasp(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """懲罰用勾的方式開抽屜：抽屜 > 0.2 但沒有正確抓握時給懲罰"""
+    drawer_pos = _get_drawer_pos(env, asset_cfg)
+    is_graspable = align_grasp_around_handle(env, asset_cfg).float()
     
-    return bottom_punish + top_punish
+    # 只在抽屜開超過 0.2 時懲罰
+    drawer_opened = (drawer_pos > 0.2).float()
+    not_grasping = 1.0 - is_graspable
+    
+    return drawer_opened * not_grasping
 
-def punish_first_not_done_when_second(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """Punish opening the second drawer before completing the first one.
+
+def reward_drawer_movement(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """獎勵抽屜移動：當靠近把手且抽屜在動時給獎勵，鼓勵拉開動作"""
+    handle_pos = _get_handle_pos(env, asset_cfg)
+    ee_tcp_pos = env.scene["ee_frame"].data.target_pos_w[..., 0, :]
+    drawer_vel = _get_drawer_vel(env, asset_cfg)
+    is_graspable = align_grasp_around_handle(env, asset_cfg).float()
     
-    This function respects the random drawer order from DrawerOrderCommand.
-    If order=0: punish if top is opened while bottom is incomplete
-    If order=1: punish if bottom is opened while top is incomplete
-    """
-    joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
-    pos_bottom = joint_pos[:, 0].clamp(min=0.0, max=0.4)
-    pos_top    = joint_pos[:, 1].clamp(min=0.0, max=0.4)
+    distance = torch.norm(handle_pos - ee_tcp_pos, dim=-1)
+    is_close = (distance < 0.02).float()
     
-    # Get the initial drawer order from command
-    drawer_order_cmd = env.command_manager.get_term("drawer_order")
-    initial_order = drawer_order_cmd.drawer_order  # 0 = bottom first, 1 = top first
+    # 正方向速度越大越好（拉開）
+    positive_vel = torch.clamp(drawer_vel, min=0.0)
     
-    # Calculate completion rates
-    bottom_completion = torch.clamp(pos_bottom / 0.3, 0.0, 1.0)
-    top_completion = torch.clamp(pos_top / 0.3, 0.0, 1.0)
-    
-    # For order=0: first=bottom, second=top
-    # For order=1: first=top, second=bottom
-    first_incomplete = torch.where(
-        initial_order == 0,
-        1.0 - bottom_completion,
-        1.0 - top_completion
-    )
-    second_opened = torch.where(
-        initial_order == 0,
-        top_completion,
-        bottom_completion
-    )
-    
-    return first_incomplete * second_opened * 10.0
+    return is_close * is_graspable * positive_vel
     
 def punish_idle_near_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     handle_pos = _get_handle_pos(env, asset_cfg)
@@ -261,35 +246,24 @@ def punish_idle_near_handle(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     distance = torch.norm(handle_pos - ee_tcp_pos, dim=-1)
     is_near = distance < 0.04
     is_idle = drawer_vel < 0.01
-    is_close = drawer_pos < 0.02
     
-    return is_near & is_idle & is_close
+    return is_near & is_idle
 
-def multi_stage_open_drawer_v1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """Multi-stage bonus for opening the drawer.
 
-    Depending on the drawer's position, the reward is given in three stages: easy, medium, and hard.
-    This helps the agent to learn to open the drawer in a controlled manner.
-    """
-    joint_pos = env.scene[asset_cfg.name].data.joint_pos[:, asset_cfg.joint_ids]
-    drawer_pos_bottom = joint_pos[:, 0]
-    drawer_pos_top = joint_pos[:, 1]
-    # drawer_pos_left = joint_pos[:, 2]
-    # drawer_pos_right = joint_pos[:, 3]
+def punish_ee_yz_deviation(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """懲罰 ee 在 y, z 軸的大幅度偏移，與抽屜速度成正比（拉動時才懲罰）"""
+    handle_pos = _get_handle_pos(env, asset_cfg)
+    ee_tcp_pos = env.scene["ee_frame"].data.target_pos_w[..., 0, :]
+    drawer_vel = _get_drawer_vel(env, asset_cfg).abs()
     
-    is_graspable = align_grasp_around_handle(env, asset_cfg).float()
-    open_easy = (drawer_pos_bottom > 0.01) * 0.4
-    open_medium = (drawer_pos_bottom > 0.2) * is_graspable * 0.6
-    open_hard = (drawer_pos_bottom > 0.3) * is_graspable
-    open_both = (drawer_pos_top > 0.3) + (drawer_pos_bottom > 0.3)
+    # 計算 y, z 軸的偏離量
+    diff = ee_tcp_pos - handle_pos
+    yz_deviation = torch.abs(diff[:, 1]) + torch.abs(diff[:, 2])
+    result = yz_deviation * drawer_vel * 10.0
+    
+    # DEBUG: print env 0 every 100 steps
+    if env.common_step_counter % 100 == 0:
+        print(f"[ee_yz_dev] env0: drawer_vel={drawer_vel[0].item():.4f}, "
+              f"yz_dev={yz_deviation[0].item():.4f}, result={result[0].item():.6f}")
 
-    second_stage = is_graspable * open_both
-
-    # second_open_easy_left = (drawer_pos_left < -0.01) * open_both * 0.5
-    # second_open_medium_left = (drawer_pos_left < -0.5) * second_stage
-    # second_open_hard_left = (drawer_pos_left < -1.5) * second_stage
-    # second_open_easy_right = (drawer_pos_right > 0.01) * open_both * 0.5
-    # second_open_medium_right = (drawer_pos_right > 0.5) * second_stage
-    # second_open_hard_right = (drawer_pos_right > 1.5) * second_stage
-
-    return open_easy + open_medium + open_hard + open_both * 0.1
+    return result
