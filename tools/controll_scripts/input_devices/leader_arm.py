@@ -320,7 +320,7 @@ class LeaderArmInputDevice(BaseInputDevice):
                         data.get('shoulder_pan', 0.5),
                         data.get('shoulder_lift', 0.5),
                         data.get('elbow_flex', 0.5),
-                        data.get('wrist_flex', 0.5),
+                        data.get('wrist_flex', 1.0),
                         data.get('wrist_roll', 0.5),
                     ], device=self._device, dtype=torch.float32)
                     gripper_raw = data.get('gripper', 0.0)

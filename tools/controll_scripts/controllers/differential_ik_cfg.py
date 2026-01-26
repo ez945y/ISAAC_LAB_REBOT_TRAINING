@@ -32,7 +32,7 @@ class DifferentialIKControllerCfg:
     Otherwise, the controller treats the input command as the absolute position/pose.
     """
 
-    ik_method: Literal["pinv", "svd", "trans", "dls", "adaptive"] = MISSING
+    ik_method: Literal["pinv", "svd", "trans", "dls", "adaptive", "dls_5dof"] = MISSING
     """Method for computing inverse of Jacobian."""
 
     ik_params: dict[str, float] | None = None
@@ -48,15 +48,19 @@ class DifferentialIKControllerCfg:
         - "k_val": Scaling of computed delta-joint positions (default: 1.0).
     - Damped Moore-Penrose pseudo-inverse ("dls"):
         - "lambda_val": Damping coefficient (default: 0.01).
+    - Damped Least Squares for 5-DOF arms ("dls_5dof"):
+        - "lambda_val": Damping coefficient (default: 0.01).
+        - "ignore_yaw": Whether to ignore yaw (z-axis rotation) error (default: True).
+        - "position_weight": Weight for position error (default: 1.0).
+        - "orientation_weight": Weight for orientation error (default: 0.5).
     """
 
     def __post_init__(self):
-        print("[DifferentialIK] Using adaptive SVD")
         # check valid input
         if self.command_type not in ["position", "pose"]:
             raise ValueError(f"Unsupported inverse-kinematics command: {self.command_type}.")
-        if self.ik_method not in ["pinv", "svd", "trans", "dls", "adaptive"]:
-            raise ValueError(f"Unsupported inverse-kinematics method: {self.ik_method}hi.")
+        if self.ik_method not in ["pinv", "svd", "trans", "dls", "adaptive", "dls_5dof"]:
+            raise ValueError(f"Unsupported inverse-kinematics method: {self.ik_method}.")
         # default parameters for different inverse kinematics approaches.
         default_ik_params = {
             "pinv": {"k_val": 1.0},
@@ -70,6 +74,12 @@ class DifferentialIKControllerCfg:
                 "min_singular_value": 1e-4, # 奇異值閾值
                 "position_weight": 1.0,    # 位置權重
                 "orientation_weight": 0.3, # 姿態權重（5-DOF 無法完全控制姿態，降低權重）
+            },
+            "dls_5dof": {
+                "lambda_val": 0.01,        # 阻尼係數
+                "ignore_yaw": True,        # 是否忽略 yaw (z 軸旋轉) 誤差
+                "position_weight": 1.0,    # 位置誤差權重
+                "orientation_weight": 0.5, # 姿態誤差權重 (pitch, roll)
             },
         }
         # update parameters for IK-method if not provided

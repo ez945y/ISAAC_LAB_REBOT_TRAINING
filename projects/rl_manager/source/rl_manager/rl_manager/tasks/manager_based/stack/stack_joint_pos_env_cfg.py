@@ -39,7 +39,7 @@ class EventCfg:
         func=franka_stack_events.set_default_joint_pose,
         mode="reset",
         params={
-            "default_pose": [0.0, 0.0, 0.0, 0.0, -1.65, 0.0,],
+            "default_pose": [0.0, 0.0, 0.0, 1.65, 0.0, 1.7,],
         },
     )
     randomize_joint_state = EventTerm(
@@ -121,7 +121,7 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
                     fix_root_link=True,
                 ),
                 rigid_props=RigidBodyPropertiesCfg(
-                    disable_gravity=False,
+                    disable_gravity=True,
                 ),
                 semantic_tags=[("class", "robot")],
             ),
@@ -131,7 +131,7 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
                     "shoulder_pan": 0.0,  
                     "shoulder_lift": 0.0,
                     "elbow_flex": 0.0,
-                    "wrist_flex": 1.658,
+                    "wrist_flex": 1.65,
                     "wrist_roll": 0.0,
                     "gripper": 1.7,
                 },
@@ -229,7 +229,7 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="ee_tcp",
                     offset=OffsetCfg(
-                        pos=(0.002, 0.0, -0.07812),
+                        pos=(0.017, 0.0, -0.07812),
                         rot=(0.0, 0.7071068, 0.7071068, 0.0)
                     ),
                 ),
@@ -251,5 +251,6 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
                         rot=(0.0, 0.7071068, 0.7071068, 0.0)
                     ),
                 ),
+
             ],
         )

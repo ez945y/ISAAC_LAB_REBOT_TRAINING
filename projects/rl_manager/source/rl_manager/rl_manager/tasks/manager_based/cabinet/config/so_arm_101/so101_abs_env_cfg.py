@@ -77,7 +77,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
             controller=DifferentialIKControllerCfg(
                 command_type="pose",
                 use_relative_mode=False,
-                ik_method="adaptive",
+                ik_method="dls_5dof",
             ),
             scale=0.5,
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.0]),

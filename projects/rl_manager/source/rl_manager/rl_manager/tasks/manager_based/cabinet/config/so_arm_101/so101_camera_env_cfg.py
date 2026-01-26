@@ -39,26 +39,6 @@ class SOArm101CameraCabinetEnvCfg(SOArm101CabinetEnvCfg):
         super().__post_init__()
         
         self.scene.num_envs = 400
-    
-        # Wrist camera - includes depth and segmentation for CNN
-        self.scene.wrist_camera = TiledCameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/gripper_link/self_view_camera",
-            update_period=0.1,  # 10Hz camera update
-            height=120,  # Match FeatureExtractor expected input size
-            width=120,
-            data_types=["rgb", "depth", "semantic_segmentation"],
-            spawn=None,
-        )
-        
-        # # Fixed camera (Full View) - includes depth and segmentation for CNN
-        # self.scene.front_camera = TiledCameraCfg(
-        #     prim_path="{ENV_REGEX_NS}/Robot/full_view_camera",
-        #     update_period=0.1,  # 10Hz camera update
-        #     height=120,  # Match FeatureExtractor expected input size
-        #     width=120,
-        #     data_types=["rgb", "depth", "semantic_segmentation"],
-        #     spawn=None,  # Camera already exists in USD
-        # )
         
         # Remove ground-truth observations (no cheating)
         self.observations.policy.cabinet_joint_pos = None
@@ -66,6 +46,10 @@ class SOArm101CameraCabinetEnvCfg(SOArm101CabinetEnvCfg):
         self.observations.policy.rel_ee_drawer_distance = None
         
         # Add camera CNN embedding observations (27 dim each)
+        self.observations.policy.wrist_embedding = ObsTerm(
+            func=mdp.wrist_camera_embedding,
+            params={"asset_cfg": SceneEntityCfg("wrist_camera")},
+        )
         self.observations.policy.wrist_embedding = ObsTerm(
             func=mdp.wrist_camera_embedding,
             params={"asset_cfg": SceneEntityCfg("wrist_camera")},

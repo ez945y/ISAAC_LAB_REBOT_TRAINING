@@ -51,32 +51,11 @@ class SO101CubeStackRelMimicEnvCfg(SO101CubeStackCameraMimicEnvCfg):
             controller=DifferentialIKControllerCfg(
                 command_type="pose",
                 use_relative_mode=True,
-                ik_method="adaptive",
+                ik_method="dls_5dof",
             ),
             scale=0.5,
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.0]),
         )
-
-        # from isaaclab.controllers.operational_space_cfg import OperationalSpaceControllerCfg
-        # from isaaclab.envs.mdp.actions.actions_cfg import OperationalSpaceControllerActionCfg
-
-        # self.actions.arm_action = OperationalSpaceControllerActionCfg(
-        #     asset_name="robot",
-        #     joint_names=["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"],
-        #     body_name="gripper_link",
-        #     controller_cfg=OperationalSpaceControllerCfg(
-        #         target_types=["pose_rel"],
-        #         motion_control_axes_task=(1, 1, 1, 1, 1, 1),
-        #         motion_stiffness_task=(100.0, 100.0, 100.0, 100.0, 100.0, 100.0),
-        #         motion_damping_ratio_task=(1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
-        #         inertial_dynamics_decoupling=True,
-        #         gravity_compensation=True,
-        #     ),
-        #     position_scale=1.0,
-        #     orientation_scale=1.0,
-        #     stiffness_scale=1.0,
-        # )
-
         
         self.teleop_devices = DevicesCfg(
             devices={
@@ -92,7 +71,7 @@ class SO101CubeStackRelMimicEnvCfg(SO101CubeStackCameraMimicEnvCfg):
             asset_name="robot",
             joint_names=["gripper"],
             open_command_expr={"gripper": 1.7},
-            close_command_expr={"gripper": 0.3},
+            close_command_expr={"gripper": 0.0},
         )
         
         self.datagen_config.name = "demo_src_stack_isaac_lab_rel_D0"

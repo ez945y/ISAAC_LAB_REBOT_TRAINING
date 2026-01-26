@@ -306,6 +306,82 @@ class DifferentialIKController:
             
             delta_joint_pos = k_val * jacobian_pinv @ delta_pose_w.unsqueeze(-1)
             delta_joint_pos = delta_joint_pos.squeeze(-1)
+        elif self.cfg.ik_method == "dls_5dof":  # DLS for 5-DOF arms (ignore yaw)
+            # ============================================================
+            # Damped Least Squares for 5-DOF Manipulator (Ignoring Yaw)
+            # ============================================================
+            # 這個方法專門為缺少 yaw 自由度的 5-DOF 機械臂設計：
+            # 1. 忽略 yaw 誤差：將軸角度誤差中的 z 分量設為零
+            # 2. 移除 Jacobian 的 yaw 行：減少任務空間維度從 6 到 5
+            # 3. 使用加權 DLS：位置誤差權重高於姿態誤差
+            #
+            # delta_pose 輸入格式 (6D pose 模式):
+            #   [Δx, Δy, Δz, ωx, ωy, ωz] 
+            #   其中 (ωx, ωy, ωz) 是軸角度誤差:
+            #     - ωx: roll  (繞 x 軸旋轉)
+            #     - ωy: pitch (繞 y 軸旋轉)  
+            #     - ωz: yaw   (繞 z 軸旋轉) <- 這個會被忽略
+            
+            # parameters
+            lambda_val = self.cfg.ik_params["lambda_val"]
+            ignore_yaw = self.cfg.ik_params.get("ignore_yaw", True)
+            position_weight = self.cfg.ik_params.get("position_weight", 1.0)
+            orientation_weight = self.cfg.ik_params.get("orientation_weight", 0.5)
+            
+            # Get dimensions
+            batch_size = jacobian.shape[0]
+            task_dim = jacobian.shape[1]  # 3 for position, 6 for pose
+            
+            if task_dim == 6 and ignore_yaw:
+                # ============================================================
+                # 處理 6D pose 控制，忽略 yaw
+                # ============================================================
+                # delta_pose: [Δx, Δy, Δz, ωx, ωy, ωz]
+                #              0    1    2   3    4    5
+                # 
+                # 我們要移除 ωz (index 5)，保留 [Δx, Δy, Δz, ωx, ωy]
+                
+                # 建立權重向量: [pos_w, pos_w, pos_w, ori_w, ori_w]
+                # 注意：移除 yaw 後只有 5 個維度
+                weights = torch.tensor(
+                    [position_weight, position_weight, position_weight,
+                     orientation_weight, orientation_weight],
+                    device=self._device, dtype=jacobian.dtype
+                )
+                
+                # 移除 delta_pose 中的 yaw 分量 (index 5)
+                # 保留 indices: [0, 1, 2, 3, 4]
+                delta_pose_5d = torch.cat([
+                    delta_pose[:, 0:3],  # position error: Δx, Δy, Δz
+                    delta_pose[:, 3:5]   # orientation error: ωx, ωy (roll, pitch only)
+                ], dim=1)  # Shape: (N, 5)
+                
+                # 移除 Jacobian 中的 yaw 行 (index 5)
+                # 原始 Jacobian: (N, 6, num_joints) -> (N, 5, num_joints)
+                # Rows: [vx, vy, vz, ωx, ωy, ωz] -> [vx, vy, vz, ωx, ωy]
+                jacobian_5d = torch.cat([
+                    jacobian[:, 0:3, :],  # linear velocity rows
+                    jacobian[:, 3:5, :]   # angular velocity rows (roll, pitch only)
+                ], dim=1)  # Shape: (N, 5, num_joints)
+                
+                # 應用權重
+                W = torch.diag(weights).unsqueeze(0).expand(batch_size, -1, -1)  # (N, 5, 5)
+                jacobian_w = W @ jacobian_5d  # (N, 5, num_joints)
+                delta_pose_w = weights * delta_pose_5d  # (N, 5)
+            else:
+                # Position only control (3D)
+                jacobian_w = jacobian
+                delta_pose_w = delta_pose
+            
+            # Damped Least Squares 計算
+            # J^+ = J^T @ (J @ J^T + λ²I)^(-1)
+            jacobian_T = torch.transpose(jacobian_w, dim0=1, dim1=2)
+            lambda_matrix = (lambda_val**2) * torch.eye(n=jacobian_w.shape[1], device=self._device)
+            
+            delta_joint_pos = (
+                jacobian_T @ torch.inverse(jacobian_w @ jacobian_T + lambda_matrix) @ delta_pose_w.unsqueeze(-1)
+            )
+            delta_joint_pos = delta_joint_pos.squeeze(-1)
         else:
             raise ValueError(f"Unsupported inverse-kinematics method: {self.cfg.ik_method}")
         

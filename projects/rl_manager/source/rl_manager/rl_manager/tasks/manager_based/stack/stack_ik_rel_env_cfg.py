@@ -205,7 +205,7 @@ class SO101CubeStackRelEnvCfg(SO101CubeStackEnvCfg):
         self.curriculum = CurriculumCfg()
 
         self.decimation = 4
-        self.episode_length_s = 20.0
+        self.episode_length_s = 30.0
         self.sim.render_interval = 2
         self.sim.gpu_collision_stack_size = 4 * (2**30) - 1
         self.sim.dt = 1 / 120

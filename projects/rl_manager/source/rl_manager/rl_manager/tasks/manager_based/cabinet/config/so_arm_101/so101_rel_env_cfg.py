@@ -14,6 +14,7 @@ from isaaclab.managers import SceneEntityCfg
 from rl_manager.tasks.manager_based.cabinet.cabinet_env_cfg import CabinetEnvCfg, FRAME_MARKER_SMALL_CFG
 from controll_scripts.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from controll_scripts.controllers.differential_ik_cfg import DifferentialIKControllerCfg
+from isaaclab.sensors import TiledCameraCfg
 
 from isaaclab.sim import SimulationCfg, PhysxCfg
 
@@ -77,7 +78,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
             controller=DifferentialIKControllerCfg(
                 command_type="pose",
                 use_relative_mode=True,
-                ik_method="adaptive",
+                ik_method="dls_5dof",
             ),
             scale=0.5,
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.0]),
@@ -109,15 +110,6 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                         rot=(0.0, 0.7071068, 0.7071068, 0.0)
                     ),
                 ),
-                # 綁定在 gripper_link
-                FrameTransformerCfg.FrameCfg(
-                    prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
-                    name="tool_rightfinger",
-                    offset=OffsetCfg(
-                        pos=(-0.008, 0.0, -0.07812),
-                        rot=(0.0, 0.7071068, 0.7071068, 0.0)
-                    ),
-                ),
                 # 綁定在可動關節 (wrist_link)
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
@@ -127,7 +119,38 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                         rot=(-0.5, -0.5, -0.5, 0.5)
                     ),
                 ),
+                # 綁定在 gripper_link
+                FrameTransformerCfg.FrameCfg(
+                    prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
+                    name="tool_rightfinger",
+                    offset=OffsetCfg(
+                        pos=(-0.008, 0.0, -0.07812),
+                        rot=(0.0, 0.7071068, 0.7071068, 0.0)
+                    ),
+                ),
             ],
+        )
+
+            
+        # Wrist camera - includes depth and segmentation for CNN
+        self.scene.wrist_camera = TiledCameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/gripper_link/self_view_camera",
+            update_period=1/30,  # 10Hz camera update
+            height=640,  # Match FeatureExtractor expected input size
+            width=480,
+            data_types=["rgb", "depth", "semantic_segmentation"],
+            spawn=None,
+        )
+
+        
+        # Fixed camera (Full View) - includes depth and segmentation for CNN
+        self.scene.front_camera = TiledCameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/full_view_camera",
+            update_period=1/30,  # 10Hz camera update
+            height=640,  # Match FeatureExtractor expected input size
+            width=480,
+            data_types=["rgb", "depth", "semantic_segmentation"],
+            spawn=None,  # Camera already exists in USD
         )
 
 
