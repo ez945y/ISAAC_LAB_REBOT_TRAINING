@@ -14,29 +14,40 @@ from isaaclab.utils import configclass
 
 
 class FeatureExtractorNetwork(nn.Module):
-    """CNN architecture used to regress keypoint positions of the in-hand cube from image data."""
+    """CNN architecture used to regress keypoint positions from image data.
+    
+    Supports variable input sizes (e.g., 640x480, 120x120) by using BatchNorm2d 
+    and AdaptiveAvgPool2d instead of fixed LayerNorm and AvgPool2d.
+    
+    Args:
+        rgb_only: If True, the network only uses RGB images (3 channels).
+                  If False, uses RGB + depth + segmentation (7 channels).
+        embedding_dim: Output embedding dimension. Default is 27.
+    """
 
-    def __init__(self):
+    def __init__(self, rgb_only: bool = False, embedding_dim: int = 27):
         super().__init__()
-        num_channel = 7
+        self.rgb_only = rgb_only
+        num_channel = 3 if rgb_only else 7
+        
         self.cnn = nn.Sequential(
             nn.Conv2d(num_channel, 16, kernel_size=6, stride=2, padding=0),
             nn.ReLU(),
-            nn.LayerNorm([16, 58, 58]),
+            nn.BatchNorm2d(16),
             nn.Conv2d(16, 32, kernel_size=4, stride=2, padding=0),
             nn.ReLU(),
-            nn.LayerNorm([32, 28, 28]),
+            nn.BatchNorm2d(32),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
             nn.ReLU(),
-            nn.LayerNorm([64, 13, 13]),
+            nn.BatchNorm2d(64),
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=0),
             nn.ReLU(),
-            nn.LayerNorm([128, 6, 6]),
-            nn.AvgPool2d(6),
+            nn.BatchNorm2d(128),
+            nn.AdaptiveAvgPool2d(1),  # Output: (batch, 128, 1, 1) regardless of input size
         )
 
         self.linear = nn.Sequential(
-            nn.Linear(128, 27),
+            nn.Linear(128, embedding_dim),
         )
 
         self.data_transforms = torchvision.transforms.Compose([
@@ -44,9 +55,20 @@ class FeatureExtractorNetwork(nn.Module):
         ])
 
     def forward(self, x):
-        x = x.permute(0, 3, 1, 2)
-        x[:, 0:3, :, :] = self.data_transforms(x[:, 0:3, :, :])
-        x[:, 4:7, :, :] = self.data_transforms(x[:, 4:7, :, :])
+        # Clone to avoid inplace operations on inference tensors
+        x = x.clone().permute(0, 3, 1, 2).contiguous()
+        
+        # Normalize RGB channels (0:3)
+        rgb_normalized = self.data_transforms(x[:, 0:3, :, :])
+        
+        if self.rgb_only:
+            # RGB only mode: just use normalized RGB
+            x = rgb_normalized
+        else:
+            # Full mode: normalize segmentation channels (4:7) and concatenate
+            seg_normalized = self.data_transforms(x[:, 4:7, :, :])
+            x = torch.cat([rgb_normalized, x[:, 3:4, :, :], seg_normalized], dim=1)
+        
         cnn_x = self.cnn(x)
         out = self.linear(cnn_x.view(-1, 128))
         return out
@@ -55,6 +77,9 @@ class FeatureExtractorNetwork(nn.Module):
 @configclass
 class FeatureExtractorCfg:
     """Configuration for the feature extractor model."""
+
+    rgb_only: bool = False
+    """If True, uses only RGB images (3 channels). If False, uses RGB + depth + segmentation (7 channels). Default is False for backward compatibility."""
 
     train: bool = True
     """If True, the feature extractor model is trained during the rollout process. Default is False."""
@@ -86,7 +111,7 @@ class FeatureExtractor:
         self.device = device
 
         # Feature extractor model
-        self.feature_extractor = FeatureExtractorNetwork()
+        self.feature_extractor = FeatureExtractorNetwork(rgb_only=cfg.rgb_only)
         self.feature_extractor.to(self.device)
 
         self.step_count = 0
@@ -112,65 +137,92 @@ class FeatureExtractor:
             self.feature_extractor.eval()
 
     def _preprocess_images(
-        self, rgb_img: torch.Tensor, depth_img: torch.Tensor, segmentation_img: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self,
+        rgb_img: torch.Tensor,
+        depth_img: torch.Tensor | None = None,
+        segmentation_img: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """Preprocesses the input images.
 
         Args:
             rgb_img (torch.Tensor): RGB image tensor. Shape: (N, H, W, 3).
-            depth_img (torch.Tensor): Depth image tensor. Shape: (N, H, W, 1).
-            segmentation_img (torch.Tensor): Segmentation image tensor. Shape: (N, H, W, 3)
+            depth_img (torch.Tensor | None): Depth image tensor. Shape: (N, H, W, 1). Optional in rgb_only mode.
+            segmentation_img (torch.Tensor | None): Segmentation image tensor. Shape: (N, H, W, 3). Optional in rgb_only mode.
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor, torch.Tensor]: Preprocessed RGB, depth, and segmentation
+            tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]: Preprocessed RGB, depth, and segmentation
         """
         rgb_img = rgb_img / 255.0
-        # process depth image
-        depth_img[depth_img == float("inf")] = 0
-        depth_img /= 5.0
-        depth_img /= torch.max(depth_img)
-        # process segmentation image
-        segmentation_img = segmentation_img / 255.0
-        mean_tensor = torch.mean(segmentation_img, dim=(1, 2), keepdim=True)
-        segmentation_img -= mean_tensor
+        
+        # Only process depth and segmentation if not in rgb_only mode
+        if not self.cfg.rgb_only and depth_img is not None and segmentation_img is not None:
+            # process depth image
+            depth_img[depth_img == float("inf")] = 0
+            depth_img /= 5.0
+            max_depth = torch.max(depth_img)
+            if max_depth > 0:
+                depth_img /= max_depth
+            # process segmentation image
+            segmentation_img = segmentation_img / 255.0
+            mean_tensor = torch.mean(segmentation_img, dim=(1, 2), keepdim=True)
+            segmentation_img -= mean_tensor
+        else:
+            depth_img = None
+            segmentation_img = None
+            
         return rgb_img, depth_img, segmentation_img
 
-    def _save_images(self, rgb_img: torch.Tensor, depth_img: torch.Tensor, segmentation_img: torch.Tensor):
+    def _save_images(
+        self,
+        rgb_img: torch.Tensor,
+        depth_img: torch.Tensor | None = None,
+        segmentation_img: torch.Tensor | None = None,
+    ):
         """Writes image buffers to file.
 
         Args:
             rgb_img (torch.Tensor): RGB image tensor. Shape: (N, H, W, 3).
-            depth_img (torch.Tensor): Depth image tensor. Shape: (N, H, W, 1).
-            segmentation_img (torch.Tensor): Segmentation image tensor. Shape: (N, H, W, 3).
+            depth_img (torch.Tensor | None): Depth image tensor. Shape: (N, H, W, 1).
+            segmentation_img (torch.Tensor | None): Segmentation image tensor. Shape: (N, H, W, 3).
         """
         save_images_to_file(rgb_img, "shadow_hand_rgb.png")
-        save_images_to_file(depth_img, "shadow_hand_depth.png")
-        save_images_to_file(segmentation_img, "shadow_hand_segmentation.png")
+        if depth_img is not None:
+            save_images_to_file(depth_img, "shadow_hand_depth.png")
+        if segmentation_img is not None:
+            save_images_to_file(segmentation_img, "shadow_hand_segmentation.png")
 
     def step(
-        self, rgb_img: torch.Tensor, depth_img: torch.Tensor, segmentation_img: torch.Tensor, gt_pose: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        self,
+        rgb_img: torch.Tensor,
+        depth_img: torch.Tensor | None = None,
+        segmentation_img: torch.Tensor | None = None,
+        gt_pose: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
         """Extracts the features using the images and trains the model if the train flag is set to True.
 
         Args:
             rgb_img (torch.Tensor): RGB image tensor. Shape: (N, H, W, 3).
-            depth_img (torch.Tensor): Depth image tensor. Shape: (N, H, W, 1).
-            segmentation_img (torch.Tensor): Segmentation image tensor. Shape: (N, H, W, 3).
-            gt_pose (torch.Tensor): Ground truth pose tensor (position and corners). Shape: (N, 27).
+            depth_img (torch.Tensor | None): Depth image tensor. Shape: (N, H, W, 1). Required if rgb_only=False.
+            segmentation_img (torch.Tensor | None): Segmentation image tensor. Shape: (N, H, W, 3). Required if rgb_only=False.
+            gt_pose (torch.Tensor | None): Ground truth pose tensor (position and corners). Shape: (N, 27). Required if train=True.
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor]: Pose loss and predicted pose.
+            tuple[torch.Tensor | None, torch.Tensor]: Pose loss and predicted pose.
         """
-
         rgb_img, depth_img, segmentation_img = self._preprocess_images(rgb_img, depth_img, segmentation_img)
 
         if self.cfg.write_image_to_file:
             self._save_images(rgb_img, depth_img, segmentation_img)
 
+        # Build input tensor based on mode
+        if self.cfg.rgb_only:
+            img_input = rgb_img
+        else:
+            img_input = torch.cat((rgb_img, depth_img, segmentation_img), dim=-1)
+
         if self.cfg.train:
             with torch.enable_grad():
                 with torch.inference_mode(False):
-                    img_input = torch.cat((rgb_img, depth_img, segmentation_img), dim=-1)
                     self.optimizer.zero_grad()
 
                     predicted_pose = self.feature_extractor(img_input)
@@ -189,6 +241,5 @@ class FeatureExtractor:
 
                     return pose_loss, predicted_pose
         else:
-            img_input = torch.cat((rgb_img, depth_img, segmentation_img), dim=-1)
             predicted_pose = self.feature_extractor(img_input)
             return None, predicted_pose

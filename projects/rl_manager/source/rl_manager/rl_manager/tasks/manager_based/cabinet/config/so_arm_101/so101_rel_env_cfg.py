@@ -132,26 +132,26 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
         )
 
             
-        # Wrist camera - includes depth and segmentation for CNN
-        self.scene.wrist_camera = TiledCameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/gripper_link/self_view_camera",
-            update_period=1/30,  # 10Hz camera update
-            height=640,  # Match FeatureExtractor expected input size
-            width=480,
-            data_types=["rgb", "depth", "semantic_segmentation"],
-            spawn=None,
-        )
+        # # Wrist camera - includes depth and segmentation for CNN
+        # self.scene.wrist_camera = TiledCameraCfg(
+        #     prim_path="{ENV_REGEX_NS}/Robot/gripper_link/self_view_camera",
+        #     update_period=1/30,  # 10Hz camera update
+        #     height=640,  # Match FeatureExtractor expected input size
+        #     width=480,
+        #     data_types=["rgb"], # "rgb", "depth", "semantic_segmentation"
+        #     spawn=None,
+        # )
 
         
-        # Fixed camera (Full View) - includes depth and segmentation for CNN
-        self.scene.front_camera = TiledCameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/full_view_camera",
-            update_period=1/30,  # 10Hz camera update
-            height=640,  # Match FeatureExtractor expected input size
-            width=480,
-            data_types=["rgb", "depth", "semantic_segmentation"],
-            spawn=None,  # Camera already exists in USD
-        )
+        # # Fixed camera (Full View) - includes depth and segmentation for CNN
+        # self.scene.front_camera = TiledCameraCfg(
+        #     prim_path="{ENV_REGEX_NS}/Robot/full_view_camera",
+        #     update_period=1/30,  # 10Hz camera update
+        #     height=640,  # Match FeatureExtractor expected input size
+        #     width=480,
+        #     data_types=["rgb"],
+        #     spawn=None,  # Camera already exists in USD
+        # )
 
 
         # # Rewards overrides
@@ -179,25 +179,24 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
 
         self.scene.num_envs = 1024
         self.sim = SimulationCfg(
-            dt=1 / 120,
+            dt=1 / 60,
             gravity=(0.0, 0.0, -9.81),
             physx=PhysxCfg(
                 solver_type=1,
-                max_position_iteration_count=192,
+                max_position_iteration_count=32,
                 max_velocity_iteration_count=1,
                 bounce_threshold_velocity=0.2,
                 friction_offset_threshold=0.01,
                 friction_correlation_distance=0.00625,
-                gpu_max_rigid_contact_count=2**24,                # 加大
+                gpu_max_rigid_contact_count=2**24,
                 gpu_max_rigid_patch_count=2**24,
                 gpu_collision_stack_size = 4 * (2**30) - 1,
                 gpu_found_lost_pairs_capacity=1024 * 1024 * 64,
                 gpu_found_lost_aggregate_pairs_capacity=1024 * 1024 * 64,
                 gpu_total_aggregate_pairs_capacity=128 * 1024,
-                gpu_max_num_partitions=1,
+                gpu_max_num_partitions=8,
             ),
         )
-        
 
 @configclass
 class SOArm101CabinetEnvCfg_PLAY(SOArm101CabinetEnvCfg):

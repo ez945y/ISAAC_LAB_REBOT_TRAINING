@@ -94,17 +94,24 @@ def wrist_camera_embedding(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
     """Get CNN embedding from wrist camera using FeatureExtractor.
     
     The FeatureExtractor must be initialized and stored in env.feature_extractor.
-    The camera must output rgb, depth, and semantic_segmentation data types.
+    If rgb_only=False, the camera must output rgb, depth, and semantic_segmentation data types.
+    If rgb_only=True, only rgb is required.
     
     Returns:
         torch.Tensor: CNN embedding of shape (num_envs, embedding_dim)
     """
     camera = env.scene[asset_cfg.name]
     
-    # Get images from camera
+    # Get RGB from camera (always required)
     rgb = camera.data.output["rgb"][..., :3]  # (num_envs, h, w, 3)
-    depth = camera.data.output["depth"]  # (num_envs, h, w, 1)
-    segmentation = camera.data.output["semantic_segmentation"][..., :3]  # (num_envs, h, w, 3)
+    
+    # Get depth and segmentation only if not in rgb_only mode
+    if env.feature_extractor.cfg.rgb_only:
+        depth = None
+        segmentation = None
+    else:
+        depth = camera.data.output["depth"]  # (num_envs, h, w, 1)
+        segmentation = camera.data.output["semantic_segmentation"][..., :3]  # (num_envs, h, w, 3)
     
     # Use feature extractor to get embedding
     # Note: gt_pose is not used for inference, pass zeros
@@ -118,17 +125,24 @@ def front_camera_embedding(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
     """Get CNN embedding from front camera using FeatureExtractor.
     
     The FeatureExtractor must be initialized and stored in env.feature_extractor.
-    The camera must output rgb, depth, and semantic_segmentation data types.
+    If rgb_only=False, the camera must output rgb, depth, and semantic_segmentation data types.
+    If rgb_only=True, only rgb is required.
     
     Returns:
         torch.Tensor: CNN embedding of shape (num_envs, embedding_dim)
     """
     camera = env.scene[asset_cfg.name]
     
-    # Get images from camera
+    # Get RGB from camera (always required)
     rgb = camera.data.output["rgb"][..., :3]  # (num_envs, h, w, 3)
-    depth = camera.data.output["depth"]  # (num_envs, h, w, 1)
-    segmentation = camera.data.output["semantic_segmentation"][..., :3]  # (num_envs, h, w, 3)
+    
+    # Get depth and segmentation only if not in rgb_only mode
+    if env.feature_extractor.cfg.rgb_only:
+        depth = None
+        segmentation = None
+    else:
+        depth = camera.data.output["depth"]  # (num_envs, h, w, 1)
+        segmentation = camera.data.output["semantic_segmentation"][..., :3]  # (num_envs, h, w, 3)
     
     # Use feature extractor to get embedding
     # Note: gt_pose is not used for inference, pass zeros
@@ -136,3 +150,28 @@ def front_camera_embedding(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
     _, embeddings = env.feature_extractor.step(rgb, depth, segmentation, gt_pose)
     
     return embeddings.clone().detach()
+
+
+def wrist_camera_pretrained_embedding(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
+    camera = env.scene[asset_cfg.name]
+    
+    # Get RGB from camera
+    rgb = camera.data.output["rgb"][..., :3]  # (num_envs, h, w, 3)
+    
+    # Use pretrained feature extractor to get embedding
+    embeddings = env.feature_extractor.step(rgb)
+    
+    return embeddings
+
+
+def front_camera_pretrained_embedding(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
+    camera = env.scene[asset_cfg.name]
+    
+    # Get RGB from camera
+    rgb = camera.data.output["rgb"][..., :3]  # (num_envs, h, w, 3)
+    
+    # Use pretrained feature extractor to get embedding
+    embeddings = env.feature_extractor.step(rgb)
+    
+    return embeddings
+
