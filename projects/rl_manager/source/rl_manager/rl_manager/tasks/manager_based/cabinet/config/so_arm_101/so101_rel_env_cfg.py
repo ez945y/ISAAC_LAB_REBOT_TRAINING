@@ -80,7 +80,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                 use_relative_mode=True,
                 ik_method="dls_5dof",
             ),
-            scale=0.5,
+            scale=0.05,
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.0]),
         )
         # self.actions.gripper_action = BinaryJointPositionActionCfg(
@@ -92,7 +92,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
         self.actions.gripper_action = JointPositionActionCfg(
             asset_name="robot",
             joint_names=["gripper"],
-            scale=0.5,
+            scale=0.05,
             use_default_offset=True,
         )
 
@@ -159,21 +159,21 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
         self.rewards.grasp_handle.params["open_joint_pos"] = 1.74
         self.rewards.grasp_handle.params["robot_cfg"].joint_names = ["gripper"]
 
-        # Observations
-        self.observations.policy.joint_pos.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[
-                "shoulder_pan",
-                "shoulder_lift",
-                "elbow_flex",
-                "wrist_flex",
-                "wrist_roll",
-            ])
-        self.observations.policy.joint_vel.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[
-                "shoulder_pan",
-                "shoulder_lift",
-                "elbow_flex",
-                "wrist_flex",
-                "wrist_roll",
-            ])
+        # # Observations
+        # self.observations.policy.joint_pos.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[
+        #         "shoulder_pan",
+        #         "shoulder_lift",
+        #         "elbow_flex",
+        #         "wrist_flex",
+        #         "wrist_roll",
+        #     ])
+        # self.observations.policy.joint_vel.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[
+        #         "shoulder_pan",
+        #         "shoulder_lift",
+        #         "elbow_flex",
+        #         "wrist_flex",
+        #         "wrist_roll",
+        #     ])
 
         # self.sim.gpu_collision_stack_size = 4 * (2**30) - 1
 
