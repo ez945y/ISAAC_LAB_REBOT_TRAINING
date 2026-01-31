@@ -119,4 +119,4 @@ class SO101CubeStackIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCf
         self.subtask_configs["so101"] = subtask_configs
 
         # Enable debug visualization for the end-effector frame
-        self.scene.ee_frame.debug_vis = True
+        self.scene.ee_frame.debug_vis = False

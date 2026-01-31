@@ -18,26 +18,21 @@ from isaaclab.devices.openxr.retargeters.manipulator.se3_abs_retargeter import S
 
 from isaaclab.envs.mdp.actions.actions_cfg import BinaryJointPositionActionCfg
 from isaaclab.utils import configclass
-from .stack_ik_camera_mimic_env_cfg import SO101CubeStackCameraMimicEnvCfg
+from .stack_ik_abs_mimic_env_cfg import SO101CubeStackIKAbsMimicEnvCfg
 
 from controll_scripts.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from controll_scripts.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-
-from rl_manager.tasks.manager_based.cabinet.config.so_arm_101.feature_extractor import (
-    FeatureExtractor,
-    FeatureExtractorCfg,
-)
+from isaaclab.sim import SimulationCfg, PhysxCfg
 
 @configclass
-class SO101CubeStackRelMimicEnvCfg(SO101CubeStackCameraMimicEnvCfg):
+class SO101CubeStackRelMimicEnvCfg(SO101CubeStackIKAbsMimicEnvCfg):
     """
     SO-ARM-101 Stack Task with Camera Observations and OpenXR Hand Tracking.
-    
+
     Inherits from Camera Mimic Config but:
     - Changes teleop device to OpenXR hand tracking
     - Changes gripper action to binary (open/close)
     """
-    feature_extractor_cfg: FeatureExtractorCfg = FeatureExtractorCfg(train=True, load_checkpoint=False)
 
 
     def __post_init__(self):
@@ -59,8 +54,8 @@ class SO101CubeStackRelMimicEnvCfg(SO101CubeStackCameraMimicEnvCfg):
         self.teleop_devices = DevicesCfg(
             devices={
                 "keyboard": Se3KeyboardCfg(
-                    pos_sensitivity=0.05,
-                    rot_sensitivity=0.25,
+                    pos_sensitivity=0.2,
+                    rot_sensitivity=0.5,
                     sim_device=self.sim.device,
                 ),
             }
@@ -77,3 +72,4 @@ class SO101CubeStackRelMimicEnvCfg(SO101CubeStackCameraMimicEnvCfg):
 
         # Enable debug visualization for the end-effector frame
         self.scene.ee_frame.debug_vis = False
+        self.sim = SimulationCfg(dt=0.001)

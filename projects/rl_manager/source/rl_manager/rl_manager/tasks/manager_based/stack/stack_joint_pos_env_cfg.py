@@ -160,12 +160,12 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.JointPositionActionCfg(
-            asset_name="robot", joint_names=["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"], scale=0.5, use_default_offset=True
+            asset_name="robot", joint_names=["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"], scale=0.1, use_default_offset=True
         )
         self.actions.gripper_action = JointPositionActionCfg(
             asset_name="robot",
             joint_names=["gripper"],
-            scale=0.5, 
+            scale=0.1, 
         )
         # utilities for gripper status check
         self.gripper_joint_names = ["gripper"]
@@ -233,15 +233,6 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
                         rot=(0.0, 0.7071068, 0.7071068, 0.0)
                     ),
                 ),
-                # 綁定在可動關節 (wrist_link)
-                FrameTransformerCfg.FrameCfg(
-                    prim_path="{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
-                    name="tool_leftfinger",
-                    offset=OffsetCfg(
-                        pos=(-0.01, -0.055, 0.01727),
-                        rot=(-0.5, -0.5, -0.5, 0.5)
-                    ),
-                ),
                 # 綁定在 gripper_link
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
@@ -251,6 +242,14 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
                         rot=(0.0, 0.7071068, 0.7071068, 0.0)
                     ),
                 ),
-
+                # 綁定在可動關節 (wrist_link)
+                FrameTransformerCfg.FrameCfg(
+                    prim_path="{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
+                    name="tool_leftfinger",
+                    offset=OffsetCfg(
+                        pos=(-0.01, -0.055, 0.01727),
+                        rot=(-0.5, -0.5, -0.5, 0.5)
+                    ),
+                ),
             ],
         )

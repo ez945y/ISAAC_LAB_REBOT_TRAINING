@@ -118,6 +118,7 @@ class DifferentialIKController:
         """
         # store command
         self._command[:] = command
+        # print("[set_command] command:", command[0].cpu().numpy())
         # compute the desired end-effector pose
         if self.cfg.command_type == "position":
             # we need end-effector orientation even though we are in position mode

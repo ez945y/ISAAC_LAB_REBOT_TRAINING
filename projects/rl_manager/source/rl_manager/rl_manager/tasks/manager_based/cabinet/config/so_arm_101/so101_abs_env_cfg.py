@@ -149,7 +149,6 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                 gpu_max_num_partitions=1,
             ),
         )
-        
 
 @configclass
 class SOArm101CabinetEnvCfg_PLAY(SOArm101CabinetEnvCfg):

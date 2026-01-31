@@ -192,7 +192,7 @@ class SO101CubeStackRelEnvCfg(SO101CubeStackEnvCfg):
                 use_relative_mode=True,
                 ik_method="adaptive",
             ),
-            scale=0.5,
+            scale=0.1,
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.0]),
         )
 

@@ -37,7 +37,7 @@ Record new demonstrations using a teleop device (e.g. Leader Arm).
 
 ```bash
 python scripts/tools/record_demos.py \
-    --task Isaac-PickPlace-SOArm-Camera-Mimic-v0 \
+    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
     --teleop_device leader_arm \
     --num_demos 10 \
     --enable_cameras
@@ -52,7 +52,7 @@ python scripts/tools/record_demos.py \
 ```
 
 python scripts/tools/record_demos.py \
-    --task PickPlace-SOArm-Camera-Mimic-v0 \
+    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0\
     --teleop_device leader_arm \
     --num_demos 10 \
     --enable_cameras
@@ -63,7 +63,7 @@ Replay recorded HDF5 demonstrations to verify correctness.
 
 ```bash
 python scripts/tools/replay_demos.py \
-    --task Isaac-PickPlace-SOArm-Camera-Mimic-v0 \
+    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0
     --dataset_file ./datasets/so_arm_demos.hdf5 \
     --enable_cameras
 ```
@@ -84,10 +84,9 @@ Replays actions from an existing HDF5 dataset in a new environment configuration
 
 ```bash
 python scripts/tools/regenerate_demos.py \
-    --task Isaac-PickPlace-SOArm-Camera-Mimic-v0 \
+    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
     --input_file ./datasets/dataset_merged.hdf5 \
     --output_file ./datasets/dataset_merged_camera.hdf5 \
-    --enable_cameras
 ```
 
 ### 5. Deleting Episodes
@@ -108,8 +107,7 @@ Annotate demonstrations to add rewards and other information.
 
 ```bash
 python scripts/isaaclab_mimic/annotate_demos.py \
-    --device cpu --task Isaac-PickPlace-SOArm-Camera-Mimic-v0  \
-    --auto --enable_cameras \
+    --device cpu --task Isaac-PickPlace-SOArm-Abs-Mimic-v0  \
     --input_file ./datasets/dataset_merged.hdf5 \
     --output_file ./datasets/annotated_dataset.hdf5
 ```
@@ -117,8 +115,8 @@ python scripts/isaaclab_mimic/annotate_demos.py \
 ### 7. Generate datasets
 ```bash
 python scripts/isaaclab_mimic/generate_dataset.py \
-    --task Isaac-PickPlace-SOArm-Camera-Mimic-v0 \
-    --device cpu --enable_cameras --num_envs 10 --generation_num_trials 10 \
+    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
+    --device cpu --num_envs 10 --generation_num_trials 10 \
     --input_file ./datasets/annotated_dataset.hdf5 \
     --output_file ./datasets/generated_dataset.hdf5
 ```
