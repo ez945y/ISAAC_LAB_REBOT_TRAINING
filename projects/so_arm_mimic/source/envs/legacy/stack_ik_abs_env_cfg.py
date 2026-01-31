@@ -3,12 +3,12 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.devices.device_base import DevicesCfg
 from isaaclab.devices.openxr.openxr_device import OpenXRDevice, OpenXRDeviceCfg
 from isaaclab.devices.openxr.retargeters.manipulator.gripper_retargeter import GripperRetargeterCfg
 from isaaclab.devices.openxr.retargeters.manipulator.se3_abs_retargeter import Se3AbsRetargeterCfg
-from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
+from controll_scripts.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
+from controll_scripts.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.utils import configclass
 from controll_scripts.input_devices.se3_leader_arm import Se3LeaderArmCfg
 from rl_manager.tasks.manager_based.stack import stack_joint_pos_env_cfg

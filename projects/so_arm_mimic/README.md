@@ -114,14 +114,16 @@ python scripts/isaaclab_mimic/annotate_demos.py \
     --output_file ./datasets/annotated_dataset.hdf5
 ```
 
+### 7. Generate datasets
 ```bash
 python scripts/isaaclab_mimic/generate_dataset.py \
+    --task Isaac-PickPlace-SOArm-Camera-Mimic-v0 \
     --device cpu --enable_cameras --num_envs 10 --generation_num_trials 10 \
     --input_file ./datasets/annotated_dataset.hdf5 \
     --output_file ./datasets/generated_dataset.hdf5
 ```
 
-### 7. Data Conversion (to LeRobot)
+### 8. Data Conversion (to LeRobot)
 
 Converts Isaac Lab HDF5 demonstration files to LeRobot dataset format for training imitation learning models.
 

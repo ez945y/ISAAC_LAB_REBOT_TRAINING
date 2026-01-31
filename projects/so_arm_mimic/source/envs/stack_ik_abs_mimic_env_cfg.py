@@ -6,8 +6,8 @@
 from isaaclab.envs.mimic_env_cfg import MimicEnvCfg, SubTaskConfig
 from isaaclab.utils import configclass
 from isaaclab.devices.device_base import DevicesCfg
-from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
+from controll_scripts.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
+from controll_scripts.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from controll_scripts.input_devices.se3_leader_arm import Se3LeaderArmCfg
 from rl_manager.tasks.manager_based.stack import stack_joint_pos_env_cfg
 
@@ -34,7 +34,7 @@ class SO101CubeStackIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCf
             controller=DifferentialIKControllerCfg(
                 command_type="pose",
                 use_relative_mode=False,
-                ik_method="dls",
+                ik_method="dls_5dof",
             ),
         )
 
