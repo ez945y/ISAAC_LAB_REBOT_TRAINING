@@ -46,19 +46,20 @@ class SOArm101CameraCabinetEnvCfg(SOArm101CabinetEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         
-        self.scene.num_envs = 400
-        
-        # Remove ground-truth observations (no cheating)
-        self.observations.policy.cabinet_joint_pos = None
-        self.observations.policy.cabinet_joint_vel = None
-        self.observations.policy.rel_ee_drawer_distance = None
-
-        # Wrist camera (on gripper)
-        self.scene.wrist_camera = TiledCameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/gripper_link/self_view_camera",
+        self.scene.num_envs = 512
+        # self.scene.wrist_camera = TiledCameraCfg(
+        #     prim_path="{ENV_REGEX_NS}/Robot/gripper_link/self_view_camera",
+        #     update_period=1/30,  # 30Hz camera update
+        #     height=320,
+        #     width=240,
+        #     data_types=["rgb"],
+        #     spawn=None,
+        # )
+        self.scene.top_camera = TiledCameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/top_view_camera",
             update_period=1/30,  # 30Hz camera update
-            height=299,
-            width=224,
+            height=320,
+            width=240,
             data_types=["rgb"],
             spawn=None,
         )
@@ -67,20 +68,20 @@ class SOArm101CameraCabinetEnvCfg(SOArm101CabinetEnvCfg):
         self.scene.front_camera = TiledCameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/full_view_camera",
             update_period=1/30,  # 30Hz camera update
-            height=299,
-            width=224,
+            height=320,
+            width=240,
             data_types=["rgb"],
             spawn=None,
         )
         
         # Add camera CNN embedding observations using pretrained ResNet (128 dim each)
-        self.observations.policy.wrist_embedding = ObsTerm(
-            func=mdp.wrist_camera_pretrained_embedding,
-            params={"asset_cfg": SceneEntityCfg("wrist_camera")},
-        )
         self.observations.policy.front_embedding = ObsTerm(
-            func=mdp.front_camera_pretrained_embedding,
+            func=mdp.camera_pretrained_embedding,
             params={"asset_cfg": SceneEntityCfg("front_camera")},
+        )
+        self.observations.policy.top_embedding = ObsTerm(
+            func=mdp.camera_pretrained_embedding,
+            params={"asset_cfg": SceneEntityCfg("top_camera")},
         )
 
 

@@ -130,25 +130,6 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
         self.rewards.grasp_handle.params["open_joint_pos"] = 1.74
         self.rewards.grasp_handle.params["robot_cfg"].joint_names = ["gripper"]
 
-        # Observations
-        self.observations.policy.joint_pos.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[
-                "shoulder_pan",
-                "shoulder_lift",
-                "elbow_flex",
-                "wrist_flex",
-                "wrist_roll",
-            ])
-        self.observations.policy.joint_vel.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[
-                "shoulder_pan",
-                "shoulder_lift",
-                "elbow_flex",
-                "wrist_flex",
-                "wrist_roll",
-            ])
-
-        # self.sim.gpu_collision_stack_size = 4 * (2**30) - 1
-
-        self.scene.num_envs = 1024
         self.sim = SimulationCfg(
             dt=1 / 120,
             gravity=(0.0, 0.0, -9.81),

@@ -80,7 +80,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
                 use_relative_mode=True,
                 ik_method="dls_5dof",
             ),
-            scale=0.05,
+            scale=0.1,
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.0]),
         )
         # self.actions.gripper_action = BinaryJointPositionActionCfg(
@@ -92,7 +92,7 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
         self.actions.gripper_action = JointPositionActionCfg(
             asset_name="robot",
             joint_names=["gripper"],
-            scale=0.05,
+            scale=0.1,
             use_default_offset=True,
         )
 
@@ -176,8 +176,6 @@ class SOArm101CabinetEnvCfg(CabinetEnvCfg):
         #     ])
 
         # self.sim.gpu_collision_stack_size = 4 * (2**30) - 1
-
-        self.scene.num_envs = 1024
         self.sim = SimulationCfg(
             dt=1 / 60,
             gravity=(0.0, 0.0, -9.81),

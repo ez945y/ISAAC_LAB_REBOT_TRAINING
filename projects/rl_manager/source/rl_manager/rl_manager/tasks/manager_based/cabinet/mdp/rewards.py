@@ -190,7 +190,7 @@ def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     drawer_pos = _get_drawer_pos(env, asset_cfg)
     is_graspable = align_grasp_around_handle(env, asset_cfg).float()
 
-    # Stage rewards (max drawer pos ~0.27)
+    # Stage rewards (max drawer pos ~0.25)
     open_medium = (drawer_pos > 0.15).float()
     open_hard = (drawer_pos > 0.22).float()
     result = (open_medium * 0.3 + open_hard * 0.7) * is_graspable
@@ -204,9 +204,9 @@ def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     return result
 
 def punish_drawers_not_open(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """懲罰當前目標抽屜沒開，完成後（>=0.27）不懲罰"""
+    """懲罰當前目標抽屜沒開，完成後（>=0.25）不懲罰"""
     drawer_pos = _get_drawer_pos(env, asset_cfg)
-    done_threshold = 0.27
+    done_threshold = 0.25
     # 線性衰減：pos=0 時懲罰=1，pos>=done_threshold 時懲罰=0
     return torch.clamp(1.0 - drawer_pos / done_threshold, min=0.0, max=1.0)
 
@@ -259,7 +259,7 @@ def punish_ee_yz_deviation(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) ->
     # 計算 y, z 軸的偏離量
     diff = ee_tcp_pos - handle_pos
     yz_deviation = torch.abs(diff[:, 1]) + torch.abs(diff[:, 2])
-    result = yz_deviation * drawer_vel * 10.0
+    result = yz_deviation * (0.2 + 10.0 * drawer_vel)
     
     # DEBUG: print env 0 every 100 steps
     if env.common_step_counter % 100 == 0:

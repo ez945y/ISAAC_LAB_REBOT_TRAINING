@@ -79,3 +79,17 @@ gym.register(
     },
     disable_env_checker=True,
 )
+
+
+gym.register(
+    id="Isaac-Cabinet-SOARM101-Cam-D-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.so101_camera_env_cfg:SOArm101CameraCabinetEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:SOArm101CameraPPORunnerCfg",
+        "rsl_rl_distillation_cfg_entry_point": (
+            f"{agents.__name__}.rsl_rl_distillation_cfg:SOArm101DistillationRunnerRecurrentCfg"
+        ),
+    },
+)

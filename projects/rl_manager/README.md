@@ -26,15 +26,19 @@ cd projects/rl_manager
 
 ## Usage
 
-### Training
+### Training with PPO
 ```bash
-# Basic training
 python scripts/rsl_rl/train.py --task=Isaac-Waypoint-Navigation-v0
+```
+
+### Training with distillation
+```bash
+python scripts/rsl_rl/train.py --task Isaac-Cabinet-SOARM101-Cam-D-v0 --load_run <teacher_run_name> --checkpoint <teacher_model_path>
 ```
 
 ### Play Trained Policy
 ```bash
-python scripts/rsl_rl/play.py --task=Isaac-Waypoint-Navigation--Play-v0
+python scripts/rsl_rl/play.py --task=Isaac-Waypoint-Navigation-v0
 ```
 
 ### Testing
@@ -62,18 +66,20 @@ rl_manager/
 │   └── list_envs.py          # List available environments
 │
 └── source/rl_manager/rl_manager/
-    └── tasks/manager_based/navigation/
-        ├── __init__.py           # Task registration
-        ├── navigation_env_cfg.py # Environment configuration
-        ├── mdp/
-        │   ├── __init__.py
-        │   ├── rewards.py        # Custom reward functions
-        │   └── command.py        # Waypoint command generator
-        ├── assets/
-        │   ├── navigation.py     # Robot & scene assets config
-        │   └── wall.usd          # Wall obstacle model
-        └── agents/
-            └── rsl_rl_ppo_cfg.py # PPO training hyperparameters
+    └── tasks/manager_based
+        ├── navigation/
+            ├── __init__.py           # Task registration
+            ├── navigation_env_cfg.py # Environment configuration
+            ├── mdp/
+            │   ├── __init__.py
+            │   ├── rewards.py        # Custom reward functions
+            │   └── command.py        # Waypoint command generator
+            ├── assets/
+            │   ├── navigation.py     # Robot & scene assets config
+            │   └── wall.usd          # Wall obstacle model
+            └── agents/
+                └── rsl_rl_ppo_cfg.py # PPO training hyperparameters
+        
 ```
 
 ## Configuration

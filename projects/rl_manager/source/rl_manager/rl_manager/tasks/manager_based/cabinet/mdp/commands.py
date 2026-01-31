@@ -105,13 +105,15 @@ class DrawerTaskCommand(CommandTerm):
     
     def _sample_new_target(self, env_ids: torch.Tensor):
         """隨機抽新目標"""
-        self.current_target[env_ids] = torch.randint(0, 2, (len(env_ids),), device=self.device, dtype=torch.long)
+        # self.current_target[env_ids] = torch.randint(0, 2, (len(env_ids),), device=self.device, dtype=torch.long)
+        self.current_target[env_ids] = 1
         self._update_indices(env_ids)
     
     def _resample_command(self, env_ids: Sequence[int]) -> None:
         """Episode 重置時調用"""
         env_ids = torch.as_tensor(env_ids, device=self.device)
-        self.current_target[env_ids] = torch.randint(0, 2, (len(env_ids),), device=self.device, dtype=torch.long)
+        # self.current_target[env_ids] = torch.randint(0, 2, (len(env_ids),), device=self.device, dtype=torch.long)
+        self.current_target[env_ids] = 1
         self.completed_count[env_ids] = 0
         self.just_completed[env_ids] = False
         self._update_indices(env_ids)
@@ -124,6 +126,6 @@ class DrawerTaskCommand(CommandTerm):
 class DrawerTaskCommandCfg(CommandTermCfg):
     class_type: type[CommandTerm] = DrawerTaskCommand
     cabinet_cfg: SceneEntityCfg = SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])
-    done_threshold: float = 0.27
+    done_threshold: float = 0.25
     resampling_time_range: tuple[float, float] = (1e9, 1e9)
     debug_vis: bool = False

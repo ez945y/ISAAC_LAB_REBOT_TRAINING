@@ -150,7 +150,7 @@ class CommandsCfg:
             "cabinet",
             joint_names=["drawer_bottom_joint", "drawer_top_joint"]
         ),
-        done_threshold=0.27,
+        done_threshold=0.25,
     )
 
 
@@ -169,28 +169,35 @@ class ObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
-
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        cabinet_joint_pos = ObsTerm(
-            func=mdp.joint_pos_rel,
-            params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_top_joint", "drawer_bottom_joint"])},
-        )
-        cabinet_joint_vel = ObsTerm(
-            func=mdp.joint_vel_rel,
-            params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_top_joint", "drawer_bottom_joint"])},
-        )
-        rel_ee_drawer_distance = ObsTerm(func=mdp.rel_ee_drawer_distance)
         drawer_target = ObsTerm(func=mdp.current_drawer_target)
-
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = True
 
+    @configclass
+    class ExtraCfg(ObsGroup):
+        """Observations for policy group."""
+        cabinet_joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel,
+            params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])},
+        )
+        cabinet_joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])},
+        )
+        rel_ee_drawer_distance = ObsTerm(func=mdp.rel_ee_drawer_distance)
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+
     # observation groups
     policy: PolicyCfg = PolicyCfg()
+    extra: ExtraCfg = ExtraCfg()
 
 
 @configclass
@@ -281,9 +288,9 @@ class RewardsCfg:
 
 
     # dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)
-    # dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1e-6)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1e-7)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-0.0001)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4)
     
     punish_drawers_not_open = RewTerm(
         func=mdp.punish_drawers_not_open,
@@ -325,7 +332,7 @@ class CabinetEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the cabinet environment."""
 
     # Scene settings
-    scene: CabinetSceneCfg = CabinetSceneCfg(num_envs=4096, env_spacing=2.0)
+    scene: CabinetSceneCfg = CabinetSceneCfg(num_envs=2048, env_spacing=2.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -338,12 +345,13 @@ class CabinetEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization."""
         # general settings
-        self.decimation = 4
+        self.scene.num_envs = 2048
+        self.decimation = 2
         self.episode_length_s = 30.0
         self.viewer.eye = (-2.0, 2.0, 2.0)
         self.viewer.lookat = (0.8, 0.0, 0.5)
         # simulation settings
-        self.sim.dt = 1 / 60  # 60Hz
+        self.sim.dt = 1 / 60
         self.sim.render_interval = self.decimation
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.bounce_threshold_velocity = 0.01

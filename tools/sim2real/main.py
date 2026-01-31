@@ -24,8 +24,8 @@ from ik_solver import SO101OfficialIKSolver
 class IsaacDeployConfig:
     robot: RobotConfig
     pretrained: str = "exported/policy.pt"
-    fps: int = 15 # 頻率同步：物理 60Hz / decimation 4 = 15Hz
-    action_scale: float = 0.05 
+    fps: int = 30 # 頻率同步：物理 60Hz / decimation 2 = 15Hz
+    action_scale: float = 0.5 
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     dummy_vision: bool = False # 如果相機連不上的話，設為 True 使用零矩陣測試邏輯
     camera_warmup: float = 2.0 # 增加相機初使化超時時間
@@ -122,8 +122,8 @@ def deploy(cfg: IsaacDeployConfig):
             target_gripper = torch.rad2deg(action_ee[0, 6]).item()
 
             # --- 安全限幅與平滑化 ---
-            # 1. 增量限制 (Delta Clamp): 每步最大允許移動 6.0 度
-            max_delta_deg = 10.0
+            # 1. 增量限制 (Delta Clamp): 每步最大允許移動 6.0 度 1秒最多180度
+            max_delta_deg = 6.0
             joint_delta = target_arm_pos - current_pos_deg[0, :5]
             joint_delta = torch.clamp(joint_delta, min=-max_delta_deg, max=max_delta_deg)
             target_arm_pos = current_pos_deg[0, :5] + joint_delta
@@ -138,9 +138,9 @@ def deploy(cfg: IsaacDeployConfig):
             diff_list = [round((target_arm_pos[i] - current_pos_deg[0, i]).item(), 3) for i in range(5)]
             
             if False: # DRY RUN
-                print(f"\r[{time.strftime('%H:%M:%S')}] [DRY RUN] Current: {current_list} | Target: {target_list} | Delta: {diff_list} | Grip: {target_gripper:.2f} deg", flush=True)
+                print(f"\r[{time.strftime('%H:%M:%S')}] [DRY RUN] Current: {current_list} | Target: {target_list} | Delta: {diff_list} | Grip: {target_gripper:.2f} deg", end="", flush=True)
             else:
-                print(f"\r[{time.strftime('%H:%M:%S')}] Current: {current_list} | Target: {target_list} | Delta: {diff_list} | Grip: {target_gripper:.2f} deg", flush=True)
+                print(f"\r[{time.strftime('%H:%M:%S')}] Current: {current_list} | Target: {target_list} | Delta: {diff_list} | Grip: {target_gripper:.2f} deg", end="", flush=True)
                 action_dict = {f"{n}.pos": target_arm_pos[i].item() for i, n in enumerate(arm_names)}
                 action_dict["gripper.pos"] = target_gripper
                 robot.send_action(action_dict)

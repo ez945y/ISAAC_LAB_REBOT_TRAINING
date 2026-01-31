@@ -152,19 +152,7 @@ def front_camera_embedding(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
     return embeddings.clone().detach()
 
 
-def wrist_camera_pretrained_embedding(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
-    camera = env.scene[asset_cfg.name]
-    
-    # Get RGB from camera
-    rgb = camera.data.output["rgb"][..., :3]  # (num_envs, h, w, 3)
-    
-    # Use pretrained feature extractor to get embedding
-    embeddings = env.feature_extractor.step(rgb)
-    
-    return embeddings
-
-
-def front_camera_pretrained_embedding(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
+def camera_pretrained_embedding(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
     camera = env.scene[asset_cfg.name]
     
     # Get RGB from camera
