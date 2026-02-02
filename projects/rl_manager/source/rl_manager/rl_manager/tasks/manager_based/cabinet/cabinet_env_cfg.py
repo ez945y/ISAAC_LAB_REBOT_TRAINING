@@ -245,15 +245,15 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # 1. Approach the handle
-    approach_ee_handle = RewTerm(func=mdp.approach_ee_handle, weight=1.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"]),"threshold": 0.05})
+    approach_ee_handle = RewTerm(func=mdp.approach_ee_handle, weight=0.5, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"]),"threshold": 0.05})
     align_ee_handle = RewTerm(func=mdp.align_ee_handle, weight=1.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])})
 
     # 2. Grasp the handle
-    approach_gripper_handle = RewTerm(func=mdp.approach_gripper_handle, weight=5.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"]), "offset": MISSING})
+    approach_gripper_handle = RewTerm(func=mdp.approach_gripper_handle, weight=3.0, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"]), "offset": MISSING})
     align_grasp_around_handle = RewTerm(func=mdp.align_grasp_around_handle, weight=0.5, params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])})
     grasp_handle = RewTerm(
         func=mdp.grasp_handle,
-        weight=1.0,
+        weight=2.0,
         params={
             "asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"]),
             "threshold": 0.03,
@@ -265,12 +265,12 @@ class RewardsCfg:
     # 3. Open the drawer
     open_drawer_bonus = RewTerm(
         func=mdp.open_drawer_bonus,
-        weight=2.0,
+        weight=5.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])},
     )
     multi_stage_open_drawer = RewTerm(
         func=mdp.multi_stage_open_drawer,
-        weight=2.0,
+        weight=1.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])},
     )
 
@@ -300,7 +300,7 @@ class RewardsCfg:
 
     punish_open_without_grasp = RewTerm(
         func=mdp.punish_open_without_grasp,
-        weight=-2.0,
+        weight=-20.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
     )
 
@@ -320,6 +320,7 @@ class TerminationsCfg:
     """Termination terms for the MDP."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    task_success = DoneTerm(func=mdp.task_completed_termination)
 
 
 ##
@@ -347,7 +348,7 @@ class CabinetEnvCfg(ManagerBasedRLEnvCfg):
         # general settings
         self.scene.num_envs = 2048
         self.decimation = 2
-        self.episode_length_s = 30.0
+        self.episode_length_s = 3.0
         self.viewer.eye = (-2.0, 2.0, 2.0)
         self.viewer.lookat = (0.8, 0.0, 0.5)
         # simulation settings

@@ -12,7 +12,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 class SOArm101CabinetPPORunnerRecurrentCfg(RslRlOnPolicyRunnerCfg):
     """PPO runner configuration for SO-ARM-101 opening a cabinet drawer using IK control."""
     
-    num_steps_per_env = 64
+    num_steps_per_env = 24
     max_iterations = 1000
     save_interval = 50
     experiment_name = "so_arm_101_open_drawer"
@@ -86,7 +86,7 @@ class SOArm101CabinetPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 class SOArm101CameraPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     """PPO runner configuration for SO-ARM-101 opening a cabinet drawer using IK control."""
     
-    num_steps_per_env = 32
+    num_steps_per_env = 24
     max_iterations = 300
     save_interval = 50
     experiment_name = "so_arm_101_open_drawer"

@@ -437,3 +437,8 @@ class image_features(ManagerTermBase):
 
         # return the model, preprocess and inference functions
         return {"model": _load_model, "inference": _inference}
+
+
+def task_completed_termination(env: ManagerBasedRLEnv) -> torch.Tensor:
+    cmd = env.command_manager.get_term("drawer_task")
+    return cmd.task_completed

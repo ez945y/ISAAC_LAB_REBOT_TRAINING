@@ -16,10 +16,6 @@ from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 
 from rl_manager.tasks.manager_based.cabinet import mdp
-from rl_manager.tasks.manager_based.cabinet.config.so_arm_101.mobilenet_feature_extractor import (
-    MobileNetFeatureExtractor,
-    MobileNetFeatureExtractorCfg,
-)
 from .so101_rel_env_cfg import SOArm101CabinetEnvCfg
 
 @configclass
@@ -56,16 +52,10 @@ class SOArm101CameraCabinetEnvCfg(SOArm101CabinetEnvCfg):
     - Uses ImageNet pretrained weights, no CNN training needed
     """
 
-    feature_extractor_cfg = MobileNetFeatureExtractorCfg(
-        freeze_backbone=True,
-        embedding_dim=128,
-        use_fp16=True
-    )
-
     def __post_init__(self):
         super().__post_init__()
         
-        self.scene.num_envs = 256
+        self.scene.num_envs = 512
         # self.scene.wrist_camera = TiledCameraCfg(
         #     prim_path="{ENV_REGEX_NS}/Robot/gripper_link/self_view_camera",
         #     update_period=1/30,  # 30Hz camera update

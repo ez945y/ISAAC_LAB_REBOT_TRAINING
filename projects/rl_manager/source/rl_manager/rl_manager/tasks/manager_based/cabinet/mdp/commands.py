@@ -44,6 +44,7 @@ class DrawerTaskCommand(CommandTerm):
         # 剛完成的標記 (用於稀疏獎勵)
         self.just_completed = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         # 完成計數
+        self.task_completed = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.completed_count = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         
         self._resample_command(torch.arange(self.num_envs, device=self.device))
@@ -60,8 +61,7 @@ class DrawerTaskCommand(CommandTerm):
         self.current_frame_idx[env_ids] = self.current_target[env_ids].clone()
     
     def _update_command(self) -> None:
-        # Reset just_completed flag
-        self.just_completed.fill_(False)
+        # self.just_completed.fill_(False)
         
         cabinet = self._env.scene[self.cfg.cabinet_cfg.name]
         joint_pos = cabinet.data.joint_pos
@@ -72,18 +72,19 @@ class DrawerTaskCommand(CommandTerm):
         
         # 檢查哪些環境完成了當前任務
         completed_mask = current_drawer_pos >= self.cfg.done_threshold
-        completed_ids = torch.where(completed_mask)[0]
+        self.task_completed |= completed_mask
+        self.just_completed = completed_mask.clone()
         
-        if len(completed_ids) > 0:
-            # 標記剛完成
-            self.just_completed[completed_ids] = True
-            self.completed_count[completed_ids] += 1
+        # if len(completed_ids) > 0:
+        #     # 標記剛完成
+        #     self.just_completed[completed_ids] = True
+        #     self.completed_count[completed_ids] += 1
             
-            # 重置完成的抽屜回 0
-            self._reset_drawer(completed_ids)
+        #     # 重置完成的抽屜回 0
+        #     self._reset_drawer(completed_ids)
             
-            # 抽新任務
-            self._sample_new_target(completed_ids)
+        #     # 抽新任務
+        #     self._sample_new_target(completed_ids)
     
     def _reset_drawer(self, env_ids: torch.Tensor):
         """重置指定環境中已完成的抽屜"""
@@ -116,6 +117,7 @@ class DrawerTaskCommand(CommandTerm):
         self.current_target[env_ids] = 1
         self.completed_count[env_ids] = 0
         self.just_completed[env_ids] = False
+        self.task_completed[env_ids] = False
         self._update_indices(env_ids)
 
     def _update_metrics(self) -> None:
