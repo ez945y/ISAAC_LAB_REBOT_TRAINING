@@ -191,9 +191,10 @@ def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     is_graspable = align_grasp_around_handle(env, asset_cfg).float()
 
     # Stage rewards (max drawer pos ~0.25)
+    open_easy = (drawer_pos > 0.001).float()
     open_medium = (drawer_pos > 0.15).float()
     open_hard = (drawer_pos > 0.22).float()
-    result = (open_medium * 0.3 + open_hard * 0.7) * is_graspable
+    result = (open_easy * 0.5 + open_medium * 0.3 + open_hard * 0.7) * is_graspable
     
     # DEBUG: print env 0 every 100 steps
     if env.common_step_counter % 100 == 0:
@@ -204,11 +205,15 @@ def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     return result
 
 def punish_drawers_not_open(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """懲罰當前目標抽屜沒開，完成後（>=0.25）不懲罰"""
+    """懲罰當前目標抽屜沒開，使用指數衰減：一開始懲罰掉得很快"""
     drawer_pos = _get_drawer_pos(env, asset_cfg)
     done_threshold = 0.25
-    # 線性衰減：pos=0 時懲罰=1，pos>=done_threshold 時懲罰=0
-    return torch.clamp(1.0 - drawer_pos / done_threshold, min=0.0, max=1.0)
+    
+    # alpha 越大，一開始掉得越快
+    alpha = 3.0 
+    relative_pos = drawer_pos / done_threshold
+    penalty = torch.exp(-alpha * relative_pos)
+    return torch.where(drawer_pos >= done_threshold, torch.zeros_like(penalty), penalty)
 
 def punish_open_without_grasp(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """懲罰用勾的方式開抽屜：抽屜 > 0.2 但沒有正確抓握時給懲罰"""

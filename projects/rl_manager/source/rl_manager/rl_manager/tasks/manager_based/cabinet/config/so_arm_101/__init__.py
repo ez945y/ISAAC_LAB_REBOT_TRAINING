@@ -62,7 +62,7 @@ gym.register(
 
 gym.register(
     id="Isaac-Cabinet-SOARM101-Cam-v0",
-    entry_point=f"{__name__}.so101_camera_env_cfg:SOArm101CameraCabinetEnv",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": f"{__name__}.so101_camera_env_cfg:SOArm101CameraCabinetEnvCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:SOArm101CameraPPORunnerCfg",
@@ -72,7 +72,7 @@ gym.register(
 
 gym.register(
     id="Isaac-Cabinet-SOARM101-Cam-Play-v0",
-    entry_point=f"{__name__}.so101_camera_env_cfg:SOArm101CameraCabinetEnv",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": f"{__name__}.so101_camera_env_cfg:SOArm101CameraCabinetEnvCfg_PLAY",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:SOArm101CameraPPORunnerCfg",
@@ -82,7 +82,7 @@ gym.register(
 
 
 gym.register(
-    id="Isaac-Cabinet-SOARM101-Cam-D-v0",
+    id="Isaac-Cabinet-SOARM101-Dis-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={

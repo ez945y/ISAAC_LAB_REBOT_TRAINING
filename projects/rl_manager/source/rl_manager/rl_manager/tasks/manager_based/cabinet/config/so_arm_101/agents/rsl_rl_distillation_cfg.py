@@ -15,13 +15,13 @@ from isaaclab_rl.rsl_rl import (
 
 @configclass
 class SOArm101DistillationRunnerCfg(RslRlDistillationRunnerCfg):
-    num_steps_per_env = 64
+    num_steps_per_env = 32
     max_iterations = 300
     save_interval = 50
-    experiment_name = "so_arm_101_open_drawer_distillation"
-    obs_groups = {"policy": ["policy"], "teacher": ["policy", "extra"]}
+    experiment_name = "so_arm_101_open_drawer"
+    obs_groups = {"policy": ["policy", "camera"], "teacher": ["policy", "extra"]}
     policy = RslRlDistillationStudentTeacherCfg(
-        init_noise_std=1.0,
+        init_noise_std=0.1,
         noise_std_type = "log",
         student_obs_normalization=True,
         teacher_obs_normalization=True,
@@ -37,21 +37,21 @@ class SOArm101DistillationRunnerCfg(RslRlDistillationRunnerCfg):
 
 @configclass
 class SOArm101DistillationRunnerRecurrentCfg(RslRlDistillationRunnerCfg):
-    num_steps_per_env = 64
+    num_steps_per_env = 32
     max_iterations = 300
     save_interval = 50
-    experiment_name = "so_arm_101_open_drawer_distillation"
-    obs_groups = {"policy": ["policy"], "critic": ["policy"], "teacher": ["policy", "extra"]}
+    experiment_name = "so_arm_101_open_drawer"
+    obs_groups = {"policy": ["policy", "camera"], "critic": ["policy", "camera"], "teacher": ["policy", "extra"]}
     policy = RslRlDistillationStudentTeacherRecurrentCfg(
         rnn_type="gru",
         rnn_hidden_dim=256,
         rnn_num_layers=1,
-        init_noise_std=1.0,
+        init_noise_std=0.5,
         noise_std_type = "log",
         student_obs_normalization=True,
         teacher_obs_normalization=True,
         student_hidden_dims=[256, 128, 64],
-        teacher_hidden_dims=[256, 128, 64],
+        teacher_hidden_dims=[512, 256, 128],
         activation="elu",
     )
     algorithm = RslRlDistillationAlgorithmCfg(

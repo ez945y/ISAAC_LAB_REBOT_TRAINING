@@ -33,7 +33,7 @@ python scripts/rsl_rl/train.py --task=Isaac-Waypoint-Navigation-v0
 
 ### Training with distillation
 ```bash
-python scripts/rsl_rl/train.py --task Isaac-Cabinet-SOARM101-Cam-D-v0 --load_run <teacher_run_name> --checkpoint <teacher_model_path>
+python scripts/rsl_rl/train.py --task Isaac-Cabinet-SOARM101-Cam-D-v0 --checkpoint /home/rst_spark/ISAAC_LAB_REBOT_TRAINING/projects/rl_manager/logs/rsl_rl/so_arm_101_camera_open_drawer/2026-01-31_21-06-55/model_950.pt
 ```
 
 ### Play Trained Policy

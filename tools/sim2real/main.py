@@ -17,7 +17,8 @@ from lerobot.utils.robot_utils import precise_sleep
 from lerobot.utils.utils import init_logging
 
 # 視覺提取器
-from mobilenet_extractor import MobileNetFeatureExtractor, MobileNetFeatureExtractorCfg
+# from mobilenet_extractor import MobileNetFeatureExtractor, MobileNetFeatureExtractorCfg
+from extractor import FeatureExtractor, FeatureExtractorConfig
 from ik_solver import SO101OfficialIKSolver
 
 @dataclass
@@ -57,16 +58,17 @@ def deploy(cfg: IsaacDeployConfig):
     policy = torch.jit.load(cfg.pretrained, map_location=device)
     policy.eval()
 
-    img_cfg = MobileNetFeatureExtractorCfg(embedding_dim=128, use_fp16=(device == "cuda"))
-    vision_extractor = MobileNetFeatureExtractor(img_cfg, device=device)
+    # img_cfg = MobileNetFeatureExtractorCfg(embedding_dim=128, use_fp16=(device == "cuda"))
+    # vision_extractor = MobileNetFeatureExtractor(img_cfg, device=device)
 
-    # 狀態初始化 (276維邏輯)
-    last_action = torch.zeros((1, 7), device=device) # 7維
-    last_action[:, 3] = 1.0  # 四元數 w=1.0 (如果模型是基於絕對位姿四元數訓練)
-    
-    drawer_target = torch.zeros((1, 1), device=device) # 1維
-    
-    # 定義關節名稱 (包含夾爪以達到 276 維)
+    image_cfg = FeatureExtractorConfig(
+        model_name="theia-tiny-patch16-224-cddsv",
+        device="cpu",
+    )
+    vision_extractor = FeatureExtractor(image_cfg)
+
+    last_action = torch.zeros((1, 7), device=device) # 6+1維
+    drawer_target = torch.ones((1, 1), device=device) # 1維
     arm_names = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll']
     joint_names = arm_names + ['gripper']
 
@@ -94,19 +96,25 @@ def deploy(cfg: IsaacDeployConfig):
 
             # --- 影像讀取與處理 ---
             if not cfg.dummy_vision:
-                wrist_frame = robot.cameras["wrist"].async_read() 
+                top_frame = robot.cameras["top"].async_read() 
                 front_frame = robot.cameras["front"].async_read() 
-                wrist_input = torch.from_numpy(wrist_frame).unsqueeze(0).to(device)
+                top_input = torch.from_numpy(top_frame).unsqueeze(0).to(device)
                 front_input = torch.from_numpy(front_frame).unsqueeze(0).to(device)
             else:
-                wrist_input = torch.zeros((1, 480, 640, 3), device=device)
+                top_input = torch.zeros((1, 480, 640, 3), device=device)
                 front_input = torch.zeros((1, 480, 640, 3), device=device)
 
-            wrist_emb = vision_extractor.step(wrist_input)
-            front_emb = vision_extractor.step(front_input)
+            front_emb = vision_extractor.step(front_input)  # (1, emb_dim)
+            top_emb = vision_extractor.step(top_input)  # (1, emb_dim)
 
-            # 最終觀測向量: 18 + 256 = 274
-            obs_vector = torch.cat([numeric_obs, wrist_emb, front_emb], dim=-1)
+            obs_vector = torch.cat([
+                current_pos_rad, 
+                current_vel_rad, 
+                drawer_target,
+                last_action,
+                front_emb,
+                top_emb
+            ], dim=-1)
 
             # 推理
             with torch.no_grad():
@@ -137,7 +145,7 @@ def deploy(cfg: IsaacDeployConfig):
             current_list = [round(x.item(), 3) for x in current_pos_deg[0, :5]]
             diff_list = [round((target_arm_pos[i] - current_pos_deg[0, i]).item(), 3) for i in range(5)]
             
-            if False: # DRY RUN
+            if True: # DRY RUN
                 print(f"\r[{time.strftime('%H:%M:%S')}] [DRY RUN] Current: {current_list} | Target: {target_list} | Delta: {diff_list} | Grip: {target_gripper:.2f} deg", end="", flush=True)
             else:
                 print(f"\r[{time.strftime('%H:%M:%S')}] Current: {current_list} | Target: {target_list} | Delta: {diff_list} | Grip: {target_gripper:.2f} deg", end="", flush=True)

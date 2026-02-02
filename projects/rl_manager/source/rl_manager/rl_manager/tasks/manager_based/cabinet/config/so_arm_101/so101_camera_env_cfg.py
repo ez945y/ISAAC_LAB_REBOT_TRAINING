@@ -10,20 +10,39 @@ and replaces them with camera observations for visual-based policy learning.
 
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 
 from rl_manager.tasks.manager_based.cabinet import mdp
-# from rl_manager.tasks.manager_based.cabinet.config.so_arm_101.pretrained_feature_extractor import (
-#     PretrainedFeatureExtractor,
-#     PretrainedFeatureExtractorCfg,
-# )
 from rl_manager.tasks.manager_based.cabinet.config.so_arm_101.mobilenet_feature_extractor import (
     MobileNetFeatureExtractor,
     MobileNetFeatureExtractorCfg,
 )
 from .so101_rel_env_cfg import SOArm101CabinetEnvCfg
+
+@configclass
+class CameraCfg(ObsGroup):
+    """Observations for policy group."""
+    front_image = ObsTerm(
+        func=mdp.image_features,
+        params={
+            "sensor_cfg": SceneEntityCfg("front_camera"),
+            "data_type": "rgb",
+            "model_name": "theia-tiny-patch16-224-cddsv",
+            "model_device": "cuda:0",
+        },
+    )
+    top_image = ObsTerm(
+        func=mdp.image_features,
+        params={
+            "sensor_cfg": SceneEntityCfg("top_camera"),
+            "data_type": "rgb",
+            "model_name": "theia-tiny-patch16-224-cddsv",
+            "model_device": "cuda:0",
+        },
+    )
 
 
 @configclass
@@ -46,7 +65,7 @@ class SOArm101CameraCabinetEnvCfg(SOArm101CabinetEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         
-        self.scene.num_envs = 512
+        self.scene.num_envs = 256
         # self.scene.wrist_camera = TiledCameraCfg(
         #     prim_path="{ENV_REGEX_NS}/Robot/gripper_link/self_view_camera",
         #     update_period=1/30,  # 30Hz camera update
@@ -73,35 +92,7 @@ class SOArm101CameraCabinetEnvCfg(SOArm101CabinetEnvCfg):
             data_types=["rgb"],
             spawn=None,
         )
-        
-        # Add camera CNN embedding observations using pretrained ResNet (128 dim each)
-        self.observations.policy.front_embedding = ObsTerm(
-            func=mdp.camera_pretrained_embedding,
-            params={"asset_cfg": SceneEntityCfg("front_camera")},
-        )
-        self.observations.policy.top_embedding = ObsTerm(
-            func=mdp.camera_pretrained_embedding,
-            params={"asset_cfg": SceneEntityCfg("top_camera")},
-        )
-
-
-class SOArm101CameraCabinetEnv(ManagerBasedRLEnv):
-    """SO-ARM-101 Cabinet Environment with pretrained ResNet-based camera observations."""
-    
-    cfg: SOArm101CameraCabinetEnvCfg
-
-    def load_managers(self):
-        """Load managers with pretrained feature extractor initialized first.
-        
-        The feature extractor must be initialized before the observation manager
-        because observation functions need to access it to compute embedding shapes.
-        """
-        self.feature_extractor = MobileNetFeatureExtractor(
-            cfg=self.cfg.feature_extractor_cfg, 
-            device=self.device
-        )
-        
-        super().load_managers()
+        self.observations.camera = CameraCfg()
 
 
 @configclass
