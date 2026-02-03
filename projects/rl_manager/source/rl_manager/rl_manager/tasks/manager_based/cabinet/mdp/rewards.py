@@ -167,7 +167,7 @@ def open_drawer_bonus(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torc
     cmd = _get_drawer_command(env)
     drawer_pos = _get_drawer_pos(env, asset_cfg)
     is_graspable = align_grasp_around_handle(env, asset_cfg).float()
-    result = (is_graspable + 1.0) * drawer_pos
+    result = (is_graspable * 1.5 + 1.0) * drawer_pos
     
     # DEBUG: print env 0 every 100 steps
     if env.common_step_counter % 100 == 0:
@@ -181,7 +181,7 @@ def open_drawer_bonus(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torc
 def drawer_completion_bonus(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """稀疏獎勵：完成一個抽屜時給大獎勵"""
     cmd = _get_drawer_command(env)
-    return cmd.just_completed.float()
+    return cmd.just_completed.float() * 100.0
 
 
 def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
@@ -194,7 +194,7 @@ def multi_stage_open_drawer(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -
     open_easy = (drawer_pos > 0.001).float()
     open_medium = (drawer_pos > 0.12).float()
     open_hard = (drawer_pos > 0.20).float()
-    result = open_easy * 0.5 + (open_medium * 0.3 + open_hard * 0.3) * is_graspable
+    result = open_easy * 0.2 + (open_medium * 0.3 + open_hard * 0.3) * is_graspable
     
     # DEBUG: print env 0 every 100 steps
     if env.common_step_counter % 100 == 0:

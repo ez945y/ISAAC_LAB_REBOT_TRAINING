@@ -90,15 +90,15 @@ class SOArm101CameraPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     max_iterations = 300
     save_interval = 50
     experiment_name = "so_arm_101_open_drawer"
-    obs_groups = {"policy": ["policy", "extra"], "critic": ["policy", "extra"]}
+    obs_groups = {"policy": ["policy", "camera"], "critic": ["policy", "camera"]}
     
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,  # Lower initial noise for IK control
         noise_std_type="log",  # Ensures std is always positive via exp()
         actor_obs_normalization=True,  # Normalize observations for smaller robot
         critic_obs_normalization=True,
-        actor_hidden_dims=[256, 128, 64],
-        critic_hidden_dims=[256, 128, 64],
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
         activation="elu",
     )
     

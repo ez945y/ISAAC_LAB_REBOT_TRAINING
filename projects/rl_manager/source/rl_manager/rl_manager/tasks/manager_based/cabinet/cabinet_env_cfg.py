@@ -265,7 +265,7 @@ class RewardsCfg:
     # 3. Open the drawer
     open_drawer_bonus = RewTerm(
         func=mdp.open_drawer_bonus,
-        weight=5.0,
+        weight=10.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])},
     )
     multi_stage_open_drawer = RewTerm(
@@ -276,13 +276,13 @@ class RewardsCfg:
 
     drawer_completion_bonus = RewTerm(
         func=mdp.drawer_completion_bonus,
-        weight=50.0,
+        weight=0.8,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
     )
 
     reward_drawer_movement = RewTerm(
         func=mdp.reward_drawer_movement,
-        weight=20.0,
+        weight=40.0,
         params={"asset_cfg": SceneEntityCfg("cabinet", joint_names=["drawer_bottom_joint", "drawer_top_joint"])}
     )
 
