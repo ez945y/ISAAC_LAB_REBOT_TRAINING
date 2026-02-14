@@ -36,7 +36,7 @@ import torch
 import numpy as np
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import AssetBaseCfg, ArticulationCfg
+from isaaclab.assets import AssetBaseCfg, ArticulationCfg, RigidObjectCfg
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.sensors import TiledCameraCfg
@@ -78,6 +78,10 @@ USD_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "tools", "controll_scripts", "so_arm_101", "SO-ARM101v2.usd",
 )
+OBJECT_USD_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "tools", "exp", "test", "test3.usd",
+)
 
 # 5 個手臂關節 + 1 個夾爪 (與 Isaac Sim USD 中的關節名稱對應)
 ARM_JOINT_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
@@ -92,6 +96,15 @@ class ReplaySceneCfg(InteractiveSceneCfg):
     dome_light = AssetBaseCfg(
         prim_path="/World/Light",
         spawn=sim_utils.DomeLightCfg(intensity=3000.0),
+    )
+    # ── 測試物件（整體載入，保留原始材質與座標） ──
+    test_object = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/test_object",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=OBJECT_USD_PATH,
+            scale=(0.001, 0.001, 0.001),
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.12, 0.23, 0.0), rot=(0.707, 0.0, 0.0, 0.707)),
     )
     robot = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/robot",
@@ -150,7 +163,6 @@ def main():
     # 初始化模擬
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
     sim = sim_utils.SimulationContext(sim_cfg)
-    sim.set_camera_view([0.4, 0.4, 0.4], [0.0, 0.0, 0.15])
     sim_dt = sim.get_physics_dt()
 
     # 建立場景
@@ -161,6 +173,16 @@ def main():
     sim.reset()
     robot = scene["robot"]
     robot.update(dt=sim_dt)
+
+    # 將 viewport 設為 USD 中的 top_cam 攝影機
+    try:
+        import omni.kit.viewport.utility as vp_utils
+        viewport = vp_utils.get_active_viewport()
+        viewport.set_active_camera("/World/envs/env_0/robot/top_cam")
+        print("[INFO] Viewport 已切換至 top_cam")
+    except Exception as e:
+        print(f"[WARN] 無法設定 viewport camera: {e}")
+        sim.set_camera_view([0.6, 0.0, 0.9], [0.0, 0.0, 0.08])
 
     # 放寬手臂關節限制，避免資料集動作被 clamp
     arm_joint_ids, _ = robot.find_joints(ARM_JOINT_NAMES)
