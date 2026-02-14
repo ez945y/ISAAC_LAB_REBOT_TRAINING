@@ -1,118 +1,74 @@
-# SO-ARM Mimic Extension
+# Imitation Learning — SO-ARM Mimic
 
-This extension provides environment configurations and tools for the SO-ARM 101 robot within the Isaac Lab Mimic framework.
+SO-ARM-101 cube pick-and-place via **imitation learning** using Isaac Lab Mimic framework.
 
-## Installation
+## Task
 
-Follow the [Isaac Lab Installation Guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
+| Task ID | Robot | Description |
+|---------|-------|-------------|
+| `Isaac-PickPlace-SOArm-Abs-Mimic-v0` | SO-ARM-101 | Absolute joint control |
+| `Isaac-PickPlace-SOArm-Rel-Mimic-v0` | SO-ARM-101 | Relative joint control |
+
+## Pipeline
+
+```
+1. Record demos  →  2. Merge  →  3. Annotate  →  4. Generate augmented data  →  5. Train
+        ↓                                                                          ↓
+   (Leader Arm                                                              (RoboMimic /
+    or Keyboard)                                                             LeRobot)
+```
+
+## Usage
 
 ```bash
 cd projects/so_arm_mimic
 ```
 
-## Directory Structure
-
-```
-so_arm_mimic/
-├── datasets/                   # Demonstration datasets
-├── scripts/                    # Utility scripts
-│   ├── tools/                      # Utility tools
-│   │   ├── record_demos.py         # Data recording
-│   │   ├── replay_demos.py         # Data replay
-│   │   ├── regenerate_demos.py     # Data regeneration (visual)
-│   │   ├── convert_hdf5_to_lerobot.py # Format conversion
-│   │   └── view_port.py            # Camera utility
-│   ├── robomimic/              # RoboMimic tools
-│   ├── isaaclab_mimic/         # Isaac Lab Mimic tools
-├── source/                     # Source package
-│   ├── envs/                   # Environment definitions
-└── setup.py
-```
-
-## Usage
-
-### 1. Recording Demonstrations
-
-Record new demonstrations using a teleop device (e.g. Leader Arm).
+### 1. Record Demonstrations
 
 ```bash
 python scripts/tools/record_demos.py \
     --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
     --teleop_device leader_arm \
-    --num_demos 10 \
-    --enable_cameras
+    --num_demos 10 --enable_cameras
 ```
 
-```bash
-python scripts/tools/record_demos.py \
-    --task Isaac-PickPlace-SOArm-Rel-Mimic-v0 \
-    --teleop_device keyboard \
-    --num_demos 20 \
-    --enable_cameras
-```
-
-python scripts/tools/record_demos.py \
-    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0\
-    --teleop_device leader_arm \
-    --num_demos 10 \
-    --enable_cameras
-    
-### 2. Replaying Demonstrations
-
-Replay recorded HDF5 demonstrations to verify correctness.
+### 2. Replay Demonstrations
 
 ```bash
 python scripts/tools/replay_demos.py \
-    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0
-    --dataset_file ./datasets/so_arm_demos.hdf5 \
-    --enable_cameras
+    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
+    --dataset_file ./datasets/so_arm_demos.hdf5 --enable_cameras
 ```
 
-### 3. Merging Demonstrations
-
-Merge multiple HDF5 demonstration files into a single file.
+### 3. Merge Datasets
 
 ```bash
 python scripts/tools/merge_hdf5_datasets.py \
---input_files datasets/dataset1.hdf5 datasets/dataset2.hdf5 datasets/dataset3.hdf5\
---output_file datasets/dataset_merged.hdf5
+    --input_files datasets/dataset1.hdf5 datasets/dataset2.hdf5 \
+    --output_file datasets/dataset_merged.hdf5
 ```
 
-### 4. Regenerating for Visual Training
-
-Replays actions from an existing HDF5 dataset in a new environment configuration and records new observations (e.g. images).
+### 4. Regenerate with Camera Observations
 
 ```bash
 python scripts/tools/regenerate_demos.py \
     --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
     --input_file ./datasets/dataset_merged.hdf5 \
-    --output_file ./datasets/dataset_merged_camera.hdf5 \
+    --output_file ./datasets/dataset_merged_camera.hdf5
 ```
 
-### 5. Deleting Episodes
-
-Deletes episodes from an existing HDF5 dataset.
-
-```bash
-python scripts/tools/delete_episodes.py \
-    --input_file ./datasets/dataset3.hdf5 \
-    --output_file ./datasets/dataset_merged.hdf5 \
-    -d 0
-```
-
-
-### 6. Annotating Demonstrations
-
-Annotate demonstrations to add rewards and other information.
+### 5. Annotate
 
 ```bash
 python scripts/isaaclab_mimic/annotate_demos.py \
-    --device cpu --task Isaac-PickPlace-SOArm-Abs-Mimic-v0  \
+    --device cpu --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
     --input_file ./datasets/dataset_merged.hdf5 \
     --output_file ./datasets/annotated_dataset.hdf5
 ```
 
-### 7. Generate datasets
+### 6. Generate Augmented Dataset
+
 ```bash
 python scripts/isaaclab_mimic/generate_dataset.py \
     --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
@@ -121,26 +77,36 @@ python scripts/isaaclab_mimic/generate_dataset.py \
     --output_file ./datasets/generated_dataset.hdf5
 ```
 
-### 8. Data Conversion (to LeRobot)
+### 7. Convert to LeRobot Format
 
-Converts Isaac Lab HDF5 demonstration files to LeRobot dataset format for training imitation learning models.
-
-**Requirements:**
-```bash
-pip install h5py numpy
-pip install lerobot  # Optional
-```
-
-**Usage:**
 ```bash
 python scripts/tools/convert_hdf5_to_lerobot.py \
     --input ./datasets/so_arm_demos.hdf5 \
     --output ./lerobot_datasets/so_arm_stack \
-    --robot-type so_arm \
-    --fps 30
+    --robot-type so_arm --fps 30
 ```
 
 | Isaac Lab Key | LeRobot Key | Description |
 |---------------|-------------|-------------|
-| `observations/policy/joint_pos` | `observation.state` | Robot joint positions |
-| `actions` | `action` | Control commands (joint positions) |
+| `observations/policy/joint_pos` | `observation.state` | Joint positions |
+| `actions` | `action` | Control commands |
+
+### Utility: Delete Episodes
+
+```bash
+python scripts/tools/delete_episodes.py \
+    --input_file ./datasets/dataset.hdf5 \
+    --output_file ./datasets/dataset_clean.hdf5 -d 0
+```
+
+## Structure
+
+```
+so_arm_mimic/
+├── datasets/                       # Demonstration datasets
+├── scripts/
+│   ├── tools/                      # Record, replay, merge, convert
+│   ├── robomimic/                  # RoboMimic training tools
+│   └── isaaclab_mimic/             # Annotate & generate
+└── source/                         # Environment definitions
+```

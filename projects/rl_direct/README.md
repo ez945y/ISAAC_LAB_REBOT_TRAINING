@@ -1,54 +1,37 @@
-# Direct RL Hand Locomotion
+# Direct RL — Hand Locomotion
 
-A custom Isaac Lab extension for robotic hand locomotion and balance control using Direct RL. This project is modified from the Ant locomotion task.
+Robotic hand locomotion and balance control using **Direct RL** environment. Modified from the Isaac Lab Ant locomotion task.
 
-## Installation
+## Task
 
-Follow the [Isaac Lab Installation Guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
-
-```bash
-cd projects/rl_direct
-```
-
-## Available Tasks
-
-| Task ID | Description |
-|---------|-------------|
-| `Isaac-Hand-Direct-v0` | Hand balance and locomotion task (12 DOF, 48-dim obs) |
+| Task ID | Robot | DOF | Obs Dim |
+|---------|-------|-----|---------|
+| `Isaac-Hand-Direct-v0` | H1 Hand (Left) | 12 | 48 |
 
 ## Usage
 
-### Training
 ```bash
+cd projects/rl_direct
+
+# Train
 python scripts/rsl_rl/train.py --task=Isaac-Hand-Direct-v0
-```
 
-### Play Trained Policy
-```bash
+# Play trained policy
 python scripts/rsl_rl/play.py --task=Isaac-Hand-Direct-Play-v0
-```
 
-### Testing
-```bash
-# Zero-action agent
+# Test with zero / random actions
 python scripts/zero_agent.py --task=Isaac-Hand-Direct-v0
-
-# Random-action agent
 python scripts/random_agent.py --task=Isaac-Hand-Direct-v0
 ```
 
-## Project Structure
+## Structure
 
 ```
 source/rl_direct/rl_direct/tasks/direct/hand/
-├── hand_env.py          # Environment implementation
+├── hand_env.py              # Environment implementation
 ├── assets/
-│   ├── hand_cfg.py      # Robot config
-│   └── h1_hand_left.usd # Robot model
+│   ├── hand_cfg.py          # Robot config
+│   └── h1_hand_left.usd     # Robot USD model
 └── agents/
-    └── rsl_rl_ppo_cfg.py # PPO training config
+    └── rsl_rl_ppo_cfg.py    # PPO training config
 ```
-
-## License
-
-BSD-3-Clause
