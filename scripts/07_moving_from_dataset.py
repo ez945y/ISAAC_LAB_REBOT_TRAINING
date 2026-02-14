@@ -4,6 +4,7 @@
 - 不使用 IK / OSC 控制器
 - 直接透過 write_joint_state_to_sim 將關節位置寫入模擬
 - 30 FPS 回放
+- 支援雙機位攝影錄影 (top_view + front_view, 640x480)
 """
 
 import argparse
@@ -22,6 +23,8 @@ parser.add_argument("--num_envs", type=int, default=1)
 parser.add_argument("--episode", type=int, default=0, help="要回放的 episode 編號")
 parser.add_argument("--dataset", type=str, default="MikeChenYZ/soarm-fmb-v2", help="LeRobot dataset ID")
 parser.add_argument("--fps", type=float, default=30.0, help="回放幀率")
+parser.add_argument("--video", action="store_true", default=False, help="是否錄製影片")
+parser.add_argument("--video_dir", type=str, default="./videos", help="影片儲存目錄")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -36,6 +39,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg, ArticulationCfg
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
+from isaaclab.sensors import TiledCameraCfg
 
 
 # ── 載入資料集 ─────────────────────────────────────────────────
@@ -72,7 +76,7 @@ def load_episode_data(dataset_id: str, episode_idx: int):
 # ── 場景配置 ────────────────────────────────────────────────────
 USD_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "tools", "controll_scripts", "so_arm_101", "SO-ARM101.usd",
+    "tools", "controll_scripts", "so_arm_101", "SO-ARM101v2.usd",
 )
 
 # 5 個手臂關節 + 1 個夾爪 (與 Isaac Sim USD 中的關節名稱對應)
@@ -117,6 +121,25 @@ class ReplaySceneCfg(InteractiveSceneCfg):
             ),
         },
     )
+    # ── 攝影機 (640x480, 30Hz) ── spawn 新攝影機（避開 USD 中已有的 prim 名稱）
+    # 手腕攝影機 — 掛在 gripper_link 下，跟隨手臂末端移動
+    wrist = TiledCameraCfg(
+        prim_path="{ENV_REGEX_NS}/robot/gripper_link/wrist_cam",
+        update_period=1 / 30,
+        height=480,
+        width=640,
+        data_types=["rgb"],
+        spawn=None
+    )
+    # 俯瞰攝影機 — 前方 60cm、高 90cm，從上往下微微上揚 5°
+    top = TiledCameraCfg(
+        prim_path="{ENV_REGEX_NS}/robot/top_cam",
+        update_period=1 / 30,
+        height=480,
+        width=640,
+        data_types=["rgb"],
+        spawn=None
+    )
 
 
 # ── 主程式 ──────────────────────────────────────────────────────
@@ -143,11 +166,11 @@ def main():
     arm_joint_ids, _ = robot.find_joints(ARM_JOINT_NAMES)
     joint_limits = robot.data.joint_limits.clone()  # [num_envs, num_joints, 2]
     for jid in arm_joint_ids:
-        joint_limits[:, jid, 0] = -math.pi  # lower
-        joint_limits[:, jid, 1] = math.pi   # upper
+        joint_limits[:, jid, 0] = -2 * math.pi  # lower
+        joint_limits[:, jid, 1] = 2 * math.pi   # upper
     robot.write_joint_limits_to_sim(joint_limits)
     robot.update(dt=sim_dt)
-    print(f"[INFO] 已放寬手臂關節限制至 ±π")
+    print(f"[INFO] 已放寬手臂關節限制至 ±2π")
 
     # 取得關節 ID
     arm_joint_ids, _ = robot.find_joints(ARM_JOINT_NAMES)
@@ -167,6 +190,19 @@ def main():
     device = sim.device
     actions_rad = (actions * (math.pi / 180.0)).to(device)   # [num_frames, 6]
     obs_states_rad = (obs_states * (math.pi / 180.0)).to(device)
+
+    # wrist_roll (index 4) 乘以 2 倍
+    actions_rad[:, 4] *= 1.9
+    obs_states_rad[:, 4] *= 1.9
+    print(f"[INFO] wrist_roll (index 4) 已乘以 1.9 倍")
+
+    # ── 影片錄製準備 ──
+    wrist_frames = []
+    top_frames = []
+    if args_cli.video:
+        wrist_cam = scene["wrist"]
+        top_cam = scene["top"]
+        print(f"[INFO] 錄影模式已啟用 (640x480, wrist + top)")
 
     # 回放迴圈
     frame_idx = 0
@@ -211,6 +247,16 @@ def main():
             # ── 讀取 sim 觀測到的實際關節位置 ──
             sim_joint_pos = robot.data.joint_pos[0, all_joint_ids]  # [6]
 
+            # ── 擷取攝影機畫面 ──
+            if args_cli.video:
+                wrist_cam.update(dt=sim_dt * num_physics_steps)
+                top_cam.update(dt=sim_dt * num_physics_steps)
+                # RGB data: [num_envs, H, W, 3]
+                wrist_img = wrist_cam.data.output["rgb"][0].cpu().numpy()
+                top_img = top_cam.data.output["rgb"][0].cpu().numpy()
+                wrist_frames.append(wrist_img[:, :, :3])   # 取 RGB (RGBA → RGB)
+                top_frames.append(top_img[:, :, :3])
+
             # ── Log ──
             print(
                 f"{frame_idx:>4d}/{total_frames:>4d} | "
@@ -222,9 +268,14 @@ def main():
 
             frame_idx += 1
         else:
-            # 回放結束，保持最後姿態
+            # 回放結束
             if frame_idx == total_frames:
-                print("\n[INFO] 回放完成！保持最後姿態，按 Ctrl+C 結束。")
+                print("\n[INFO] 回放完成！")
+                if args_cli.video:
+                    _save_videos(wrist_frames, top_frames, args_cli)
+                    break  # 錄完影就結束
+                else:
+                    print("[INFO] 保持最後姿態，按 Ctrl+C 結束。")
                 frame_idx += 1  # 只印一次
             sim.step()
             robot.update(sim_dt)
@@ -236,6 +287,27 @@ def main():
         sleep_time = dt_target - elapsed
         if sleep_time > 0:
             time.sleep(sleep_time)
+
+
+def _save_videos(wrist_frames, top_frames, args):
+    """將兩機位的 RGB 幀列表存成 MP4 影片"""
+    import cv2
+
+    os.makedirs(args.video_dir, exist_ok=True)
+    fps = int(args.fps)
+    ep = args.episode
+
+    for name, frames in [("wrist", wrist_frames), ("top", top_frames)]:
+        if not frames:
+            continue
+        h, w = frames[0].shape[:2]
+        path = os.path.join(args.video_dir, f"ep{ep}_{name}.mp4")
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(path, fourcc, fps, (w, h))
+        for f in frames:
+            writer.write(cv2.cvtColor(f, cv2.COLOR_RGB2BGR))
+        writer.release()
+        print(f"[INFO] 影片已儲存: {path}  ({len(frames)} frames, {w}x{h}, {fps} FPS)")
 
 
 if __name__ == "__main__":
