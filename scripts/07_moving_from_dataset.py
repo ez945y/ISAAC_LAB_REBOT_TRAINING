@@ -59,8 +59,8 @@ def load_episode_data(dataset_id: str, episode_idx: int):
             continue
         if ep_idx > episode_idx:
             break
-        actions.append(sample["action"])             # [6] (5 arm + 1 gripper), degree
-        obs_states.append(sample["observation.state"])  # [6], degree
+        actions.append(sample["action"])             # [6] (5 arm + 1 gripper), normalized -100~100
+        obs_states.append(sample["observation.state"])  # [6], normalized -100~100
         timestamps.append(sample["timestamp"].item())   # float, seconds
 
     if not actions:
@@ -78,14 +78,52 @@ USD_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "tools", "controll_scripts", "so_arm_101", "SO-ARM101v2.usd",
 )
-OBJECT_USD_PATH = os.path.join(
+OBJECT_USD_PATH_1 = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "tools", "exp", "test", "test3.usd",
+    "tools", "exp", "test", "bodies", "3_1.usd",
+)
+OBJECT_USD_PATH_2 = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "tools", "exp", "test", "bodies", "3_2.usd",
 )
 
 # 5 個手臂關節 + 1 個夾爪 (與 Isaac Sim USD 中的關節名稱對應)
 ARM_JOINT_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 GRIPPER_JOINT_NAME = "gripper"
+
+# 每個關節的物理限制 (radians)，順序對應 [5 arm joints + gripper]
+# 來源：真實機器人關節限制表
+JOINT_LIMITS = {
+    #                   (lower,  upper)
+    "shoulder_pan":    (-1.92,   1.92),
+    "shoulder_lift":   (-1.75,   1.75),
+    "elbow_flex":      (-1.69,   1.75),
+    "wrist_flex":      (-1.92,   1.92),
+    "wrist_roll":      (-3.1416,   3.1416),
+    "gripper":         (-0.17,   1.75),
+}
+
+# 預計算各關節的 lower / upper 向量，順序: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper
+_JOINT_ORDER = ARM_JOINT_NAMES + [GRIPPER_JOINT_NAME]
+JOINT_LOWER = torch.tensor([JOINT_LIMITS[j][0] for j in _JOINT_ORDER])  # [6]
+JOINT_UPPER = torch.tensor([JOINT_LIMITS[j][1] for j in _JOINT_ORDER])  # [6]
+
+
+def denormalize_joints(norm_values: torch.Tensor) -> torch.Tensor:
+    """
+    將資料集中 [-100, 100] 正規化的關節值轉換為實際弧度 (radians)。
+
+    公式: position_rad = lower + ((norm + 100) / 200) * (upper - lower)
+
+    Args:
+        norm_values: shape [..., 6]，資料集中的正規化值 (-100 ~ 100)
+    Returns:
+        shape [..., 6]，各關節的實際弧度值
+    """
+    lower = JOINT_LOWER.to(norm_values.device)
+    upper = JOINT_UPPER.to(norm_values.device)
+    norm_01 = (norm_values + 100.0) / 200.0  # [-100, 100] → [0, 1]
+    return lower + norm_01 * (upper - lower)
 
 
 class ReplaySceneCfg(InteractiveSceneCfg):
@@ -97,15 +135,32 @@ class ReplaySceneCfg(InteractiveSceneCfg):
         prim_path="/World/Light",
         spawn=sim_utils.DomeLightCfg(intensity=3000.0),
     )
-    # ── 測試物件（整體載入，保留原始材質與座標） ──
-    test_object = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/test_object",
+    test_object_1 = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/test_object_1",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=OBJECT_USD_PATH,
+            usd_path=OBJECT_USD_PATH_1,
             scale=(0.001, 0.001, 0.001),
         ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.12, 0.23, 0.0), rot=(0.707, 0.0, 0.0, 0.707)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.38, 0.0, 0.0), rot=(0.707, 0.0, 0.0, -0.707)),
     )
+    test_object_2 = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/test_object_2",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=OBJECT_USD_PATH_2,
+            scale=(0.001, 0.001, 0.001),
+            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.38, -0.04, 0.0), rot=(1.0, 0.0, 0.0, 0.0)),
+    )
+    # test_object_3 = AssetBaseCfg(
+    #     prim_path="{ENV_REGEX_NS}/test_object_3",
+    #     spawn=sim_utils.UsdFileCfg(
+    #         usd_path=OBJECT_USD_PATH_3,
+    #         scale=(0.001, 0.001, 0.001),
+    #     ),
+    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.38, -0.4, 0.0), rot=(0.707, 0.0, 0.0, -0.707)),
+    # )
     robot = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/robot",
         spawn=sim_utils.UsdFileCfg(
@@ -118,23 +173,22 @@ class ReplaySceneCfg(InteractiveSceneCfg):
                 disable_gravity=True,
             ),
         ),
-        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 0.08)),
+        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 0.06)),
         actuators={
             "arm": ImplicitActuatorCfg(
                 joint_names_expr=ARM_JOINT_NAMES,
-                effort_limit=0.0,
-                stiffness=0.0,
-                damping=0.0,
+                effort_limit=60.0,
+                stiffness=17.8 * 2,
+                damping=0.6 * 2,
             ),
             "gripper": ImplicitActuatorCfg(
                 joint_names_expr=[GRIPPER_JOINT_NAME],
-                effort_limit=0.0,
-                stiffness=0.0,
-                damping=0.0,
+                effort_limit=200.0,
+                stiffness=17.8 * 10,
+                damping=0.6 * 10,
             ),
         },
     )
-    # ── 攝影機 (640x480, 30Hz) ── spawn 新攝影機（避開 USD 中已有的 prim 名稱）
     # 手腕攝影機 — 掛在 gripper_link 下，跟隨手臂末端移動
     wrist = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/robot/gripper_link/wrist_cam",
@@ -144,7 +198,7 @@ class ReplaySceneCfg(InteractiveSceneCfg):
         data_types=["rgb"],
         spawn=None
     )
-    # 俯瞰攝影機 — 前方 60cm、高 90cm，從上往下微微上揚 5°
+    # 俯瞰攝影機
     top = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/robot/top_cam",
         update_period=1 / 30,
@@ -208,15 +262,10 @@ def main():
     num_physics_steps = max(1, int(dt_target / sim_dt))  # 每幀需要幾步 physics
     print(f"[INFO] 每幀執行 {num_physics_steps} 步 physics step")
 
-    # 將 actions / obs_states 搬到目標 device，並預先轉為 radian
+    # 將 actions / obs_states 從 [-100, 100] 正規化值轉換為實際弧度 (radians)
     device = sim.device
-    actions_rad = (actions * (math.pi / 180.0)).to(device)   # [num_frames, 6]
-    obs_states_rad = (obs_states * (math.pi / 180.0)).to(device)
-
-    # wrist_roll (index 4) 乘以 2 倍
-    actions_rad[:, 4] *= 1.9
-    obs_states_rad[:, 4] *= 1.9
-    print(f"[INFO] wrist_roll (index 4) 已乘以 1.9 倍")
+    actions_rad = denormalize_joints(actions).to(device)      # [num_frames, 6]
+    obs_states_rad = denormalize_joints(obs_states).to(device)
 
     # ── 影片錄製準備 ──
     wrist_frames = []
@@ -257,8 +306,8 @@ def main():
                 alpha = (step_i + 1) / num_physics_steps  # 0→1
                 interp_pos = prev_pos + alpha * (next_pos - prev_pos)  # 線性插值
                 all_pos = interp_pos.unsqueeze(0)  # [1, 6]
-                all_vel = torch.zeros_like(all_pos)
-                robot.write_joint_state_to_sim(all_pos, all_vel, joint_ids=all_joint_ids)
+                robot.set_joint_position_target(all_pos, joint_ids=all_joint_ids)
+                robot.write_data_to_sim()
                 sim.step()
 
             robot.update(sim_dt * num_physics_steps)
