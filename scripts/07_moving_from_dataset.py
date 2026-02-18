@@ -40,7 +40,7 @@ from isaaclab.assets import AssetBaseCfg, ArticulationCfg, RigidObjectCfg
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.sensors import TiledCameraCfg
-
+from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 
 # ── 載入資料集 ─────────────────────────────────────────────────
 def load_episode_data(dataset_id: str, episode_idx: int):
@@ -95,12 +95,12 @@ GRIPPER_JOINT_NAME = "gripper"
 # 來源：真實機器人關節限制表
 JOINT_LIMITS = {
     #                   (lower,  upper)
-    "shoulder_pan":    (-1.92,   1.92),
-    "shoulder_lift":   (-1.75,   1.75),
-    "elbow_flex":      (-1.69,   1.75),
-    "wrist_flex":      (-1.92,   1.92),
-    "wrist_roll":      (-3.1416,   3.1416),
-    "gripper":         (-0.17,   1.75),
+    "shoulder_pan":    (-1.8243,   1.8243),
+    "shoulder_lift":   (-1.7691,   1.7691),
+    "elbow_flex":      (-1.6026,   1.6026),
+    "wrist_flex":      (-1.8067,   1.8067),
+    "wrist_roll":      (-3.0741,   3.0741),
+    "gripper":         (0.0,   1.7453),
 }
 
 # 預計算各關節的 lower / upper 向量，順序: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper
@@ -111,19 +111,23 @@ JOINT_UPPER = torch.tensor([JOINT_LIMITS[j][1] for j in _JOINT_ORDER])  # [6]
 
 def denormalize_joints(norm_values: torch.Tensor) -> torch.Tensor:
     """
-    將資料集中 [-100, 100] 正規化的關節值轉換為實際弧度 (radians)。
-
-    公式: position_rad = lower + ((norm + 100) / 200) * (upper - lower)
-
-    Args:
-        norm_values: shape [..., 6]，資料集中的正規化值 (-100 ~ 100)
-    Returns:
-        shape [..., 6]，各關節的實際弧度值
+    arm (0:5)：RANGE_M100_100，-100~100 → radians
+    gripper (5)：RANGE_0_100，0~100 → radians
     """
     lower = JOINT_LOWER.to(norm_values.device)
     upper = JOINT_UPPER.to(norm_values.device)
-    norm_01 = (norm_values + 100.0) / 200.0  # [-100, 100] → [0, 1]
-    return lower + norm_01 * (upper - lower)
+
+    result = torch.zeros_like(norm_values)
+
+    # 手臂：-100~100 → [lower, upper]
+    arm_norm_01 = (norm_values[..., :5] + 100.0) / 200.0
+    result[..., :5] = lower[:5] + arm_norm_01 * (upper[:5] - lower[:5])
+
+    # 夾爪：0~100 → [lower, upper]
+    gripper_norm_01 = norm_values[..., 5:6] / 100.0
+    result[..., 5:6] = lower[5:6] + gripper_norm_01 * (upper[5:6] - lower[5:6])
+
+    return result
 
 
 class ReplaySceneCfg(InteractiveSceneCfg):
@@ -135,32 +139,39 @@ class ReplaySceneCfg(InteractiveSceneCfg):
         prim_path="/World/Light",
         spawn=sim_utils.DomeLightCfg(intensity=3000.0),
     )
-    test_object_1 = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/test_object_1",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=OBJECT_USD_PATH_1,
-            scale=(0.001, 0.001, 0.001),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.38, 0.0, 0.0), rot=(0.707, 0.0, 0.0, -0.707)),
-    )
+    # test_object_1 = AssetBaseCfg(
+    #     prim_path="{ENV_REGEX_NS}/test_object_1",
+    #     spawn=sim_utils.UsdFileCfg(
+    #         usd_path=OBJECT_USD_PATH_1,
+    #         scale=(0.001, 0.001, 0.001),
+    #         rigid_props=RigidBodyPropertiesCfg(
+    #             kinematic_enabled=True,  # 設成 kinematic，不受力影響
+    #         ),
+    #     ),
+    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.36, 0.015, 0.0), rot=(0.707, 0.0, 0.0, -0.707)),
+    # )
     test_object_2 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/test_object_2",
         spawn=sim_utils.UsdFileCfg(
             usd_path=OBJECT_USD_PATH_2,
             scale=(0.001, 0.001, 0.001),
-            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.066),
+            collision_props=sim_utils.CollisionPropertiesCfg(
+                contact_offset=0.01,
+                rest_offset=0.001,
+            ),
+            rigid_props=RigidBodyPropertiesCfg(
+                solver_position_iteration_count=64,
+                solver_velocity_iteration_count=8,
+                max_angular_velocity=1000.0,
+                max_linear_velocity=1000.0,
+                max_depenetration_velocity=.0,
+            ),
+
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.38, -0.04, 0.0), rot=(1.0, 0.0, 0.0, 0.0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.38, -0.04, -0.005), rot=(1.0, 0.0, 0.0, 0.0)),
     )
-    # test_object_3 = AssetBaseCfg(
-    #     prim_path="{ENV_REGEX_NS}/test_object_3",
-    #     spawn=sim_utils.UsdFileCfg(
-    #         usd_path=OBJECT_USD_PATH_3,
-    #         scale=(0.001, 0.001, 0.001),
-    #     ),
-    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.38, -0.4, 0.0), rot=(0.707, 0.0, 0.0, -0.707)),
-    # )
+
     robot = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/robot",
         spawn=sim_utils.UsdFileCfg(
@@ -173,19 +184,19 @@ class ReplaySceneCfg(InteractiveSceneCfg):
                 disable_gravity=True,
             ),
         ),
-        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 0.06)),
+        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, -0.005, 0.05)),
         actuators={
             "arm": ImplicitActuatorCfg(
                 joint_names_expr=ARM_JOINT_NAMES,
-                effort_limit=60.0,
-                stiffness=17.8 * 2,
-                damping=0.6 * 2,
+                effort_limit=40,
+                stiffness=200,
+                damping=10,
             ),
             "gripper": ImplicitActuatorCfg(
                 joint_names_expr=[GRIPPER_JOINT_NAME],
-                effort_limit=200.0,
-                stiffness=17.8 * 10,
-                damping=0.6 * 10,
+                effort_limit=100,
+                stiffness=2000,
+                damping=100,
             ),
         },
     )
@@ -215,7 +226,19 @@ def main():
     actions, obs_states, ds_timestamps = load_episode_data(args_cli.dataset, args_cli.episode)
 
     # 初始化模擬
-    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
+    sim_cfg = sim_utils.SimulationCfg(
+        device=args_cli.device,
+        gravity=(0.0, 0.0, -9.81),
+        physx=sim_utils.PhysxCfg(
+            solver_type=1,
+            max_position_iteration_count=64,
+            max_velocity_iteration_count=1,
+            bounce_threshold_velocity=0.2,
+            friction_offset_threshold=0.01,
+            friction_correlation_distance=0.00625,
+        ),
+    )
+    
     sim = sim_utils.SimulationContext(sim_cfg)
     sim_dt = sim.get_physics_dt()
 
@@ -266,6 +289,8 @@ def main():
     device = sim.device
     actions_rad = denormalize_joints(actions).to(device)      # [num_frames, 6]
     obs_states_rad = denormalize_joints(obs_states).to(device)
+    # actions_rad[:, 5] *= 0.5
+    # obs_states_rad[:, 5] *= 0.5
 
     # ── 影片錄製準備 ──
     wrist_frames = []
@@ -331,10 +356,10 @@ def main():
             # ── Log ──
             print(
                 f"{frame_idx:>4d}/{total_frames:>4d} | "
-                f"{ds_t:>7.3f} | {sim_time:>7.3f} | "
-                f"obs: {_fmt(obs_state_rad)} | "
-                f"act: {_fmt(cur_action)} | "
-                f"sim: {_fmt(sim_joint_pos)}"
+                # f"{ds_t:>7.3f} | {sim_time:>7.3f} | "
+                f"obs: {_fmt(obs_state_rad[4:6])} | "
+                # f"act: {_fmt(cur_action[5])} | "
+                f"sim: {_fmt(sim_joint_pos[4:6])}"
             )
 
             frame_idx += 1
