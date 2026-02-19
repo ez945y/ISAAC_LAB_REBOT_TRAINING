@@ -139,17 +139,17 @@ class ReplaySceneCfg(InteractiveSceneCfg):
         prim_path="/World/Light",
         spawn=sim_utils.DomeLightCfg(intensity=3000.0),
     )
-    # test_object_1 = AssetBaseCfg(
-    #     prim_path="{ENV_REGEX_NS}/test_object_1",
-    #     spawn=sim_utils.UsdFileCfg(
-    #         usd_path=OBJECT_USD_PATH_1,
-    #         scale=(0.001, 0.001, 0.001),
-    #         rigid_props=RigidBodyPropertiesCfg(
-    #             kinematic_enabled=True,  # 設成 kinematic，不受力影響
-    #         ),
-    #     ),
-    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.36, 0.015, 0.0), rot=(0.707, 0.0, 0.0, -0.707)),
-    # )
+    test_object_1 = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/test_object_1",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=OBJECT_USD_PATH_1,
+            scale=(0.001, 0.001, 0.001),
+            rigid_props=RigidBodyPropertiesCfg(
+                kinematic_enabled=True,  # 設成 kinematic，不受力影響
+            ),
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.36, 0.015, 0.0), rot=(0.707, 0.0, 0.0, -0.707)),
+    )
     test_object_2 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/test_object_2",
         spawn=sim_utils.UsdFileCfg(
@@ -206,7 +206,7 @@ class ReplaySceneCfg(InteractiveSceneCfg):
         update_period=1 / 30,
         height=480,
         width=640,
-        data_types=["rgb"],
+        data_types=["rgb", "semantic_segmentation"],
         spawn=None
     )
     # 俯瞰攝影機
@@ -215,10 +215,9 @@ class ReplaySceneCfg(InteractiveSceneCfg):
         update_period=1 / 30,
         height=480,
         width=640,
-        data_types=["rgb"],
+        data_types=["rgb", "semantic_segmentation"],
         spawn=None
     )
-
 
 # ── 主程式 ──────────────────────────────────────────────────────
 def main():
@@ -295,6 +294,9 @@ def main():
     # ── 影片錄製準備 ──
     wrist_frames = []
     top_frames = []
+    wrist_segs = []
+    top_segs = []
+
     if args_cli.video:
         wrist_cam = scene["wrist"]
         top_cam = scene["top"]
@@ -352,6 +354,10 @@ def main():
                 top_img = top_cam.data.output["rgb"][0].cpu().numpy()
                 wrist_frames.append(wrist_img[:, :, :3])   # 取 RGB (RGBA → RGB)
                 top_frames.append(top_img[:, :, :3])
+                wrist_img = wrist_cam.data.output["semantic_segmentation"][0].cpu().numpy()
+                top_img = top_cam.data.output["semantic_segmentation"][0].cpu().numpy()
+                wrist_segs.append(wrist_img) #wrist_img.squeeze())
+                top_segs.append(top_img)
 
             # ── Log ──
             print(
@@ -369,6 +375,7 @@ def main():
                 print("\n[INFO] 回放完成！")
                 if args_cli.video:
                     _save_videos(wrist_frames, top_frames, args_cli)
+                    _save_semantic_videos(wrist_segs, top_segs, args_cli)
                     break  # 錄完影就結束
                 else:
                     print("[INFO] 保持最後姿態，按 Ctrl+C 結束。")
@@ -405,7 +412,26 @@ def _save_videos(wrist_frames, top_frames, args):
         writer.release()
         print(f"[INFO] 影片已儲存: {path}  ({len(frames)} frames, {w}x{h}, {fps} FPS)")
 
+def _save_semantic_videos(wrist_segs, top_segs, args):
+    import cv2
+    import numpy as np
 
+    os.makedirs(args.video_dir, exist_ok=True)
+    fps = int(args.fps)
+    ep = args.episode
+
+    for name, segs in [("wrist_semantic", wrist_segs), ("top_semantic", top_segs)]:
+        if not segs:
+            continue
+        h, w = segs[0].shape[:2]   # (480,640,4) → 取前兩個
+        path = os.path.join(args.video_dir, f"ep{ep}_{name}.mp4")
+        writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+        for seg in segs:
+            bgr = cv2.cvtColor(seg, cv2.COLOR_RGBA2BGR)
+            writer.write(bgr)
+        writer.release()
+        print(f"[INFO] 彩色語意影片已儲存: {path}")
+        
 if __name__ == "__main__":
     try:
         main()
