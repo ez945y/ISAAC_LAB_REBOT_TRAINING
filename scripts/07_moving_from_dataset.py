@@ -41,6 +41,7 @@ from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.sensors import TiledCameraCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
+from tools.sim2real.action import *
 
 # ── 載入資料集 ─────────────────────────────────────────────────
 def load_episode_data(dataset_id: str, episode_idx: int):
@@ -84,29 +85,8 @@ OBJECT_USD_PATH_1 = os.path.join(
 )
 OBJECT_USD_PATH_2 = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "tools", "exp", "test", "bodies", "3_2.usd",
+    "tools", "exp", "test", "bodies", "3_4.usd",
 )
-
-# 5 個手臂關節 + 1 個夾爪 (與 Isaac Sim USD 中的關節名稱對應)
-ARM_JOINT_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
-GRIPPER_JOINT_NAME = "gripper"
-
-# 每個關節的物理限制 (radians)，順序對應 [5 arm joints + gripper]
-# 來源：真實機器人關節限制表
-JOINT_LIMITS = {
-    #                   (lower,  upper)
-    "shoulder_pan":    (-1.8243,   1.8243),
-    "shoulder_lift":   (-1.7691,   1.7691),
-    "elbow_flex":      (-1.6026,   1.6026),
-    "wrist_flex":      (-1.8067,   1.8067),
-    "wrist_roll":      (-3.0741,   3.0741),
-    "gripper":         (0.0,   1.7453),
-}
-
-# 預計算各關節的 lower / upper 向量，順序: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper
-_JOINT_ORDER = ARM_JOINT_NAMES + [GRIPPER_JOINT_NAME]
-JOINT_LOWER = torch.tensor([JOINT_LIMITS[j][0] for j in _JOINT_ORDER])  # [6]
-JOINT_UPPER = torch.tensor([JOINT_LIMITS[j][1] for j in _JOINT_ORDER])  # [6]
 
 
 def denormalize_joints(norm_values: torch.Tensor) -> torch.Tensor:
@@ -139,17 +119,17 @@ class ReplaySceneCfg(InteractiveSceneCfg):
         prim_path="/World/Light",
         spawn=sim_utils.DomeLightCfg(intensity=3000.0),
     )
-    test_object_1 = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/test_object_1",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=OBJECT_USD_PATH_1,
-            scale=(0.001, 0.001, 0.001),
-            rigid_props=RigidBodyPropertiesCfg(
-                kinematic_enabled=True,  # 設成 kinematic，不受力影響
-            ),
-        ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.36, 0.015, 0.0), rot=(0.707, 0.0, 0.0, -0.707)),
-    )
+    # test_object_1 = AssetBaseCfg(
+    #     prim_path="{ENV_REGEX_NS}/test_object_1",
+    #     spawn=sim_utils.UsdFileCfg(
+    #         usd_path=OBJECT_USD_PATH_1,
+    #         scale=(0.001, 0.001, 0.001),
+    #         rigid_props=RigidBodyPropertiesCfg(
+    #             kinematic_enabled=True,  # 設成 kinematic，不受力影響
+    #         ),
+    #     ),
+    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.36, 0.015, 0.0), rot=(0.707, 0.0, 0.0, -0.707)),
+    # )
     test_object_2 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/test_object_2",
         spawn=sim_utils.UsdFileCfg(
@@ -157,19 +137,20 @@ class ReplaySceneCfg(InteractiveSceneCfg):
             scale=(0.001, 0.001, 0.001),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.066),
             collision_props=sim_utils.CollisionPropertiesCfg(
-                contact_offset=0.01,
-                rest_offset=0.001,
+                contact_offset=0.02,
+                rest_offset=0.0005,
             ),
             rigid_props=RigidBodyPropertiesCfg(
                 solver_position_iteration_count=64,
                 solver_velocity_iteration_count=8,
                 max_angular_velocity=1000.0,
                 max_linear_velocity=1000.0,
-                max_depenetration_velocity=.0,
+                max_depenetration_velocity=0.0,
             ),
 
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.38, -0.04, -0.005), rot=(1.0, 0.0, 0.0, 0.0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.36, -0.02, 0.0), rot=(0.707, 0.0, 0.0, 0.707)), # cube_4, cube_5
+        # init_state=RigidObjectCfg.InitialStateCfg(pos=(0.38, -0.04, 0.0), rot=(1.0, 0.0, 0.0, 0.0)), # cube_2, cube_3
     )
 
     robot = ArticulationCfg(
@@ -184,19 +165,19 @@ class ReplaySceneCfg(InteractiveSceneCfg):
                 disable_gravity=True,
             ),
         ),
-        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, -0.005, 0.05)),
+        init_state=ArticulationCfg.InitialStateCfg(pos=(0.01, -0.005, 0.05)),
         actuators={
             "arm": ImplicitActuatorCfg(
                 joint_names_expr=ARM_JOINT_NAMES,
                 effort_limit=40,
-                stiffness=200,
-                damping=10,
+                stiffness=17.8,
+                damping=0.6,
             ),
             "gripper": ImplicitActuatorCfg(
                 joint_names_expr=[GRIPPER_JOINT_NAME],
-                effort_limit=100,
-                stiffness=2000,
-                damping=100,
+                effort_limit=40,
+                stiffness=17.8,
+                damping=0.6,
             ),
         },
     )
