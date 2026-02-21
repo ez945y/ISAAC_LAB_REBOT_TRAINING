@@ -9,6 +9,8 @@ from .stack_ik_abs_mimic_env import SO101CubeStackIKAbsMimicEnv
 from .stack_ik_abs_mimic_env_cfg import SO101CubeStackIKAbsMimicEnvCfg
 from .stack_ik_rel_mimic_env import SO101CubeStackRelMimicEnv
 from .stack_ik_rel_mimic_env_cfg import SO101CubeStackRelMimicEnvCfg
+from .move_ik_abs_mimic_env import SO101CubeMoveIKAbsMimicEnv
+from .move_ik_abs_mimic_env_cfg import SO101CubeMoveIKAbsMimicEnvCfg
 
 ##
 # SO-ARM-101 Pick and Place - Absolute Control
@@ -30,6 +32,18 @@ gym.register(
     entry_point="so_arm_mimic.source.envs.stack_ik_rel_mimic_env:SO101CubeStackRelMimicEnv",
     kwargs={
         "env_cfg_entry_point": "so_arm_mimic.source.envs.stack_ik_rel_mimic_env_cfg:SO101CubeStackRelMimicEnvCfg",
+    },
+    disable_env_checker=True,
+)
+
+##
+# SO-ARM-101 Move Cube (Pick Right → Place Left) - Absolute Control
+##
+gym.register(
+    id="Isaac-Move-SOArm-Abs-Mimic-v0",
+    entry_point="so_arm_mimic.source.envs.move_ik_abs_mimic_env:SO101CubeMoveIKAbsMimicEnv",
+    kwargs={
+        "env_cfg_entry_point": "so_arm_mimic.source.envs.move_ik_abs_mimic_env_cfg:SO101CubeMoveIKAbsMimicEnvCfg",
     },
     disable_env_checker=True,
 )
