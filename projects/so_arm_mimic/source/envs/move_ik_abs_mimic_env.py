@@ -65,7 +65,6 @@ class SO101CubeMoveIKAbsMimicEnv(ManagerBasedRLMimicEnv):
 
     def actions_to_gripper_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
         """Extract gripper actions (last dimension)."""
-        print(actions[:, -1:])
         return {list(self.cfg.subtask_configs.keys())[0]: actions[:, -1:]}
 
     def get_subtask_term_signals(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:

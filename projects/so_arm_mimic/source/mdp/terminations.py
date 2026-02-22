@@ -11,10 +11,63 @@ import torch
 from typing import TYPE_CHECKING
 
 from isaaclab.assets import Articulation, RigidObject
+from isaaclab.sensors import FrameTransformer
 from isaaclab.managers import SceneEntityCfg
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+
+def cube_on_platform(
+    env: ManagerBasedRLEnv,
+    cube_frame_name: str = "cube_1_frame",
+    platform_frame_name: str = "platform_frame",
+    xy_tolerance: float = 0.12,
+    min_z_above: float = 0.015,
+):
+    """Check if cube has been placed on the platform.
+
+    Reads the ``target_pos_w`` from the FrameTransformer sensors.
+    Platform center Z is at the **bottom** of the platform, so cube Z must
+    be above it by ``min_z_above``.
+    """
+    # 1. Get FrameTransformer data
+    # Note: Using the first target frame (index 0) defined in each transformer
+    cube_tf: FrameTransformer = env.scene[cube_frame_name]
+    plat_tf: FrameTransformer = env.scene[platform_frame_name]
+
+    # target_pos_w is [N, num_targets, 3]
+    cube_center = cube_tf.data.target_pos_w[:, 0, :]
+    plat_center = plat_tf.data.target_pos_w[:, 0, :]
+
+    # 2. Subtract env origins to get relative position (for debugging/sanity)
+    # Actually get_world_poses/target_pos_w are already World including env_origin.
+    # Isaac Lab terminations usually work in world coords.
+
+    # 3. XY within tolerance of platform center
+    dx = torch.abs(cube_center[:, 0] - plat_center[:, 0])
+    dy = torch.abs(cube_center[:, 1] - plat_center[:, 1])
+    xy_ok = (dx < xy_tolerance) & (dy < xy_tolerance)
+
+    # 4. Z above platform surface
+    z_ok = cube_center[:, 2] > (plat_center[:, 2] + min_z_above)
+
+    # Debug: print positions and check results
+    # Subtracting env_origins for easier reading in debug
+    origin = env.scene.env_origins[0]
+    cube_rel = (cube_center[0] - origin).tolist()
+    plat_rel = (plat_center[0] - origin).tolist()
+    
+    result = xy_ok & z_ok
+    _Y = "\033[93m"  # bright yellow
+    _G = "\033[92m"  # bright green
+    _R = "\033[91m"  # bright red
+    _E = "\033[0m"   # reset
+    tag = f"{_G}SUCCESS{_E}" if result[0].item() else f"{_R}FAIL{_E}"
+    print(f"{_Y}[TERM]{_E} cube={[f'{v:.3f}' for v in cube_rel]}  plat={[f'{v:.3f}' for v in plat_rel]}  dx={dx[0].item():.4f} dy={dy[0].item():.4f} z_ok={z_ok[0].item()}  [{tag}]")
+
+    return xy_ok & z_ok
+
 
 
 def cube_moved(

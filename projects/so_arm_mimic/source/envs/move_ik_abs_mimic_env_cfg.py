@@ -7,13 +7,15 @@ import os
 
 import isaaclab.sim as sim_utils
 from isaaclab.envs.mimic_env_cfg import MimicEnvCfg, SubTaskConfig
+from isaaclab.sensors import FrameTransformerCfg
+from isaaclab.sensors.frame_transformer import OffsetCfg
 from isaaclab.utils import configclass
 from isaaclab.devices.device_base import DevicesCfg
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import EventTermCfg as EventTerm
-from isaaclab.assets import RigidObjectCfg
+from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.envs.mdp.actions.actions_cfg import JointPositionActionCfg
 from controll_scripts.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
@@ -26,10 +28,17 @@ from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_eve
 from so_arm_mimic.source.mdp import observations as move_obs
 from so_arm_mimic.source.mdp import terminations as move_term
 
+from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
+
+
+FRAME_MARKER_SMALL_CFG = FRAME_MARKER_CFG.copy()
+FRAME_MARKER_SMALL_CFG.markers["frame"].scale = (0.01, 0.01, 0.01)
+
 # ── Custom USD paths ──
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 _ROBOT_USD = os.path.join(_REPO_ROOT, "tools", "controll_scripts", "so_arm_101", "SO-ARM101v2.usd")
 _CUBE_USD = os.path.join(_REPO_ROOT, "tools", "exp", "test", "bodies", "3_4.usd")
+_PLATFORM_USD = os.path.join(_REPO_ROOT, "tools", "exp", "test", "bodies", "3_1.usd")
 
 
 @configclass
@@ -71,26 +80,68 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
                     solver_velocity_iteration_count=8,
                     max_angular_velocity=1000.0,
                     max_linear_velocity=1000.0,
-                    max_depenetration_velocity=0.0,
+                    max_depenetration_velocity=5.0,
                 ),
                 semantic_tags=[("class", "cube_1")],
             ),
             init_state=RigidObjectCfg.InitialStateCfg(
-                pos=(0.36, -0.02, 0.0),
-                # rot=(1.0, 0.0, 0.0, 0.0),
-                rot=(0.707, 0.0, 0.0, 0.707),
+                pos=(0.38, -0.04, 0.0),
+                rot=(1.0, 0.0, 0.0, 0.0),
             ),
         )
 
+        # ── Platform block: large kinematic block (target placement area) ──
+        self.scene.platform_block = RigidObjectCfg(
+            prim_path="{ENV_REGEX_NS}/PlatformBlock",
+            spawn=sim_utils.UsdFileCfg(
+                usd_path=_PLATFORM_USD,
+                scale=(0.001, 0.001, 0.001),
+                semantic_tags=[("class", "platform")],
+            ),
+            init_state=RigidObjectCfg.InitialStateCfg(
+                pos=(0.38, 0.23, 0.0),
+                rot=(1.0, 0.0, 0.0, 0.0),
+            ),
+        )
+
+        self.scene.cube_1_frame = FrameTransformerCfg(
+            prim_path="{ENV_REGEX_NS}/Cube_1",
+            debug_vis=True,
+            visualizer_cfg=FRAME_MARKER_SMALL_CFG.replace(prim_path="/Visuals/Cube_1_FrameTransformer"),
+            target_frames=[
+                FrameTransformerCfg.FrameCfg(
+                    prim_path="{ENV_REGEX_NS}/Cube_1",
+                    name="cube_1_center",
+                    offset=OffsetCfg(
+                        pos=(-0.015, -0.0715, 0.0),
+                    ),
+                ),
+            ],
+        )
+        self.scene.platform_frame = FrameTransformerCfg(
+            prim_path="{ENV_REGEX_NS}/PlatformBlock",
+            debug_vis=True,
+            visualizer_cfg=FRAME_MARKER_SMALL_CFG.replace(prim_path="/Visuals/PlatformBlock_FrameTransformer"),
+            target_frames=[
+                FrameTransformerCfg.FrameCfg(
+                    prim_path="{ENV_REGEX_NS}/PlatformBlock",
+                    name="platform_center",
+                    offset=OffsetCfg(
+                        pos=(-0.115, -0.115, 0.0),
+                    ),
+                ),
+            ],
+        )
+        
         # ── Events: only randomize 1 cube on the right side ──
         self.events.randomize_cube_positions = EventTerm(
             func=franka_stack_events.randomize_object_pose,
             mode="reset",
             params={
                 "pose_range": {
-                    "x": (0.30, 0.42),     # right side workspace
-                    "y": (-0.08, 0.02),    # slightly right of center  
-                    "z": (0.0203, 0.0203),
+                    "x": (0.18, 0.38),     # right side workspace
+                    "y": (-0.04, -0.17),    # slightly right of center  
+                    "z": (0.0, 0.0),
                     "yaw": (-0.5, 0.5),
                 },
                 "min_separation": 0.05,
@@ -163,12 +214,14 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
         self.observations.subtask_terms.stack_1 = None
         self.observations.subtask_terms.grasp_2 = None
 
-        # ── Termination: cube moved to left side ──
+        # ── Termination: cube placed on platform block ──
         self.terminations.success = DoneTerm(
-            func=move_term.cube_moved,
+            func=move_term.cube_on_platform,
             params={
-                "robot_cfg": SceneEntityCfg("robot"),
-                "cube_cfg": SceneEntityCfg("cube_1"),
+                "cube_frame_name": "cube_1_frame",
+                "platform_frame_name": "platform_frame",
+                "xy_tolerance": 0.115,
+                "min_z_above": 0.015,
             },
         )
         # Remove cube_2 and cube_3 drop terminations

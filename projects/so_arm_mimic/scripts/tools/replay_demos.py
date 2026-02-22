@@ -144,6 +144,11 @@ def main():
 
     env_cfg = parse_env_cfg(env_name, device=args_cli.device, num_envs=num_envs)
 
+    # Extract success term before disabling terminations (for debug display during replay)
+    replay_success_term = None
+    if hasattr(env_cfg.terminations, "success") and env_cfg.terminations.success is not None:
+        replay_success_term = env_cfg.terminations.success
+
     # Disable all recorders and terminations
     env_cfg.recorders = {}
     env_cfg.terminations = {}
@@ -225,6 +230,10 @@ def main():
                         env.sim.render()
                         continue
                 env.step(actions)
+
+                # Manually evaluate success termination for debug output
+                if replay_success_term is not None:
+                    replay_success_term.func(env, **replay_success_term.params)
 
                 if state_validation_enabled:
                     state_from_dataset = env_episode_data_map[0].get_next_state()

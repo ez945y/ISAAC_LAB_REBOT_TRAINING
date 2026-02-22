@@ -128,12 +128,12 @@ async def task_watchdog(tasks_future):
             await asyncio.sleep(0.5)
         
         # Task is done (either finished or failed)
-        if tasks_future.exception():
-            print(f"\n[FATAL ERROR] Data generation tasks failed with exception: {tasks_future.exception()}")
+        exc = tasks_future.exception()
+        if exc is not None and not isinstance(exc, asyncio.CancelledError):
+            print(f"\n[FATAL ERROR] Data generation tasks failed with exception: {exc}")
             import traceback
-            # Print stack trace of the exception if available
             try:
-                raise tasks_future.exception()
+                raise exc
             except:
                 traceback.print_exc()
             
@@ -141,6 +141,9 @@ async def task_watchdog(tasks_future):
             print("Forcing exit due to async task failure.")
             sys.exit(1)
             
+    except asyncio.CancelledError:
+        # Normal shutdown — watchdog itself was cancelled
+        pass
     except Exception as e:
         print(f"Watchdog error: {e}")
 # --- Debug Helper End ---

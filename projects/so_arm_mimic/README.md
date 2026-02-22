@@ -57,15 +57,17 @@ python scripts/09_moving_to_hdf5.py \
 ### 3. Replay Demonstrations
 
 ```bash
-# Stack task
-python scripts/tools/replay_demos.py \
-    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
-    --dataset_file ./datasets/so_arm_demos.hdf5 --enable_cameras
-
 # Move task
-python scripts/tools/replay_demos.py \
+python projects/so_arm_mimic/scripts/tools/replay_demos.py \
     --task Isaac-Move-SOArm-Abs-Mimic-v0 \
     --dataset_file ./datasets/move_demo.hdf5 --enable_cameras
+```
+
+```bash
+# Evaluation on generated data
+python projects/so_arm_mimic/scripts/tools/replay_demos.py \
+    --task Isaac-Move-SOArm-Abs-Mimic-v0 \
+    --dataset_file ./datasets/move_generated.hdf5 --enable_cameras
 ```
 
 ### 4. Merge Datasets
@@ -76,7 +78,7 @@ python scripts/tools/merge_hdf5_datasets.py \
     --output_file datasets/dataset_merged.hdf5
 ```
 
-### 5. Regenerate with Camera Observations
+### 5. Regenerate with Camera Observations（optional for experiments）
 
 ```bash
 python scripts/tools/regenerate_demos.py \
@@ -88,7 +90,7 @@ python scripts/tools/regenerate_demos.py \
 ### 6. Annotate
 
 ```bash
-python scripts/isaaclab_mimic/annotate_demos.py \
+python projects/so_arm_mimic/scripts/isaaclab_mimic/annotate_demos.py \
     --device cpu --task Isaac-Move-SOArm-Abs-Mimic-v0 \
     --input_file ./datasets/move_demo.hdf5 \
     --output_file ./datasets/move_annotated.hdf5
@@ -97,14 +99,14 @@ python scripts/isaaclab_mimic/annotate_demos.py \
 ### 7. Generate Augmented Dataset
 
 ```bash
-python scripts/isaaclab_mimic/generate_dataset.py \
+python projects/so_arm_mimic/scripts/isaaclab_mimic/generate_dataset.py \
     --task Isaac-Move-SOArm-Abs-Mimic-v0 \
     --device cpu --num_envs 10 --generation_num_trials 10 \
     --input_file ./datasets/move_annotated.hdf5 \
     --output_file ./datasets/move_generated.hdf5
 ```
 
-### 8. Convert to LeRobot Format
+### 8. Convert to LeRobot Format (failed, dont use)
 
 ```bash
 python scripts/tools/convert_hdf5_to_lerobot.py \

@@ -119,17 +119,17 @@ class ReplaySceneCfg(InteractiveSceneCfg):
         prim_path="/World/Light",
         spawn=sim_utils.DomeLightCfg(intensity=3000.0),
     )
-    # test_object_1 = AssetBaseCfg(
-    #     prim_path="{ENV_REGEX_NS}/test_object_1",
-    #     spawn=sim_utils.UsdFileCfg(
-    #         usd_path=OBJECT_USD_PATH_1,
-    #         scale=(0.001, 0.001, 0.001),
-    #         rigid_props=RigidBodyPropertiesCfg(
-    #             kinematic_enabled=True,  # 設成 kinematic，不受力影響
-    #         ),
-    #     ),
-    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.36, 0.015, 0.0), rot=(0.707, 0.0, 0.0, -0.707)),
-    # )
+    test_object_1 = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/test_object_1",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=OBJECT_USD_PATH_1,
+            scale=(0.001, 0.001, 0.001),
+            rigid_props=RigidBodyPropertiesCfg(
+                kinematic_enabled=True,  # 設成 kinematic，不受力影響
+            ),
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.36, 0.215, 0.0), rot=(1.0, 0.0, 0.0, 0.0)),
+    )
     test_object_2 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/test_object_2",
         spawn=sim_utils.UsdFileCfg(

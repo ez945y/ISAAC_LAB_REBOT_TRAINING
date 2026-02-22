@@ -45,5 +45,5 @@ All scripts are standalone. Run from the repo root:
 ```bash
 python scripts/07_moving_from_dataset.py --episode 0 --video --video_dir ./videos --enable_cameras
 python scripts/08_augmented_replay.py --enable_cameras
-python scripts/09_moving_to_hdf5.py --dataset MikeChenYZ/soarm-fmb-v2 --episode 0 --output ./datasets/move_demo.hdf5
+python scripts/09_moving_to_hdf5.py --dataset MikeChenYZ/soarm-fmb-v2 --output ./datasets/move_demo.hdf5
 ```

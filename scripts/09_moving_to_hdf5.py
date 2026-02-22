@@ -46,33 +46,136 @@ from differential_ik_cfg import DifferentialIKControllerCfg
 
 
 # ── LeRobot dataset loading ────────────────────────────────────
-def load_episode_data(dataset_id: str, episode_idx: int):
-    """讀取指定 episode 的 action、observation.state、timestamp"""
-    os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+class EpisodeLoader:
+    """Loads a LeRobot dataset once and provides fast per-episode access via cached index."""
 
-    dataset = LeRobotDataset(dataset_id)
-    actions = []
-    obs_states = []
-    timestamps = []
-    for i in range(len(dataset)):
-        sample = dataset[i]
-        ep_idx = sample["episode_index"].item()
-        if ep_idx < episode_idx:
-            continue
-        if ep_idx > episode_idx:
-            break
-        actions.append(sample["action"])
-        obs_states.append(sample["observation.state"])
-        timestamps.append(sample["timestamp"].item())
+    def __init__(self, dataset_id: str, needed_episodes: set = None, cache_dir: str = None):
+        """
+        Args:
+            dataset_id: LeRobot dataset ID
+            needed_episodes: optional set of episode indices we care about;
+                             only missing episodes will be scanned.
+            cache_dir: directory to store the episode_index_cache.json
+        """
+        import json as _json
+        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+        from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
-    if not actions:
-        raise ValueError(f"Episode {episode_idx} 不存在於資料集中")
+        print(f"[INFO] 載入 LeRobot dataset: {dataset_id} ...")
+        self.dataset = LeRobotDataset(dataset_id)
+        self._json = _json
 
-    actions_tensor = torch.stack(actions)       # [N, 6]
-    obs_states_tensor = torch.stack(obs_states) # [N, 6]
-    print(f"[INFO] 載入 episode {episode_idx}，共 {len(actions_tensor)} 幀")
-    return actions_tensor, obs_states_tensor, timestamps
+        # ── 1. Determine cache path ──
+        if cache_dir is None:
+            cache_dir = SCRIPT_DIR
+        self._cache_path = os.path.join(cache_dir, "episode_index_cache.json")
+
+        # ── 2. Try loading cached index ──
+        self._index = {}
+        cache_hit = False
+        if os.path.exists(self._cache_path):
+            try:
+                with open(self._cache_path, "r") as f:
+                    cache = _json.load(f)
+                if cache.get("dataset_id") == dataset_id:
+                    # Restore index (JSON keys are strings, convert back to int)
+                    self._index = {int(k): tuple(v) for k, v in cache.get("episodes", {}).items()}
+                    cached_eps = set(self._index.keys())
+                    print(f"[INFO] 從快取載入索引: {self._cache_path} (已有 {len(cached_eps)} 個 episodes)")
+                    cache_hit = True
+                else:
+                    print(f"[INFO] 快取 dataset_id 不匹配，重建索引")
+            except Exception as e:
+                print(f"[WARNING] 無法讀取快取: {e}")
+
+        # ── 3. Determine which episodes still need scanning ──
+        if needed_episodes is not None:
+            missing = needed_episodes - set(self._index.keys())
+        else:
+            missing = None  # scan all
+
+        if cache_hit and needed_episodes is not None and not missing:
+            print(f"[INFO] 所有需要的 episodes 都已在快取中，跳過掃描")
+        else:
+            # Need to scan (either no cache, or missing episodes)
+            self._scan_episodes(missing)
+            # Save updated cache
+            self._save_cache(dataset_id)
+
+        print(f"[INFO] 索引就緒，共 {len(self._index)} 個 episodes")
+
+    def _scan_episodes(self, needed_set: set = None):
+        """Scan dataset to build index. Stores ALL discovered episodes into self._index."""
+        # Try fast path via episode_data_index first
+        if hasattr(self.dataset, 'episode_data_index'):
+            ep_data_idx = self.dataset.episode_data_index
+            from_indices = ep_data_idx["from"].tolist()
+            to_indices = ep_data_idx["to"].tolist()
+            for ep_i, (start, end) in enumerate(zip(from_indices, to_indices)):
+                self._index[ep_i] = (start, end)
+            return
+
+        # Fallback: sequential scan
+        total = len(self.dataset)
+        max_needed = max(needed_set) if needed_set else None
+        print(f"[INFO] 掃描建立索引 (共 {total} 幀)...")
+
+        current_ep = None
+        start = 0
+        for i in range(total):
+            ep_idx = self.dataset[i]["episode_index"].item()
+            if ep_idx != current_ep:
+                if current_ep is not None:
+                    # Store EVERY discovered episode
+                    self._index[current_ep] = (start, i)
+                    # Early exit: stop scanning if we've passed the last needed episode
+                    if max_needed is not None and current_ep >= max_needed:
+                        print(f"\r[INFO] 掃描進度: {i}/{total} — 已找齊所需要的 episodes，提前結束")
+                        break
+                current_ep = ep_idx
+                start = i
+            if i % 1000 == 0:
+                print(f"\r[INFO] 掃描進度: {i}/{total} 幀, 已找到 {len(self._index)} 個 episodes", end="", flush=True)
+        else:
+            # Loop finished without break — record the last episode
+            if current_ep is not None:
+                self._index[current_ep] = (start, total)
+        print()
+
+    def _save_cache(self, dataset_id: str):
+        """Save episode index to JSON cache file."""
+        cache = {
+            "dataset_id": dataset_id,
+            "episodes": {str(k): list(v) for k, v in sorted(self._index.items())},
+        }
+        os.makedirs(os.path.dirname(self._cache_path), exist_ok=True)
+        with open(self._cache_path, "w") as f:
+            self._json.dump(cache, f, indent=2)
+        print(f"[INFO] 索引已更新並存入快取: {self._cache_path}")
+
+    @property
+    def episode_indices(self) -> list:
+        return sorted(self._index.keys())
+
+    def load(self, episode_idx: int):
+        """快速讀取指定 episode 的 action、observation.state、timestamp"""
+        if episode_idx not in self._index:
+            raise ValueError(f"Episode {episode_idx} 不存在於資料集中 (可用: {self.episode_indices})")
+
+        start, end = self._index[episode_idx]
+        actions = []
+        obs_states = []
+        timestamps = []
+        for i in range(start, end):
+            sample = self.dataset[i]
+            actions.append(sample["action"])
+            obs_states.append(sample["observation.state"])
+            timestamps.append(sample["timestamp"].item())
+
+        actions_tensor = torch.stack(actions)       # [N, 6]
+        obs_states_tensor = torch.stack(obs_states) # [N, 6]
+        print(f"[INFO] 載入 episode {episode_idx}，共 {len(actions_tensor)} 幀 (index {start}:{end})")
+        return actions_tensor, obs_states_tensor, timestamps
 
 
 # ── Pinocchio FK helper ─────────────────────────────────────────
@@ -197,11 +300,6 @@ def convert_episode(
         ).float()
         ee_actions[i, 7] = gripper_rad
 
-        if (i + 1) % 50 == 0 or i == 0:
-            print(f"  Frame {i+1:>4d}/{num_frames}: "
-                  f"pos=[{ee_pos_v[0]:.4f}, {ee_pos_v[1]:.4f}, {ee_pos_v[2]:.4f}] "
-                  f"error={pos_error:.6f}m")
-
     return ee_actions, errors
 
 
@@ -210,6 +308,8 @@ def build_initial_state(
     first_action_rad: torch.Tensor,
     cube_pos: list = None,
     cube_quat: list = None,
+    platform_pos: list = None,
+    platform_quat: list = None,
 ):
     """
     Build the initial_state dict matching Isaac Lab's scene state format.
@@ -218,6 +318,8 @@ def build_initial_state(
         first_action_rad: [6] tensor (5 arm + 1 gripper) in radians
         cube_pos: [3] list, cube initial position
         cube_quat: [4] list, cube initial quaternion [w, x, y, z]
+        platform_pos: [3] list, platform block initial position
+        platform_quat: [4] list, platform block initial quaternion [w, x, y, z]
 
     Returns:
         dict: initial state with articulation + rigid_object entries
@@ -226,8 +328,11 @@ def build_initial_state(
         # cube_pos = [0.36, -0.02, 0.0]
         cube_pos = [0.38, -0.04, 0.0]
     if cube_quat is None:
-        # cube_quat = [0.707, 0.0, 0.0, 0.707]
         cube_quat = [1.0, 0.0, 0.0, 0.0]
+    if platform_pos is None:
+        platform_pos = [0.38, 0.23, 0.0]
+    if platform_quat is None:
+        platform_quat = [1.0, 0.0, 0.0, 0.0]
 
     # Robot joint positions (all 6 joints)
     joint_pos = first_action_rad.clone()  # [6]
@@ -240,7 +345,7 @@ def build_initial_state(
     initial_state = {
         "articulation": {
             "robot": {
-                "root_pose": torch.tensor([[0.01, -0.005, 0.05, 1.0, 0.0, 0.0, 0.0]]),  # [1, 7] pos+quat
+                "root_pose": torch.tensor([[0.0, -0.01, 0.05, 1.0, 0.0, 0.0, 0.0]]),  # [1, 7] pos+quat
                 "root_velocity": torch.zeros(1, 6),           # [1, 6]
                 "joint_position": joint_pos.unsqueeze(0),     # [1, 6]
                 "joint_velocity": joint_vel.unsqueeze(0),     # [1, 6]
@@ -250,7 +355,11 @@ def build_initial_state(
             "cube_1": {
                 "root_pose": torch.tensor([cube_pos + cube_quat]).float(),  # [1, 7]
                 "root_velocity": torch.zeros(1, 6),
-            }
+            },
+            "platform_block": {
+                "root_pose": torch.tensor([platform_pos + platform_quat]).float(),  # [1, 7]
+                "root_velocity": torch.zeros(1, 6),
+            },
         },
     }
 
@@ -304,7 +413,7 @@ def write_hdf5(
     actions_np = ee_actions.cpu().numpy()
     demo_grp.create_dataset("actions", data=actions_np, compression="gzip")
 
-    # success flag
+    # success flag + metadata
     demo_grp.attrs["success"] = True
     demo_grp.attrs["num_samples"] = actions_np.shape[0]
 
@@ -334,6 +443,28 @@ def write_hdf5(
     print(f"  - env_name: {env_name}")
 
 
+# ── Per-episode configurations ──────────────────────────────────
+# Map episode index → cube initial state.
+# Fill in entries below, then run with --use_configs to generate
+# a multi-demo HDF5 from these configurations.
+#
+# Keys:   LeRobot dataset episode index (int)
+# Values: dict with:
+#   cube_pos:   [x, y, z]     initial cube position
+#   cube_quat:  [w, x, y, z]  initial cube quaternion
+#
+EPISODE_CONFIGS = {
+    2: {"cube_pos": [0.38, -0.04, 0.0], "cube_quat": [1.0, 0.0, 0.0, 0.0]},
+    3: {"cube_pos": [0.38, -0.04, 0.0], "cube_quat": [1.0, 0.0, 0.0, 0.0]},
+    8: {"cube_pos": [0.38, -0.04, 0.0], "cube_quat": [1.0, 0.0, 0.0, 0.0]},
+    9: {"cube_pos": [0.38, -0.04, 0.0], "cube_quat": [1.0, 0.0, 0.0, 0.0]},
+    12: {"cube_pos": [0.28, -0.04, 0.0], "cube_quat": [1.0, 0.0, 0.0, 0.0]},
+    13: {"cube_pos": [0.28, -0.04, 0.0], "cube_quat": [1.0, 0.0, 0.0, 0.0]},
+    18: {"cube_pos": [0.28, -0.04, 0.0], "cube_quat": [1.0, 0.0, 0.0, 0.0]},
+    19: {"cube_pos": [0.28, -0.04, 0.0], "cube_quat": [1.0, 0.0, 0.0, 0.0]},
+}
+
+
 # ── Main ────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
@@ -342,7 +473,7 @@ def main():
     parser.add_argument("--dataset", type=str, default="MikeChenYZ/soarm-fmb-v2",
                         help="LeRobot dataset ID")
     parser.add_argument("--episode", type=int, default=0,
-                        help="Episode index to convert")
+                        help="Episode index to convert (ignored when --use_configs)")
     parser.add_argument("--output", type=str, default="./datasets/move_demo.hdf5",
                         help="Output HDF5 file path")
     parser.add_argument("--urdf", type=str,
@@ -351,13 +482,15 @@ def main():
     parser.add_argument("--device", type=str, default="cpu",
                         help="Torch device")
     parser.add_argument("--cube_pos", type=float, nargs=3,
-                        default=[0.36, -0.02, 0.0],
-                        help="Initial cube position [x, y, z]")
+                        default=[0.38, -0.04, 0.0],
+                        help="Initial cube position (ignored when --use_configs)")
     parser.add_argument("--cube_quat", type=float, nargs=4,
-                        default=[0.707, 0.0, 0.0, 0.707],
-                        help="Initial cube quaternion [w, x, y, z]")
+                        default=[1.0, 0.0, 0.0, 0.0],
+                        help="Initial cube quaternion (ignored when --use_configs)")
     parser.add_argument("--all_episodes", action="store_true", default=False,
-                        help="Convert all episodes in the dataset")
+                        help="Convert all episodes (ignored when --use_configs)")
+    parser.add_argument("--use_configs", action="store_true", default=True,
+                        help="Use EPISODE_CONFIGS dict instead of CLI args")
     args = parser.parse_args()
 
     # Load URDF and build FK model
@@ -365,25 +498,49 @@ def main():
     fk = PinocchioFK(args.urdf)
     print(f"[INFO] Pinocchio model: {fk.model.nq} DOF, EE frame: {fk.ee_frame_id}")
 
-    if args.all_episodes:
-        # Discover all episodes
-        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-        from lerobot.datasets.lerobot_dataset import LeRobotDataset
-        dataset = LeRobotDataset(args.dataset)
-        episode_indices = sorted(set(
-            dataset[i]["episode_index"].item() for i in range(len(dataset))
-        ))
-        print(f"[INFO] 找到 {len(episode_indices)} 個 episodes: {episode_indices}")
-    else:
-        episode_indices = [args.episode]
+    # ── Load LeRobot dataset once ──
+    needed = set(EPISODE_CONFIGS.keys()) if args.use_configs else None
+    cache_dir = os.path.dirname(os.path.abspath(args.output))
+    loader = EpisodeLoader(args.dataset, needed_episodes=needed, cache_dir=cache_dir)
 
-    for ep_idx in episode_indices:
+    # ── Determine which episodes to process and their cube configs ──
+    if args.use_configs:
+        # Use the EPISODE_CONFIGS dict
+        if not EPISODE_CONFIGS:
+            raise ValueError("EPISODE_CONFIGS is empty. Please fill in episode entries.")
+        episode_configs = EPISODE_CONFIGS
+        print(f"[INFO] 使用 EPISODE_CONFIGS，共 {len(episode_configs)} 筆:")
+        for ep_idx, cfg in episode_configs.items():
+            print(f"  Episode {ep_idx}: pos={cfg['cube_pos']}, quat={cfg['cube_quat']}")
+    else:
+        # Legacy mode: single episode or all episodes with shared cube config
+        if args.all_episodes:
+            episode_indices = loader.episode_indices
+            print(f"[INFO] 找到 {len(episode_indices)} 個 episodes: {episode_indices}")
+        else:
+            episode_indices = [args.episode]
+
+        # Build configs with shared cube_pos/cube_quat
+        episode_configs = {
+            ep_idx: {
+                "cube_pos": args.cube_pos,
+                "cube_quat": args.cube_quat,
+            }
+            for ep_idx in episode_indices
+        }
+
+    # ── Process each episode ──
+    output_path = args.output
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    first_written = True
+
+    for demo_id, (ep_idx, cfg) in enumerate(episode_configs.items()):
         print(f"\n{'='*60}")
-        print(f"[INFO] 處理 Episode {ep_idx}")
+        print(f"[INFO] 處理 Episode {ep_idx} (demo_{demo_id})")
         print(f"{'='*60}")
 
-        # Load episode
-        actions, obs_states, timestamps = load_episode_data(args.dataset, ep_idx)
+        # Load episode (fast — uses pre-built index)
+        actions, obs_states, timestamps = loader.load(ep_idx)
 
         # FK → IK round-trip conversion
         ee_actions, errors = convert_episode(actions, obs_states, fk, device=args.device)
@@ -399,27 +556,23 @@ def main():
         if max_err > 0.01:
             print(f"  [WARNING] Max error > 1cm — some frames may be near singularity")
 
-        # Build initial state
+        # Build initial state with per-episode cube config
         first_action_rad = denormalize_joints(actions[0:1]).squeeze(0)  # [6]
         initial_state = build_initial_state(
             first_action_rad,
-            cube_pos=args.cube_pos,
-            cube_quat=args.cube_quat,
+            cube_pos=cfg["cube_pos"],
+            cube_quat=cfg["cube_quat"],
         )
 
-        # Determine output path — all episodes go to single file in --all_episodes mode
-        output_path = args.output
-
-        # Write HDF5
-        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-        is_first = (ep_idx == episode_indices[0])
+        # Write HDF5 (append after first demo)
         write_hdf5(
             output_path, ee_actions, initial_state,
-            demo_id=ep_idx,
-            append=(not is_first),
+            demo_id=demo_id,
+            append=(not first_written),
         )
+        first_written = False
 
-    print(f"\n[DONE] 轉換完成！")
+    print(f"\n[DONE] 轉換完成！共 {len(episode_configs)} 筆 demo 寫入 {output_path}")
 
 
 if __name__ == "__main__":
