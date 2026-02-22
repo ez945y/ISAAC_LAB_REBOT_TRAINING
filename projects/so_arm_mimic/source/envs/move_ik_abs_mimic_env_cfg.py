@@ -23,10 +23,12 @@ from controll_scripts.controllers.differential_ik_cfg import DifferentialIKContr
 from controll_scripts.input_devices.se3_leader_arm import Se3LeaderArmCfg
 from rl_manager.tasks.manager_based.stack import stack_joint_pos_env_cfg
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_events
+import isaaclab.envs.mdp as mdp
 
 # ── Use our own single-cube MDP (no cube_2/cube_3 dependencies) ──
 from so_arm_mimic.source.mdp import observations as move_obs
 from so_arm_mimic.source.mdp import terminations as move_term
+from so_arm_mimic.source.mdp import events as move_events
 
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
@@ -54,7 +56,7 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
 
         # ── Robot: custom USD, elevated to Z=0.05 ──
         self.scene.robot.spawn.usd_path = _ROBOT_USD
-        self.scene.robot.init_state.pos = (0.01, -0.005, 0.05)
+        self.scene.robot.init_state.pos = (0.0, -0.005, 0.05)
         self.scene.robot.actuators["arm"].stiffness = 17.8
         self.scene.robot.actuators["arm"].damping = 0.6
         self.scene.robot.actuators["gripper"].stiffness = 17.8
@@ -132,8 +134,38 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
                 ),
             ],
         )
-        
         # ── Events: only randomize 1 cube on the right side ──
+        # Disable parent events that override our custom initial joint position
+        self.events.init_arm_pose = None
+        self.events.randomize_joint_state = None
+        # Explicitly reset robot joints to our custom init_state.joint_pos on every reset
+        self.events.reset_robot_joints = EventTerm(
+            func=mdp.reset_joints_by_offset,
+            mode="reset",
+            params={
+                "position_range": (0.0, 0.0),
+                "velocity_range": (0.0, 0.0),
+                "asset_cfg": SceneEntityCfg("robot"),
+            },
+        )
+
+
+        # Platform Randomization ──
+        self.events.randomize_platform_positions = EventTerm(
+            func=franka_stack_events.randomize_object_pose,
+            mode="reset",
+            params={
+                "pose_range": {
+                    "x": (0.36, 0.40),
+                    "y": (0.21, 0.25),
+                    "z": (0.0, 0.0),
+                    "yaw": (-0.4, 0.4),
+                },
+                "min_separation": 0.0,
+                "asset_cfgs": [SceneEntityCfg("platform_block")],
+            },
+        )
+
         self.events.randomize_cube_positions = EventTerm(
             func=franka_stack_events.randomize_object_pose,
             mode="reset",
@@ -142,12 +174,39 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
                     "x": (0.18, 0.38),     # right side workspace
                     "y": (-0.04, -0.17),    # slightly right of center  
                     "z": (0.0, 0.0),
-                    "yaw": (-0.5, 0.5),
+                    "yaw": (-0.7854, 0.7854),
                 },
                 "min_separation": 0.05,
                 "asset_cfgs": [SceneEntityCfg("cube_1")],
             },
         )
+
+        # ── Color Randomization ──
+        self.events.randomize_cube_color = EventTerm(
+            func=move_events.randomize_material_color,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg("cube_1"),
+                "color_ranges": {
+                    "r": (0.1, 0.9),
+                    "g": (0.1, 0.9),
+                    "b": (0.1, 0.9),
+                },
+            },
+        )
+        self.events.randomize_platform_color = EventTerm(
+            func=move_events.randomize_material_color,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg("platform_block"),
+                "color_ranges": {
+                    "r": (0.1, 0.9),
+                    "g": (0.1, 0.9),
+                    "b": (0.1, 0.9),
+                },
+            },
+        )
+
 
         # ── Actions: DifferentialIK absolute mode + gripper ──
         self.actions.arm_action = DifferentialInverseKinematicsActionCfg(
@@ -168,18 +227,18 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
         )
 
         # ── Teleop devices ──
-        self.teleop_devices = DevicesCfg(
-            devices={
-                "leader_arm": Se3LeaderArmCfg(
-                    socket_host="0.0.0.0",
-                    socket_port=5359,
-                    server_mode=True,
-                    pos_sensitivity=1.0,
-                    rot_sensitivity=1.0,
-                    sim_device="cuda:0",
-                ),
-            }
-        )
+        # self.teleop_devices = DevicesCfg(
+        #     devices={
+        #         "leader_arm": Se3LeaderArmCfg(
+        #             socket_host="0.0.0.0",
+        #             socket_port=5359,
+        #             server_mode=True,
+        #             pos_sensitivity=1.0,
+        #             rot_sensitivity=1.0,
+        #             sim_device="cuda:0",
+        #         ),
+        #     }
+        # )
 
         # ── Observations: replace ALL multi-cube terms with single-cube versions ──
         self.observations.policy.object = ObsTerm(
@@ -220,7 +279,7 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
             params={
                 "cube_frame_name": "cube_1_frame",
                 "platform_frame_name": "platform_frame",
-                "xy_tolerance": 0.115,
+                "xy_tolerance": 0.075,
                 "min_z_above": 0.015,
             },
         )

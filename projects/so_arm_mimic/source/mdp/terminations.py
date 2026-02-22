@@ -22,8 +22,11 @@ def cube_on_platform(
     env: ManagerBasedRLEnv,
     cube_frame_name: str = "cube_1_frame",
     platform_frame_name: str = "platform_frame",
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     xy_tolerance: float = 0.12,
     min_z_above: float = 0.015,
+    min_gripper_open: float = 0.7,
+    max_z_above: float = 0.10,
 ):
     """Check if cube has been placed on the platform.
 
@@ -50,7 +53,7 @@ def cube_on_platform(
     xy_ok = (dx < xy_tolerance) & (dy < xy_tolerance)
 
     # 4. Z above platform surface
-    z_ok = cube_center[:, 2] > (plat_center[:, 2] + min_z_above)
+    z_ok = (cube_center[:, 2] > (plat_center[:, 2] + min_z_above)) & (cube_center[:, 2] < (plat_center[:, 2] + max_z_above))
 
     # Debug: print positions and check results
     # Subtracting env_origins for easier reading in debug
@@ -58,15 +61,22 @@ def cube_on_platform(
     cube_rel = (cube_center[0] - origin).tolist()
     plat_rel = (plat_center[0] - origin).tolist()
     
-    result = xy_ok & z_ok
+    # 5. Gripper must be open (released the cube)
+    robot: Articulation = env.scene[robot_cfg.name]
+    gripper_joint_ids, _ = robot.find_joints(["gripper"])
+    gripper_pos = robot.data.joint_pos[:, gripper_joint_ids[0]]
+    gripper_open = gripper_pos >= min_gripper_open
+
+    result = xy_ok & z_ok & gripper_open
     _Y = "\033[93m"  # bright yellow
     _G = "\033[92m"  # bright green
     _R = "\033[91m"  # bright red
     _E = "\033[0m"   # reset
     tag = f"{_G}SUCCESS{_E}" if result[0].item() else f"{_R}FAIL{_E}"
-    print(f"{_Y}[TERM]{_E} cube={[f'{v:.3f}' for v in cube_rel]}  plat={[f'{v:.3f}' for v in plat_rel]}  dx={dx[0].item():.4f} dy={dy[0].item():.4f} z_ok={z_ok[0].item()}  [{tag}]")
+    # print(robot.data.joint_pos)
+    # print(f"{_Y}[TERM]{_E} cube={[f'{v:.3f}' for v in cube_rel]}  plat={[f'{v:.3f}' for v in plat_rel]}  dx={dx[0].item():.4f} dy={dy[0].item():.4f} z_ok={z_ok[0].item()} grip={gripper_pos[0].item():.2f}  [{tag}]")
 
-    return xy_ok & z_ok
+    return result
 
 
 
