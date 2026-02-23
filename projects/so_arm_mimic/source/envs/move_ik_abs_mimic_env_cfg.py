@@ -11,7 +11,6 @@ from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer import OffsetCfg
 from isaaclab.utils import configclass
 from isaaclab.devices.device_base import DevicesCfg
-from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import SceneEntityCfg
@@ -43,35 +42,6 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.
 _ROBOT_USD = os.path.join(_REPO_ROOT, "tools", "controll_scripts", "so_arm_101", "SO-ARM101v2.usd")
 _CUBE_USD = os.path.join(_REPO_ROOT, "tools", "exp", "test", "bodies", "3_4.usd")
 _PLATFORM_USD = os.path.join(_REPO_ROOT, "tools", "exp", "test", "bodies", "3_1.usd")
-
-
-@configclass
-class ImageCfg(ObsGroup):
-    """Observations for policy group."""
-    top_rgb = ObsTerm(
-        func=move_obs.camera_rgb,
-        params={
-            "asset_cfg": SceneEntityCfg("top_camera"),
-        },
-    )
-    wrist_rgb = ObsTerm(
-        func=move_obs.camera_rgb,
-        params={
-            "asset_cfg": SceneEntityCfg("wrist_camera"),
-        },
-    )
-    top_semantic = ObsTerm(
-        func=move_obs.camera_semantic,
-        params={
-            "asset_cfg": SceneEntityCfg("wrist_camera"),
-        },
-    )
-    wrist_semantic = ObsTerm(
-        func=move_obs.camera_semantic,
-        params={
-            "asset_cfg": SceneEntityCfg("top_camera"),
-        },
-    )
 
 @configclass
 class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg, MimicEnvCfg):
@@ -280,21 +250,21 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
         #     }
         # )
 
-        self.scene.wrist_camera = TiledCameraCfg(
+        self.scene.wrist_rgb = TiledCameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/gripper_link/wrist_cam",
             update_period=1 / 30,
             height=480,
             width=640,
-            data_types=["rgb", "semantic_segmentation"],
+            data_types=["rgb"], # ["rgb", "semantic_segmentation"],
             spawn=None
         )
 
-        self.scene.top_camera = TiledCameraCfg(
+        self.scene.top_rgb = TiledCameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/top_cam",
             update_period=1 / 30,
             height=480,
             width=640,
-            data_types=["rgb", "semantic_segmentation"],
+            data_types=["rgb"], # ["rgb", "semantic_segmentation"],
             spawn=None
         )
 
@@ -319,6 +289,32 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
         self.observations.policy.eef_quat = ObsTerm(func=move_obs.ee_frame_quat)
         self.observations.policy.gripper_pos = ObsTerm(func=move_obs.gripper_pos)
 
+
+        self.observations.policy.top_rgb = ObsTerm(
+            func=move_obs.camera_rgb,
+            params={
+                "asset_cfg": SceneEntityCfg("top_rgb"),
+            },
+        )
+        self.observations.policy.wrist_rgb = ObsTerm(
+            func=move_obs.camera_rgb,
+            params={
+                "asset_cfg": SceneEntityCfg("wrist_rgb"),
+            },
+        )
+        # self.observations.policy.top_semantic = ObsTerm(
+        #     func=move_obs.camera_semantic,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("wrist_camera"),
+        #     },
+        # )
+        # self.observations.policy.wrist_semantic = ObsTerm(
+        #     func=move_obs.camera_semantic,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("top_camera"),
+        #     },
+        # )
+
         # ── Subtask observations: only grasp ──
         self.observations.subtask_terms.grasp_1 = ObsTerm(
             func=move_obs.object_grasped,
@@ -328,8 +324,6 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
                 "object_cfg": SceneEntityCfg("cube_1"),
             },
         )
-        
-        self.observations.images = ImageCfg()
 
         # Remove stack-specific subtask observations
         self.observations.subtask_terms.stack_1 = None

@@ -1,4 +1,6 @@
 import torch
+import numpy as np
+
 # 5 個手臂關節 + 1 個夾爪 (與 Isaac Sim USD 中的關節名稱對應)
 ARM_JOINT_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 GRIPPER_JOINT_NAME = "gripper"
@@ -20,26 +22,44 @@ _JOINT_ORDER = ARM_JOINT_NAMES + [GRIPPER_JOINT_NAME]
 JOINT_LOWER = torch.tensor([JOINT_LIMITS[j][0] for j in _JOINT_ORDER])  # [6]
 JOINT_UPPER = torch.tensor([JOINT_LIMITS[j][1] for j in _JOINT_ORDER])  # [6]
 
-def normalize_joints(rad_values: torch.Tensor) -> torch.Tensor:
+def normalize_joints(values):
     """
     Isaac Sim 弧度 → LeRobot 正規化格式
+    支援 torch.Tensor 或 np.ndarray
     輸入: [..., 6] radians
     輸出: [..., 6] LeRobot 格式 (-100~100 for arm, 0~100 for gripper)
     """
-    lower = JOINT_LOWER.to(rad_values.device)
-    upper = JOINT_UPPER.to(rad_values.device)
+    # 自動判斷輸入類型，並轉成 torch 或 numpy
+    is_torch = isinstance(values, torch.Tensor)
+    device = values.device if is_torch else None
 
-    result = torch.zeros_like(rad_values)
+    # 轉成 numpy 方便統一處理（如果原本是 torch，先 cpu().numpy()）
+    if is_torch:
+        values_np = values.cpu().numpy()
+    else:
+        values_np = values  # 已經是 numpy
+
+    # 轉成 float32 避免精度問題
+    values_np = values_np.astype(np.float32)
+
+    # lower / upper 轉 numpy
+    lower_np = JOINT_LOWER.cpu().numpy().astype(np.float32)
+    upper_np = JOINT_UPPER.cpu().numpy().astype(np.float32)
+
+    result = np.zeros_like(values_np)
 
     # Arm joints: radians → -100 ~ 100
-    arm_range = upper[:5] - lower[:5]
-    result[..., :5] = ((rad_values[..., :5] - lower[:5]) / arm_range) * 200.0 - 100.0
+    arm_range = upper_np[:5] - lower_np[:5]
+    result[..., :5] = ((values_np[..., :5] - lower_np[:5]) / arm_range) * 200.0 - 100.0
 
     # Gripper: radians → 0 ~ 100
-    gripper_range = upper[5:6] - lower[5:6]
-    result[..., 5:6] = ((rad_values[..., 5:6] - lower[5:6]) / gripper_range) * 100.0
+    gripper_range = upper_np[5:6] - lower_np[5:6]
+    result[..., 5:6] = ((values_np[..., 5:6] - lower_np[5:6]) / gripper_range) * 100.0
 
-    return result
+    if is_torch:
+        return torch.from_numpy(result).to(device=device, dtype=torch.float32)
+    else:
+        return result
 
 
 def denormalize_joints(norm_values: torch.Tensor) -> torch.Tensor:

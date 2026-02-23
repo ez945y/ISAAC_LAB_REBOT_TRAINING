@@ -29,6 +29,8 @@ LeRobot joints → 09_moving_to_hdf5.py (FK→IK) → HDF5 → Replay / Annotate
 
 ```bash
 cd projects/so_arm_mimic
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+export LD_PRELOAD=$CONDA_PREFIX/lib/libstdc++.so.6
 ```
 
 ### 1. Record Demonstrations
@@ -78,16 +80,8 @@ python scripts/tools/merge_hdf5_datasets.py \
     --output_file datasets/dataset_merged.hdf5
 ```
 
-### 5. Regenerate with Camera Observations（optional for experiments）
 
-```bash
-python scripts/tools/regenerate_demos.py \
-    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
-    --input_file ./datasets/dataset_merged.hdf5 \
-    --output_file ./datasets/dataset_merged_camera.hdf5
-```
-
-### 6. Annotate
+### 5. Annotate
 
 ```bash
 python projects/so_arm_mimic/scripts/isaaclab_mimic/annotate_demos.py \
@@ -96,29 +90,18 @@ python projects/so_arm_mimic/scripts/isaaclab_mimic/annotate_demos.py \
     --output_file ./datasets/move_annotated.hdf5
 ```
 
-### 7. Generate Augmented Dataset
+### 6. Generate Augmented Dataset
 
 ```bash
-python projects/so_arm_mimic/scripts/isaaclab_mimic/generate_dataset.py \
+nice -n 10 python projects/so_arm_mimic/scripts/isaaclab_mimic/generate_dataset.py \
     --task Isaac-Move-SOArm-Abs-Mimic-v0 \
-    --device cpu --num_envs 10 --generation_num_trials 10 \
+    --device cpu --num_envs 5 --generation_num_trials 1 \
     --input_file ./datasets/move_annotated.hdf5 \
-    --output_file ./datasets/move_generated.hdf5
+    --output_file ./datasets/move_generated.hdf5 --enable_cameras --headless
 ```
 
-### 8. Convert to LeRobot Format (failed, dont use)
+In case starting from "--num_envs 5 --generation_num_trials 1" if its ok then try bigger
 
-```bash
-python scripts/tools/convert_hdf5_to_lerobot.py \
-    --input ./datasets/so_arm_demos.hdf5 \
-    --output ./lerobot_datasets/so_arm_stack \
-    --robot-type so_arm --fps 30
-```
-
-| Isaac Lab Key | LeRobot Key | Description |
-|---------------|-------------|-------------|
-| `observations/policy/joint_pos` | `observation.state` | Joint positions |
-| `actions` | `action` | Control commands |
 
 ### Utility: Delete Episodes
 
@@ -126,6 +109,14 @@ python scripts/tools/convert_hdf5_to_lerobot.py \
 python scripts/tools/delete_episodes.py \
     --input_file ./datasets/dataset.hdf5 \
     --output_file ./datasets/dataset_clean.hdf5 -d 0
+```
+### Utility: Regenerate cover Observations（optional for experiments）
+
+```bash
+python scripts/tools/regenerate_demos.py \
+    --task Isaac-PickPlace-SOArm-Abs-Mimic-v0 \
+    --input_file ./datasets/dataset_merged.hdf5 \
+    --output_file ./datasets/dataset_merged_camera.hdf5
 ```
 
 ## Structure

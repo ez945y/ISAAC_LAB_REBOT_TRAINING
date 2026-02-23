@@ -15,7 +15,7 @@ Incremental experiment scripts for learning Isaac Lab fundamentals — from basi
 | 07 | `07_moving_from_dataset.py` | Load & replay LeRobot dataset episodes in sim with video export |
 | 08 | `08_augmented_replay.py` | Augmented replay with multiple episodes, cube configs & cameras |
 | 09 | `09_moving_to_hdf5.py` | FK→IK round-trip conversion: LeRobot joints → EE-space HDF5 |
-
+| 10 | `10_convert_to_lerobot.py` | feat: transfrom to lerobot dataset:  HDF5 → LeRobot|
 ## Progression
 
 ```
@@ -46,4 +46,6 @@ All scripts are standalone. Run from the repo root:
 python scripts/07_moving_from_dataset.py --episode 0 --video --video_dir ./videos --enable_cameras
 python scripts/08_augmented_replay.py --enable_cameras
 python scripts/09_moving_to_hdf5.py --dataset MikeChenYZ/soarm-fmb-v2 --output ./datasets/move_demo.hdf5
+python scripts/10_convert_to_lerobot.py --repo_id MikeChenYZ/so101_isaac_mimic-v1 --push_to_hub
+ffplay file-000.mp4
 ```
