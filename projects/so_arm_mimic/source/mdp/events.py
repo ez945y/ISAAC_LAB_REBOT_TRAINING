@@ -3,6 +3,7 @@ import torch
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import SceneEntityCfg
 from pxr import UsdGeom, UsdShade, Gf
+import colorsys
 
 def randomize_material_color(
     env: ManagerBasedEnv,
@@ -28,32 +29,47 @@ def randomize_material_color(
         
         shader_prim = stage.GetPrimAtPath(shader_path)
         if not shader_prim.IsValid():
-            print(f"[Color Random] Shader not found: {shader_path}")
             continue
         
         shader = UsdShade.Shader(shader_prim)
         
-        # 隨機顏色
-        r = random.uniform(color_ranges["r"][0], color_ranges["r"][1])
-        g = random.uniform(color_ranges["g"][0], color_ranges["g"][1])
-        b = random.uniform(color_ranges["b"][0], color_ranges["b"][1])
+        # HSV 生成顏色（修正版）
+        if random.random() < 0.5:
+            if random.random() < 0.5:
+                hue = random.uniform(0.0, 0.15)     # 紅→橙→黃
+            else:
+                hue = random.uniform(0.85, 1.0)     # 粉紅→紫紅
+        else:
+            # 其他色（藍綠紫）
+            hue = random.uniform(0.15, 0.85)
+
+        # 正常鮮豔（85%）
+        if random.random() < 0.85:
+            saturation = random.uniform(0.8, 1.0)  # 更強飽和
+            value = random.uniform(0.5, 0.85)       # 明度稍低，避免過白
+        else:
+            # 15% 白/淺
+            saturation = random.uniform(0.0, 0.4)
+            value = random.uniform(0.85, 1.0)
+
+        r, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
         new_color = Gf.Vec3f(r, g, b)
         
+        # 設 diffuseColor
         diffuse_input = shader.GetInput("diffuseColor")
         if diffuse_input:
             diffuse_input.Set(new_color)
-        else:
-            print(f"[Warning] diffuseColor input not found in {shader_path}")
+        
+        # 強制粗糙度，避免反光過強
+        roughness_input = shader.GetInput("roughness")
+        if roughness_input:
+            roughness_input.Set(random.uniform(0.55, 0.85))
         
         metallic_input = shader.GetInput("metallic")
         if metallic_input:
             metallic_input.Set(0.0)
-        roughness_input = shader.GetInput("roughness")
-        if roughness_input:
-            roughness_input.Set(0.4)
     
-    env.sim.render()  # 更新畫面
-
+    env.sim.render()
 
 _COLOR_RANDOMIZERS = {}
 

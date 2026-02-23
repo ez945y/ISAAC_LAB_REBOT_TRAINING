@@ -11,11 +11,13 @@ from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer import OffsetCfg
 from isaaclab.utils import configclass
 from isaaclab.devices.device_base import DevicesCfg
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
+from isaaclab.sensors import TiledCameraCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.envs.mdp.actions.actions_cfg import JointPositionActionCfg
 from controll_scripts.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
@@ -44,6 +46,34 @@ _PLATFORM_USD = os.path.join(_REPO_ROOT, "tools", "exp", "test", "bodies", "3_1.
 
 
 @configclass
+class ImageCfg(ObsGroup):
+    """Observations for policy group."""
+    top_rgb = ObsTerm(
+        func=move_obs.camera_rgb,
+        params={
+            "asset_cfg": SceneEntityCfg("top_camera"),
+        },
+    )
+    wrist_rgb = ObsTerm(
+        func=move_obs.camera_rgb,
+        params={
+            "asset_cfg": SceneEntityCfg("wrist_camera"),
+        },
+    )
+    top_semantic = ObsTerm(
+        func=move_obs.camera_semantic,
+        params={
+            "asset_cfg": SceneEntityCfg("wrist_camera"),
+        },
+    )
+    wrist_semantic = ObsTerm(
+        func=move_obs.camera_semantic,
+        params={
+            "asset_cfg": SceneEntityCfg("top_camera"),
+        },
+    )
+
+@configclass
 class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg, MimicEnvCfg):
     """
     Isaac Lab Mimic environment config for SO-ARM-101 Cube Move (pick right → place left).
@@ -55,12 +85,22 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
         super().__post_init__()
 
         # ── Robot: custom USD, elevated to Z=0.05 ──
+        self.robot_name = "so101_follower"
+        self.default_feature_joint_names = [f"{joint_name}.pos" for joint_name in ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]]
         self.scene.robot.spawn.usd_path = _ROBOT_USD
         self.scene.robot.init_state.pos = (0.0, -0.005, 0.05)
         self.scene.robot.actuators["arm"].stiffness = 17.8
         self.scene.robot.actuators["arm"].damping = 0.6
         self.scene.robot.actuators["gripper"].stiffness = 17.8
         self.scene.robot.actuators["gripper"].damping = 0.6
+        self.scene.robot.init_state.joint_pos = {
+            "shoulder_pan":   -0.25,    
+            "shoulder_lift":  -1.6,  
+            "elbow_flex":     1.68,
+            "wrist_flex":     0.9,
+            "wrist_roll":     0.0,
+            "gripper":        1.0,
+        }
 
         # ── Remove cube_2 and cube_3 from scene (only keep cube_1) ──
         self.scene.cube_2 = None
@@ -240,6 +280,25 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
         #     }
         # )
 
+        self.scene.wrist_camera = TiledCameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/gripper_link/wrist_cam",
+            update_period=1 / 30,
+            height=480,
+            width=640,
+            data_types=["rgb", "semantic_segmentation"],
+            spawn=None
+        )
+
+        self.scene.top_camera = TiledCameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/top_cam",
+            update_period=1 / 30,
+            height=480,
+            width=640,
+            data_types=["rgb", "semantic_segmentation"],
+            spawn=None
+        )
+
+
         # ── Observations: replace ALL multi-cube terms with single-cube versions ──
         self.observations.policy.object = ObsTerm(
             func=move_obs.object_obs,
@@ -269,6 +328,9 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
                 "object_cfg": SceneEntityCfg("cube_1"),
             },
         )
+        
+        self.observations.images = ImageCfg()
+
         # Remove stack-specific subtask observations
         self.observations.subtask_terms.stack_1 = None
         self.observations.subtask_terms.grasp_2 = None
@@ -308,7 +370,7 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
                 selection_strategy="nearest_neighbor_object",
                 selection_strategy_kwargs={"nn_k": 3},
                 action_noise=0.0,
-                num_interpolation_steps=20,
+                num_interpolation_steps=0,
                 num_fixed_steps=5,
                 apply_noise_during_interpolation=False,
             )
@@ -321,7 +383,7 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
                 selection_strategy="nearest_neighbor_object",
                 selection_strategy_kwargs={"nn_k": 3},
                 action_noise=0.0,
-                num_interpolation_steps=20,
+                num_interpolation_steps=0,
                 num_fixed_steps=0,
                 apply_noise_during_interpolation=False,
             )
@@ -330,3 +392,5 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
 
         # ── Debug visualization ──
         self.scene.ee_frame.debug_vis = False
+        self.sim.dt = 1 / 120
+        self.sim.decimation = 4

@@ -76,6 +76,8 @@ class SO101CubeStackEnvCfg(StackEnvCfg):
 
         # Set events
         self.events = EventCfg()
+        self.sim.dt = 1 / 120
+        self.sim.decimation = 4
 
         # === Robot USD path ===
         # The USD file is in isaaclab_mimic/controll_scripts/so_arm_101/SO-ARM101.usd

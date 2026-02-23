@@ -149,3 +149,20 @@ def object_grasped(
         raise ValueError("No gripper_joint_names in env config")
 
     return grasped
+
+
+def camera_rgb(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
+    """Get RGB image from wrist camera, flattened to vector."""
+    camera = env.scene[asset_cfg.name]
+    rgb = camera.data.output["rgb"]           # shape: (num_envs, h, w, 3)
+    rgb = rgb[..., :3]                        # remove alpha channel if present
+    return rgb.contiguous().reshape(env.num_envs, -1)  # → (num_envs, h*w*3)
+
+
+def camera_semantic(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
+    camera = env.scene[asset_cfg.name]
+    seg = camera.data.output["semantic_segmentation"]  # (num_envs, h, w, 4)
+    seg_rgb = seg[..., :3]
+    return seg_rgb.contiguous().reshape(env.num_envs, -1)
+
+    
