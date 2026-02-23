@@ -165,4 +165,13 @@ def camera_semantic(env: ManagerBasedRLEnv, asset_cfg) -> torch.Tensor:
     seg_rgb = seg[..., :3]
     return seg_rgb.contiguous() # .reshape(env.num_envs, -1)
 
+
+def ik_joint_target(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """記錄 DifferentialIK action 解出的目標關節角 (6維)"""
+    arm_action_term = env.action_manager.get_term("arm_action")
+    gripper_action_term = env.action_manager.get_term("gripper_action")
     
+    arm_targets = arm_action_term._asset.data.joint_pos_target[:, arm_action_term._joint_ids]
+    gripper_targets = gripper_action_term._asset.data.joint_pos_target[:, gripper_action_term._joint_ids]
+    
+    return torch.cat([arm_targets, gripper_targets], dim=-1)  # [N, 6]

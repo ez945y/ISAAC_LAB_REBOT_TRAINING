@@ -315,6 +315,8 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
         #     },
         # )
 
+        self.observations.policy.ik_joint_target = ObsTerm(func=move_obs.ik_joint_target)
+
         # ── Subtask observations: only grasp ──
         self.observations.subtask_terms.grasp_1 = ObsTerm(
             func=move_obs.object_grasped,

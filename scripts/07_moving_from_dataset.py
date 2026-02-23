@@ -165,7 +165,7 @@ class ReplaySceneCfg(InteractiveSceneCfg):
                 disable_gravity=True,
             ),
         ),
-        init_state=ArticulationCfg.InitialStateCfg(pos=(0.01, -0.005, 0.05)),
+        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, -0.005, 0.05)),
         actuators={
             "arm": ImplicitActuatorCfg(
                 joint_names_expr=ARM_JOINT_NAMES,
@@ -344,9 +344,9 @@ def main():
             print(
                 f"{frame_idx:>4d}/{total_frames:>4d} | "
                 # f"{ds_t:>7.3f} | {sim_time:>7.3f} | "
-                f"obs: {_fmt(obs_state_rad[4:6])} | "
-                # f"act: {_fmt(cur_action[5])} | "
-                f"sim: {_fmt(sim_joint_pos[4:6])}"
+                f"obs: {_fmt(obs_state_rad[5:6])} | "
+                f"act: {_fmt(cur_action[5:6])} | "
+                f"sim: {_fmt(sim_joint_pos[5:6])}"
             )
 
             frame_idx += 1

@@ -43,9 +43,11 @@ Incremental experiment scripts for learning Isaac Lab fundamentals — from basi
 All scripts are standalone. Run from the repo root:
 
 ```bash
-python scripts/07_moving_from_dataset.py --episode 0 --video --video_dir ./videos --enable_cameras
+python scripts/07_moving_from_dataset.py --dataset MikeChenYZ/so101_isaac_mimic_test --episode 0 --video --video_dir ./videos --enable_cameras
 python scripts/08_augmented_replay.py --enable_cameras
 python scripts/09_moving_to_hdf5.py --dataset MikeChenYZ/soarm-fmb-v2 --output ./datasets/move_demo.hdf5
-python scripts/10_convert_to_lerobot.py --repo_id MikeChenYZ/so101_isaac_mimic-v1 --push_to_hub
+python scripts/10_convert_to_lerobot.py --repo_id MikeChenYZ/so101_isaac_mimic_test --push_to_hub
 ffplay file-000.mp4
 ```
+
+
