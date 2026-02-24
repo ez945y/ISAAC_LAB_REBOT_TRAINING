@@ -250,9 +250,13 @@ def build_lerobot_frame(
     action = obs_data["actions"][-1]
 
     if dataset_cfg.action_from_ee and (not dataset_cfg.action_align):
-        action_rad = obs_data["ik_joint_target"][-1]
-        processed_action = normalize_joints(action_rad.unsqueeze(0)).squeeze(0)
-        state = normalize_joints(obs_data["joint_pos"][-1].unsqueeze(0)).squeeze(0)
+        processed_action = normalize_joints(obs_data["ik_joint_target"][-1].unsqueeze(0)).squeeze(0)
+        state = normalize_joints(episode_data._data["states"]["articulation"]["robot"]["joint_position"][-1].unsqueeze(0)).squeeze(0)
+        # state = normalize_joints(obs_data["joint_pos"][-1].unsqueeze(0)).squeeze(0)
+        print("action:", obs_data["ik_joint_target"][-1])
+        print("joint_pos:", obs_data["joint_pos"][-1])
+        print("stats:", episode_data._data["states"]["articulation"]["robot"]["joint_position"])
+
     else:
         if dataset_cfg.action_align:
             processed_action = convert_leisaac_action_to_lerobot(action.unsqueeze(0)).squeeze(0)
