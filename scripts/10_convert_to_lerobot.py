@@ -253,9 +253,9 @@ def build_lerobot_frame(
         processed_action = normalize_joints(obs_data["ik_joint_target"][-1].unsqueeze(0)).squeeze(0)
         state = normalize_joints(episode_data._data["states"]["articulation"]["robot"]["joint_position"][-1].unsqueeze(0)).squeeze(0)
         # state = normalize_joints(obs_data["joint_pos"][-1].unsqueeze(0)).squeeze(0)
-        print("action:", obs_data["ik_joint_target"][-1])
-        print("joint_pos:", obs_data["joint_pos"][-1])
-        print("stats:", episode_data._data["states"]["articulation"]["robot"]["joint_position"])
+        # print("action:", obs_data["ik_joint_target"][-1])
+        # print("joint_pos:", obs_data["joint_pos"][-1])
+        # print("stats:", episode_data._data["states"]["articulation"]["robot"]["joint_position"])
 
     else:
         if dataset_cfg.action_align:
@@ -304,7 +304,7 @@ def add_episode(
     task: str,
 ):
     all_data = episode.data
-    print(list(all_data.keys()))
+    # print(list(all_data.keys()))
     num_frames = all_data["actions"].shape[0]
     if num_frames < 10:
         print(f"Episode {episode.env_id} has less than 10 frames, skip it")
@@ -337,6 +337,14 @@ def convert_isaaclab_to_lerobot():
         robot_type=env_cfg.robot_name,
     )
     dataset_cfg.features = build_feature_from_env(env, dataset_cfg)
+
+    # ── 清除舊的 cache 資料夾 ──
+    import shutil
+    cache_dir = os.path.expanduser(f"~/.cache/huggingface/lerobot/{dataset_cfg.repo_id}")
+    if os.path.exists(cache_dir):
+        print(f"[INFO] 發現舊資料夾，刪除中: {cache_dir}")
+        shutil.rmtree(cache_dir)
+        print(f"[INFO] 已刪除")
 
     dataset = LeRobotDataset.create(
         repo_id=dataset_cfg.repo_id,
@@ -387,4 +395,20 @@ def convert_isaaclab_to_lerobot():
 
 
 if __name__ == "__main__":
-    convert_isaaclab_to_lerobot()
+    import signal
+
+    def _force_exit(signum, frame):
+        print("\n[INFO] 強制中斷，正在關閉 simulation_app...")
+        simulation_app.close()
+        sys.exit(1)
+
+    signal.signal(signal.SIGINT, _force_exit)
+    signal.signal(signal.SIGTERM, _force_exit)
+
+    try:
+        convert_isaaclab_to_lerobot()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+    finally:
+        simulation_app.close()
