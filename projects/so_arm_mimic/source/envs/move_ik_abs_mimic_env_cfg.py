@@ -39,7 +39,7 @@ FRAME_MARKER_SMALL_CFG.markers["frame"].scale = (0.01, 0.01, 0.01)
 
 # ── Custom USD paths ──
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-_ROBOT_USD = os.path.join(_REPO_ROOT, "tools", "controll_scripts", "so_arm_101", "SO-ARM101v2.usd")
+_ROBOT_USD = os.path.join(_REPO_ROOT, "tools", "controll_scripts", "so_arm_101", "SO-ARM101v3.usd")
 _CUBE_USD = os.path.join(_REPO_ROOT, "tools", "exp", "test", "bodies", "3_4.usd")
 _PLATFORM_USD = os.path.join(_REPO_ROOT, "tools", "exp", "test", "bodies", "3_1.usd")
 
@@ -337,7 +337,7 @@ class SO101CubeMoveIKAbsMimicEnvCfg(stack_joint_pos_env_cfg.SO101CubeStackEnvCfg
             params={
                 "cube_frame_name": "cube_1_frame",
                 "platform_frame_name": "platform_frame",
-                "xy_tolerance": 0.075,
+                "xy_tolerance": 0.11,
                 "min_z_above": 0.015,
             },
         )

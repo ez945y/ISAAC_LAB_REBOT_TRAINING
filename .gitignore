@@ -6,6 +6,7 @@
 
 lerobot/
 datasets/
+datasets*
 
 # Omniverse
 **/*.dmp

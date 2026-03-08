@@ -87,7 +87,7 @@ python scripts/tools/merge_hdf5_datasets.py \
 python projects/so_arm_mimic/scripts/isaaclab_mimic/annotate_demos.py \
     --device cpu --task Isaac-Move-SOArm-Abs-Mimic-v0 \
     --input_file ./datasets/move_demo.hdf5 \
-    --output_file ./datasets/move_annotated.hdf5
+    --output_file ./datasets/move_annotated.hdf5 --enable_cameras
 ```
 
 ### 6. Generate Augmented Dataset
