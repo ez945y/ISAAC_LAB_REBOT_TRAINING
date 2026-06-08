@@ -16,20 +16,28 @@ Usage:
         device=sim.device,
     )
 
-    # In control loop — filter joint targets before sending to sim
+    # Joint-space control — filter joint targets before sending to sim
     safe_targets = wrapper.filter(joint_pos_des, current_joint_pos)
     robot.set_joint_position_target(safe_targets, joint_ids)
+
+    # EE-space control — attach the live Isaac controller once, then filter poses
+    wrapper.attach_isaac_controller(robot, controller, robot_config)
+    safe_targets = wrapper.filter_ee(target_pose, current_joint_pos)
 """
 
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import torch
 
+from .isaac_resolver import IsaacControllerKinematicsResolver, isaac_wxyz_to_dam_xyzw
+
 if TYPE_CHECKING:
     from ..configs.base import BaseRobotConfig
+    from ..controllers.base import BaseController
+    from isaaclab.assets import Articulation
 
 
 class DAMSafetyWrapper:
@@ -70,18 +78,52 @@ class DAMSafetyWrapper:
         # Build joint_names: arm joints + gripper (matches DAM preset order)
         joint_names = list(robot_config.arm_joint_names) + [robot_config.gripper_joint_name]
 
+        self._dam = dam
+        self._stackfile = stackfile
+        self._task = task
+        self._joint_names = joint_names
         self._guard = dam.SafetyGuard(
             stackfile,
             task=task,
             joint_names=joint_names,
             degrees_mode=False,  # Isaac Sim uses radians
         )
+        self._ee_guard = None
+        self._ee_resolver: IsaacControllerKinematicsResolver | None = None
         self._device = device
         self._n_arm = len(robot_config.arm_joint_names)
         self._last_clamped = False
         self._last_decision = "PASS"
         self._step_count = 0
         self._clamp_count = 0
+        self._last_safe_gripper = 0.0
+
+    def attach_isaac_controller(
+        self,
+        robot: "Articulation",
+        controller: "BaseController",
+        robot_config: "BaseRobotConfig",
+        *,
+        urdf_path: str | None = None,
+        ee_frame_name: str | None = None,
+    ) -> None:
+        """Enable EE-space filtering with the live Isaac robot/controller state."""
+        self._ee_resolver = IsaacControllerKinematicsResolver(
+            robot=robot,
+            controller=controller,
+            robot_config=robot_config,
+            device=self._device,
+            urdf_path=urdf_path,
+            ee_frame_name=ee_frame_name,
+        )
+        self._ee_guard = self._dam.SafetyGuard(
+            self._stackfile,
+            task=self._task,
+            joint_names=self._joint_names,
+            degrees_mode=False,
+            input_space="ee",
+            kinematics_resolver=self._ee_resolver,
+        )
 
     def filter(
         self,
@@ -125,6 +167,7 @@ class DAMSafetyWrapper:
 
         # DAM accepts torch.Tensor directly (preserves device/dtype)
         safe_full = self._guard(full_action, full_obs)
+        self._last_safe_gripper = float(safe_full[self._n_arm].item())
 
         # Track results
         self._step_count += 1
@@ -142,6 +185,72 @@ class DAMSafetyWrapper:
 
         # Return only arm joints (drop gripper)
         safe_arm = safe_full[: self._n_arm].unsqueeze(0)
+        if squeeze:
+            safe_arm = safe_arm.squeeze(0)
+        return safe_arm
+
+    def filter_ee(
+        self,
+        target_pose: torch.Tensor,
+        obs: torch.Tensor,
+        gripper_action: float | torch.Tensor | None = None,
+        gripper_obs: float | torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Filter an Isaac EE pose target and return safe arm joint targets.
+
+        Args:
+            target_pose: Isaac pose [x,y,z,qw,qx,qy,qz], shape (1, 7) or (7,).
+            obs: Current arm joint positions, shape (1, N_arm) or (N_arm,).
+            gripper_action: Optional gripper target. EE IK preserves it as the
+                gripper joint target while DAM validates the full joint vector.
+            gripper_obs: Optional current gripper position.
+        """
+        if self._ee_guard is None or self._ee_resolver is None:
+            raise RuntimeError("Call attach_isaac_controller() before filter_ee().")
+
+        squeeze = target_pose.dim() == 1
+        if squeeze:
+            target_pose = target_pose.unsqueeze(0)
+            obs = obs.unsqueeze(0)
+
+        g_obs = self._to_scalar(gripper_obs, 0.0)
+        g_act = self._to_scalar(gripper_action, g_obs)
+        self._ee_resolver.set_gripper_target(g_act)
+        full_obs = torch.cat([
+            obs[0],
+            torch.tensor([g_obs], dtype=obs.dtype, device=self._device),
+        ])
+
+        dam_target_pose = torch.as_tensor(
+            isaac_wxyz_to_dam_xyzw(target_pose[0]),
+            dtype=target_pose.dtype,
+            device=self._device,
+        )
+        self._ee_guard.set_ee_pose(self._ee_resolver.current_ee_pose_dam)
+        _ = self._ee_guard(dam_target_pose, full_obs)
+
+        if self._ee_resolver.last_safe_joint_positions is None:
+            raise RuntimeError("DAM EE guard did not produce validated joint positions")
+
+        safe_full = torch.as_tensor(
+            self._ee_resolver.last_safe_joint_positions,
+            dtype=obs.dtype,
+            device=self._device,
+        )
+        self._last_safe_gripper = float(safe_full[self._n_arm].item())
+        safe_arm = safe_full[: self._n_arm].unsqueeze(0)
+
+        self._step_count += 1
+        results = self._ee_guard.last_results
+        self._last_clamped = any(r.decision.name == "CLAMP" for r in results)
+        if self._last_clamped:
+            self._clamp_count += 1
+            self._last_decision = "CLAMP"
+        elif any(r.decision.name == "REJECT" for r in results):
+            self._last_decision = "REJECT"
+        else:
+            self._last_decision = "PASS"
+
         if squeeze:
             safe_arm = safe_arm.squeeze(0)
         return safe_arm
@@ -170,9 +279,16 @@ class DAMSafetyWrapper:
         """Total number of filter() calls."""
         return self._step_count
 
+    @property
+    def last_safe_gripper(self) -> float:
+        """Validated gripper joint target from the most recent filter call."""
+        return self._last_safe_gripper
+
     def close(self) -> None:
         """Stop MCAP recording if active."""
         self._guard.close()
+        if self._ee_guard is not None:
+            self._ee_guard.close()
 
     # -- Helpers --------------------------------------------------------------
 

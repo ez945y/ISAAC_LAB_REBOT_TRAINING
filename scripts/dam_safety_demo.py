@@ -53,7 +53,6 @@ import torch
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import AssetBaseCfg, RigidObject, RigidObjectCfg
-from isaaclab.assets import Articulation
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.config import FRAME_MARKER_CFG
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
@@ -98,45 +97,6 @@ def create_scene_cfg(robot_config: SOArm101Config, for_osc: bool) -> type:
         )
 
     return SceneCfg
-
-
-def _compute_joint_targets(
-    robot: Articulation,
-    controller,
-    target_pose: torch.Tensor,
-) -> torch.Tensor:
-    """Solve IK for a target pose without writing the result to simulation."""
-    ee_pos_w = robot.data.body_pos_w[:, controller._ee_body_idx]
-    ee_quat_w = robot.data.body_quat_w[:, controller._ee_body_idx]
-    root_pos_w = robot.data.root_pos_w
-    root_quat_w = robot.data.root_quat_w
-
-    ee_pos_b, ee_quat_b = math_utils.subtract_frame_transforms(
-        root_pos_w, root_quat_w, ee_pos_w, ee_quat_w,
-    )
-
-    weighted_target = target_pose.clone()
-    orientation_weight = getattr(controller, "_orientation_weight", 1.0)
-    if orientation_weight < 1.0 and hasattr(controller, "_slerp_quat"):
-        weighted_target[:, 3:7] = controller._slerp_quat(
-            ee_quat_b, target_pose[:, 3:7], orientation_weight,
-        )
-
-    controller._ik_controller.set_command(weighted_target)
-
-    jacobian_w = robot.root_physx_view.get_jacobians()[
-        :, controller._jacobi_body_idx, :, controller._jacobi_joint_ids
-    ]
-    base_rot = math_utils.matrix_from_quat(math_utils.quat_inv(root_quat_w))
-    jacobian_b = jacobian_w.clone()
-    jacobian_b[:, :3, :] = torch.bmm(base_rot, jacobian_w[:, :3, :])
-    jacobian_b[:, 3:, :] = torch.bmm(base_rot, jacobian_w[:, 3:, :])
-
-    current_joints = robot.data.joint_pos[:, controller._arm_joint_ids]
-    joint_targets = controller._ik_controller.compute(
-        ee_pos_b, ee_quat_b, jacobian_b, current_joints,
-    )
-    return joint_targets
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
@@ -192,6 +152,7 @@ def main():
         device=sim.device,
         task="default",
     )
+    dam.attach_isaac_controller(robot, controller, robot_config)
 
     print("\n" + "=" * 60)
     print("  SO-ARM-101 + DAM Safety Guard")
@@ -230,27 +191,23 @@ def main():
         )
         target_marker.visualize(target_pos_w, target_quat_w)
 
-        # ── IK computes joint targets; DAM filters joint targets directly.
-        joint_pos_des = _compute_joint_targets(robot, controller, target_pose)
-
-        # ── DAM safety filter ──────────────────────────────────────
+        # ── DAM resolver-backed EE safety filter ───────────────────
         current_pos = robot.data.joint_pos[:, arm_joint_ids]
         current_gripper = robot.data.joint_pos[:, gripper_joint_ids[0]].item()
-
         gripper_target = (
             controller._gripper_lower
             + gripper_pos * (controller._gripper_upper - controller._gripper_lower)
         )
-
-        safe_targets = dam.filter(
-            joint_pos_des, current_pos,
+        safe_targets = dam.filter_ee(
+            target_pose, current_pos,
             gripper_action=gripper_target,
             gripper_obs=current_gripper,
         )
 
         # ── Apply safe targets to simulation ───────────────────────
         robot.set_joint_position_target(safe_targets, arm_joint_ids)
-        controller._apply_gripper(gripper_pos)
+        safe_gripper = torch.tensor([[dam.last_safe_gripper]], device=sim.device)
+        robot.set_joint_position_target(safe_gripper, gripper_joint_ids)
         robot.write_data_to_sim()
 
         sim.step()

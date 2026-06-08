@@ -4,5 +4,6 @@
 """DAM safety integration for Isaac Lab control pipeline."""
 
 from .dam_wrapper import DAMSafetyWrapper
+from .isaac_resolver import IsaacControllerKinematicsResolver
 
-__all__ = ["DAMSafetyWrapper"]
+__all__ = ["DAMSafetyWrapper", "IsaacControllerKinematicsResolver"]

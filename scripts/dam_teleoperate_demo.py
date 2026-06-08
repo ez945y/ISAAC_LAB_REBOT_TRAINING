@@ -46,7 +46,6 @@ simulation_app = app_launcher.app
 import torch
 
 import isaaclab.sim as sim_utils
-import isaaclab.utils.math as math_utils
 from isaaclab.assets import AssetBaseCfg, RigidObject, RigidObjectCfg
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.config import FRAME_MARKER_CFG
@@ -112,6 +111,7 @@ class SafeTeleoperationRunner:
             device=self.sim.device,
             num_envs=1,
         )
+        self.dam.attach_isaac_controller(self.robot, self.controller, self.robot_config)
         self.input_device.reset_target(self.controller.current_ee_pose)
 
         # Joint mapping
@@ -179,7 +179,7 @@ class SafeTeleoperationRunner:
 
         self.robot.set_joint_position_target(safe_targets.unsqueeze(0), joint_ids=self.arm_joint_ids)
         self.robot.set_joint_position_target(
-            torch.tensor([[gripper_target]], device=self.sim.device),
+            torch.tensor([[self.dam.last_safe_gripper]], device=self.sim.device),
             joint_ids=[self.gripper_joint_id],
         )
         self.robot.write_data_to_sim()
@@ -193,52 +193,22 @@ class SafeTeleoperationRunner:
             print(f"[DAM {tag}] joint mode | conn={conn} | clamp_rate={self.dam.clamp_rate:.1%}")
 
     def _step_ee_safe(self, target_pose: torch.Tensor, gripper_pos: float):
-        """EE-space control with DAM safety filter on IK output."""
-        # IK solve (same as controller.compute but we intercept the output)
-        ee_pos_w = self.robot.data.body_pos_w[:, self.controller._ee_body_idx]
-        ee_quat_w = self.robot.data.body_quat_w[:, self.controller._ee_body_idx]
-        root_pos_w = self.robot.data.root_pos_w
-        root_quat_w = self.robot.data.root_quat_w
-
-        ee_pos_b, ee_quat_b = math_utils.subtract_frame_transforms(
-            root_pos_w, root_quat_w, ee_pos_w, ee_quat_w,
-        )
-
-        weighted_target = target_pose.clone()
-        orientation_weight = getattr(self.controller, "_orientation_weight", 1.0)
-        if orientation_weight < 1.0 and hasattr(self.controller, "_slerp_quat"):
-            weighted_target[:, 3:7] = self.controller._slerp_quat(
-                ee_quat_b, target_pose[:, 3:7], orientation_weight,
-            )
-
-        self.controller._ik_controller.set_command(weighted_target)
-
-        jacobian_w = self.robot.root_physx_view.get_jacobians()[
-            :, self.controller._jacobi_body_idx, :, self.controller._jacobi_joint_ids
-        ]
-        base_rot = math_utils.matrix_from_quat(math_utils.quat_inv(root_quat_w))
-        jacobian_b = jacobian_w.clone()
-        jacobian_b[:, :3, :] = torch.bmm(base_rot, jacobian_w[:, :3, :])
-        jacobian_b[:, 3:, :] = torch.bmm(base_rot, jacobian_w[:, 3:, :])
-
-        joint_pos = self.robot.data.joint_pos[:, self.arm_joint_ids]
-        joint_pos_des = self.controller._ik_controller.compute(
-            ee_pos_b, ee_quat_b, jacobian_b, joint_pos,
-        )
-
-        # ── DAM filter ──
+        """EE-space control through DAM resolver-backed filtering."""
         current_pos = self.robot.data.joint_pos[:, self.arm_joint_ids]
         gripper_target = self.grip_lower + gripper_pos * (self.grip_upper - self.grip_lower)
         current_grip = self.robot.data.joint_pos[:, self.gripper_joint_id].item()
 
-        safe_targets = self.dam.filter(
-            joint_pos_des, current_pos,
+        safe_targets = self.dam.filter_ee(
+            target_pose, current_pos,
             gripper_action=gripper_target,
             gripper_obs=current_grip,
         )
 
         self.robot.set_joint_position_target(safe_targets, self.arm_joint_ids)
-        self.controller._apply_gripper(gripper_pos)
+        self.robot.set_joint_position_target(
+            torch.tensor([[self.dam.last_safe_gripper]], device=self.sim.device),
+            joint_ids=[self.gripper_joint_id],
+        )
         self.robot.write_data_to_sim()
 
         self.sim.step()
