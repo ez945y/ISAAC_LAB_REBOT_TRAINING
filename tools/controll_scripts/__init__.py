@@ -20,7 +20,7 @@ from .input_devices import (
 __all__ = [
     # Controllers
     "BaseController",
-    "IKController", 
+    "IKController",
     "OSCController",
     "ControllerFactory",
     "ControllerType",
@@ -34,4 +34,6 @@ __all__ = [
     # Isaac Lab DeviceBase compatible
     "Se3LeaderArm",
     "Se3LeaderArmCfg",
+    # Safety (requires local DAM package exposing dam.SafetyGuard)
+    # from controll_scripts.safety import DAMSafetyWrapper
 ]
