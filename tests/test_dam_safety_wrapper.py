@@ -1,44 +1,17 @@
 from __future__ import annotations
 
 import sys
-from importlib import util
-from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 import torch
 
-ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_DIR = ROOT / "tools" / "controll_scripts"
-SAFETY_DIR = PACKAGE_DIR / "safety"
-
-controll_pkg = ModuleType("controll_scripts")
-controll_pkg.__path__ = [str(PACKAGE_DIR)]
-sys.modules.setdefault("controll_scripts", controll_pkg)
-safety_pkg = ModuleType("controll_scripts.safety")
-safety_pkg.__path__ = [str(SAFETY_DIR)]
-sys.modules.setdefault("controll_scripts.safety", safety_pkg)
-
-
-def _load_safety_module(module_name: str):
-    spec = util.spec_from_file_location(
-        f"controll_scripts.safety.{module_name}",
-        SAFETY_DIR / f"{module_name}.py",
-    )
-    module = util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
-isaac_resolver = _load_safety_module("isaac_resolver")
-dam_wrapper = _load_safety_module("dam_wrapper")
-
-DAMSafetyWrapper = dam_wrapper.DAMSafetyWrapper
-dam_xyzw_to_isaac_wxyz = isaac_resolver.dam_xyzw_to_isaac_wxyz
-isaac_wxyz_to_dam_xyzw = isaac_resolver.isaac_wxyz_to_dam_xyzw
+from controll_scripts.safety import DAMSafetyWrapper
+from controll_scripts.safety.isaac_resolver import (
+    dam_xyzw_to_isaac_wxyz,
+    isaac_wxyz_to_dam_xyzw,
+)
 
 
 class _FakeRobotConfig:
