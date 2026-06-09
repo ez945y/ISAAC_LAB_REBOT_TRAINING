@@ -167,7 +167,11 @@ class DAMSafetyWrapper:
         ])
 
         # DAM accepts torch.Tensor directly (preserves device/dtype)
-        safe_full = self._guard(full_action, full_obs)
+        safe_full = self._as_full_joint_target(
+            self._guard(full_action, full_obs),
+            like=action,
+            source="DAM joint guard",
+        )
         self._last_safe_gripper = float(safe_full[self._n_arm].item())
 
         # Track results
@@ -323,15 +327,24 @@ class DAMSafetyWrapper:
     def _resolver_safe_full_tensor(self, obs: torch.Tensor) -> torch.Tensor:
         if self._ee_resolver is None or self._ee_resolver.last_safe_joint_positions is None:
             raise RuntimeError("DAM EE guard did not produce validated joint positions")
-        safe_full = torch.as_tensor(
+        return self._as_full_joint_target(
             self._ee_resolver.last_safe_joint_positions,
-            dtype=obs.dtype,
-            device=obs.device,
-        ).reshape(-1)
+            like=obs,
+            source="DAM EE guard",
+        )
+
+    def _as_full_joint_target(
+        self,
+        target,
+        *,
+        like: torch.Tensor,
+        source: str,
+    ) -> torch.Tensor:
+        safe_full = torch.as_tensor(target, dtype=like.dtype, device=like.device).reshape(-1)
         expected = self._n_arm + 1
         if safe_full.shape[0] != expected:
             raise RuntimeError(
-                "DAM EE guard produced an invalid joint target: "
+                f"{source} produced an invalid joint target: "
                 f"expected {expected} arm+gripper joints, got {safe_full.shape[0]}"
             )
         return safe_full

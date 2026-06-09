@@ -42,6 +42,7 @@ class _FakeJointGuard:
     seen_action_dtype = None
     seen_obs_dtype = None
     decision_names = ["PASS"]
+    safe_override = None
 
     def __init__(self, *args, **kwargs) -> None:
         self.stackfiles.append(str(args[0]))
@@ -53,6 +54,8 @@ class _FakeJointGuard:
     def __call__(self, action: torch.Tensor, obs: torch.Tensor) -> torch.Tensor:
         self.seen_action_dtype = action.dtype
         self.seen_obs_dtype = obs.dtype
+        if self.safe_override is not None:
+            return torch.as_tensor(self.safe_override, dtype=action.dtype, device=action.device)
         safe = action.clone()
         safe[2] = 0.25
         return safe
@@ -131,6 +134,7 @@ def fake_dam_module(monkeypatch):
     _FakeJointGuard.seen_action_dtype = None
     _FakeJointGuard.seen_obs_dtype = None
     _FakeJointGuard.decision_names = ["PASS"]
+    _FakeJointGuard.safe_override = None
     monkeypatch.setitem(sys.modules, "dam", _FakeDam())
 
 
@@ -242,6 +246,14 @@ def test_joint_filter_preserves_input_dtype_for_full_guard_vectors() -> None:
     assert safe_arm.dtype == torch.float64
     assert wrapper._guard.seen_action_dtype == torch.float64
     assert wrapper._guard.seen_obs_dtype == torch.float64
+
+
+def test_joint_filter_rejects_incomplete_guard_joint_target() -> None:
+    _FakeJointGuard.safe_override = [0.1, 0.2]
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+
+    with pytest.raises(RuntimeError, match="DAM joint guard.*expected 3 arm\\+gripper joints, got 2"):
+        wrapper.filter(torch.zeros(2), torch.zeros(2))
 
 
 def test_joint_filter_reports_reject_over_clamp() -> None:
