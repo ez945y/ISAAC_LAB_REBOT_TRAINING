@@ -14,13 +14,22 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["controll_scripts", "rl_manager", "rl_direct", "so_arm_mimic"]
+include-package-data = true
 
-[tool.setuptools.package-dir]
-controll_scripts = "tools/controll_scripts"
-rl_manager = "projects/rl_manager/source/rl_manager/rl_manager"
-rl_direct  = "projects/rl_direct/source/rl_direct/rl_direct"
-so_arm_mimic = "projects/so_arm_mimic"
+[tool.setuptools.packages.find]
+where = [
+    "tools",
+    "projects/rl_direct/source/rl_direct",
+    "projects/rl_manager/source/rl_manager",
+    "projects",
+]
+include = [
+    "controll_scripts*",
+    "rl_direct*",
+    "rl_manager*",
+    "so_arm_mimic*",
+]
+namespaces = false
 
 [tool.setuptools.package-data]
 controll_scripts = [
@@ -28,4 +37,7 @@ controll_scripts = [
     "so_arm_101/*.yaml",
     "so_arm_101/**/*.urdf",
     "so_arm_101/**/*",
+]
+"controll_scripts.safety" = [
+    "*.yaml",
 ]
