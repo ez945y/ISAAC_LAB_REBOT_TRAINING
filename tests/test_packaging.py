@@ -17,6 +17,7 @@ def test_pyproject_discovers_controll_script_subpackages() -> None:
     packages = set(dist.packages or [])
 
     assert "controll_scripts" in packages
+    assert "controll_scripts.actions" in packages
     assert "controll_scripts.controllers" in packages
     assert "controll_scripts.configs" in packages
     assert "controll_scripts.safety" in packages
