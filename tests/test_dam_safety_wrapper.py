@@ -158,6 +158,13 @@ def test_joint_filter_exposes_validated_gripper_target() -> None:
     assert wrapper.last_safe_gripper == pytest.approx(0.25)
 
 
+def test_joint_filter_rejects_multi_env_batches() -> None:
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+
+    with pytest.raises(ValueError, match="one Isaac environment"):
+        wrapper.filter(torch.zeros(2, 2), torch.zeros(2, 2))
+
+
 def test_wrapper_resolves_bundled_stackfile_by_name() -> None:
     wrapper = DAMSafetyWrapper("soarm_isaac_safety.yaml", _FakeSO101Config(), "cpu")
 
@@ -209,3 +216,13 @@ def test_ee_filter_returns_validated_joint_target_from_resolver() -> None:
     torch.testing.assert_close(safe_arm, torch.tensor([0.4, 0.5]))
     assert resolver.gripper_target == pytest.approx(0.8)
     assert wrapper.last_safe_gripper == pytest.approx(0.6)
+
+
+def test_ee_filter_rejects_multi_env_batches() -> None:
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+    resolver = _FakeResolver()
+    wrapper._ee_resolver = resolver
+    wrapper._ee_guard = _FakeEEGuard(resolver)
+
+    with pytest.raises(ValueError, match="one Isaac environment"):
+        wrapper.filter_ee(torch.zeros(2, 7), torch.zeros(2, 2))

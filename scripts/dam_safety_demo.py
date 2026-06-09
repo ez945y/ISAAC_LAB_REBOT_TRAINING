@@ -42,6 +42,8 @@ parser.add_argument(
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
+if args_cli.num_envs != 1:
+    parser.error("DAM safety demo currently supports --num_envs 1 only.")
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app

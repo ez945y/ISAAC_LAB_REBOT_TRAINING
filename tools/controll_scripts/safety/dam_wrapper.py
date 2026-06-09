@@ -149,6 +149,7 @@ class DAMSafetyWrapper:
         if squeeze:
             action = action.unsqueeze(0)
             obs = obs.unsqueeze(0)
+        self._require_single_env(action, obs)
 
         # Append gripper to form full joint vector
         g_act = self._to_scalar(gripper_action, 0.0)
@@ -210,6 +211,7 @@ class DAMSafetyWrapper:
         if squeeze:
             target_pose = target_pose.unsqueeze(0)
             obs = obs.unsqueeze(0)
+        self._require_single_env(target_pose, obs)
 
         g_obs = self._to_scalar(gripper_obs, 0.0)
         g_act = self._to_scalar(gripper_action, g_obs)
@@ -316,3 +318,16 @@ class DAMSafetyWrapper:
         if isinstance(val, torch.Tensor):
             return val.item()
         return float(val)
+
+    @staticmethod
+    def _require_single_env(action: torch.Tensor, obs: torch.Tensor) -> None:
+        if action.dim() != 2 or obs.dim() != 2:
+            raise ValueError(
+                "DAMSafetyWrapper expects tensors shaped (N,) or (1, N); "
+                f"got action {tuple(action.shape)} and obs {tuple(obs.shape)}"
+            )
+        if action.shape[0] != 1 or obs.shape[0] != 1:
+            raise ValueError(
+                "DAMSafetyWrapper currently supports one Isaac environment at a time. "
+                f"Got action batch {action.shape[0]} and obs batch {obs.shape[0]}."
+            )
