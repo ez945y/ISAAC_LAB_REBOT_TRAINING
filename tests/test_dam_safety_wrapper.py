@@ -108,6 +108,23 @@ class _FakeNoFkEEGuard:
         pass
 
 
+class _FakeShortTargetEEGuard:
+    last_results = [SimpleNamespace(decision=_Decision())]
+
+    def __init__(self, resolver: _FakeResolver) -> None:
+        self.resolver = resolver
+
+    def set_ee_pose(self, ee_pose) -> None:
+        pass
+
+    def __call__(self, action: torch.Tensor, obs: torch.Tensor) -> torch.Tensor:
+        self.resolver.last_safe_joint_positions = np.array([0.4, 0.5])
+        return torch.zeros(7, dtype=action.dtype, device=action.device)
+
+    def close(self) -> None:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def fake_dam_module(monkeypatch):
     _FakeJointGuard.stackfiles = []
@@ -309,6 +326,19 @@ def test_ee_filter_does_not_reuse_stale_resolver_joint_target() -> None:
     wrapper._ee_guard = _FakeNoFkEEGuard()
 
     with pytest.raises(RuntimeError, match="did not produce validated joint positions"):
+        wrapper.filter_ee(
+            torch.tensor([0.1, 0.2, 0.3, 1.0, 0.0, 0.0, 0.0]),
+            torch.tensor([0.0, 0.0]),
+        )
+
+
+def test_ee_filter_rejects_incomplete_resolver_joint_target() -> None:
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+    resolver = _FakeResolver()
+    wrapper._ee_resolver = resolver
+    wrapper._ee_guard = _FakeShortTargetEEGuard(resolver)
+
+    with pytest.raises(RuntimeError, match="expected 3 arm\\+gripper joints, got 2"):
         wrapper.filter_ee(
             torch.tensor([0.1, 0.2, 0.3, 1.0, 0.0, 0.0, 0.0]),
             torch.tensor([0.0, 0.0]),

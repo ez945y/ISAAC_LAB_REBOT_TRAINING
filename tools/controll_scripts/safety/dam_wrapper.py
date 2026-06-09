@@ -224,14 +224,7 @@ class DAMSafetyWrapper:
         self._ee_resolver.last_safe_joint_positions = None
         _ = self._ee_guard(dam_target_pose, full_obs)
 
-        if self._ee_resolver.last_safe_joint_positions is None:
-            raise RuntimeError("DAM EE guard did not produce validated joint positions")
-
-        safe_full = torch.as_tensor(
-            self._ee_resolver.last_safe_joint_positions,
-            dtype=obs.dtype,
-            device=obs.device,
-        )
+        safe_full = self._resolver_safe_full_tensor(obs)
         self._last_safe_gripper = float(safe_full[self._n_arm].item())
         safe_arm = safe_full[: self._n_arm].unsqueeze(0)
 
@@ -251,7 +244,7 @@ class DAMSafetyWrapper:
 
     @property
     def last_decision(self) -> str:
-        """Most restrictive decision from last call: PASS / CLAMP / REJECT."""
+        """Most restrictive decision from last call: PASS / CLAMP / REJECT / FAULT."""
         return self._last_decision
 
     @property
@@ -326,6 +319,22 @@ class DAMSafetyWrapper:
                 f"DAMSafetyWrapper expected {name} width {expected}, "
                 f"got shape {tuple(tensor.shape)}."
             )
+
+    def _resolver_safe_full_tensor(self, obs: torch.Tensor) -> torch.Tensor:
+        if self._ee_resolver is None or self._ee_resolver.last_safe_joint_positions is None:
+            raise RuntimeError("DAM EE guard did not produce validated joint positions")
+        safe_full = torch.as_tensor(
+            self._ee_resolver.last_safe_joint_positions,
+            dtype=obs.dtype,
+            device=obs.device,
+        ).reshape(-1)
+        expected = self._n_arm + 1
+        if safe_full.shape[0] != expected:
+            raise RuntimeError(
+                "DAM EE guard produced an invalid joint target: "
+                f"expected {expected} arm+gripper joints, got {safe_full.shape[0]}"
+            )
+        return safe_full
 
     def _record_results(self, results) -> None:
         decision_names = [result.decision.name for result in results]
