@@ -4,11 +4,19 @@ A modular robot control library for Isaac Lab, providing unified interfaces for 
 
 ## Installation
 
-Add the parent directory to your Python path, or import directly:
+Install this repository as a package so subpackages and bundled assets are
+available at runtime:
+
+```bash
+pip install -e .
+```
+
+For quick local experiments, you can still add the repo tools directory to your
+Python path:
 
 ```python
 import sys
-sys.path.insert(0, "/path/to/robot")
+sys.path.insert(0, "/path/to/ISAAC_LAB_ROBOT_TRAINING/tools")
 
 from controll_scripts import (
     ControllerFactory,
@@ -36,6 +44,9 @@ controll_scripts/
 │   ├── base.py          # BaseInputDevice abstract class
 │   ├── keyboard.py      # KeyboardInputDevice
 │   └── leader_arm.py    # LeaderArmInputDevice (socket-based)
+├── safety/              # DAM safety wrapper and bundled stackfile
+│   ├── dam_wrapper.py   # Joint/EE action filtering for Isaac loops
+│   └── isaac_resolver.py# Isaac IK + Pinocchio FK resolver bridge
 └── so_arm_101/          # SO-ARM-101 robot assets
     ├── SO-ARM101.usd    # USD robot model
     └── description/     # URDF and other descriptions
@@ -145,6 +156,56 @@ This device receives end-effector pose data from a socket server (e.g., `lerobot
     "gripper": 50.0
 }
 ```
+
+### DAM Safety
+
+`DAMSafetyWrapper` filters SO-ARM-101 commands through a local `dam.SafetyGuard`
+before they reach Isaac simulation. It currently supports one Isaac environment
+at a time; `scripts/dam_safety_demo.py` rejects `--num_envs` values other than
+`1` to avoid silently filtering only the first environment.
+
+Install or expose the local DAM package that provides `dam.SafetyGuard`, then
+use the bundled stackfile:
+
+```python
+from controll_scripts.safety import DAMSafetyWrapper
+
+dam = DAMSafetyWrapper(
+    stackfile="soarm_isaac_safety.yaml",
+    robot_config=robot_config,
+    device=sim.device,
+)
+
+safe_arm_targets = dam.filter(
+    joint_pos_des,
+    current_joint_pos,
+    gripper_action=gripper_target,
+    gripper_obs=current_gripper,
+)
+robot.set_joint_position_target(safe_arm_targets, arm_joint_ids)
+robot.set_joint_position_target(
+    torch.tensor([[dam.last_safe_gripper]], device=sim.device),
+    gripper_joint_ids,
+)
+```
+
+For EE-space targets, attach the live Isaac controller once. The wrapper uses
+Isaac's IK controller to propose joints, validates those joints through DAM, and
+uses the bundled SO-ARM-101 URDF with Pinocchio for FK:
+
+```python
+dam.attach_isaac_controller(robot, controller, robot_config)
+safe_arm_targets = dam.filter_ee(
+    target_pose,  # Isaac pose [x, y, z, qw, qx, qy, qz]
+    current_joint_pos,
+    gripper_action=gripper_target,
+    gripper_obs=current_gripper,
+)
+```
+
+`last_decision` reports the most severe DAM outcome from the last call using
+`FAULT > REJECT > CLAMP > PASS`; `last_clamped` remains a boolean for whether
+any guard clamped the command.
 
 ## Usage Example
 
