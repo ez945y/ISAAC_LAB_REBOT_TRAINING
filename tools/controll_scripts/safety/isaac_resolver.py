@@ -18,6 +18,18 @@ if TYPE_CHECKING:
     from ..controllers.base import BaseController
 
 
+_SO101_ISAAC_TO_URDF_JOINTS = {
+    "shoulder_pan": "Rotation",
+    "shoulder_lift": "Pitch",
+    "elbow_flex": "Elbow",
+    "wrist_flex": "Wrist_Pitch",
+    "wrist_roll": "Wrist_Roll",
+}
+_SO101_EE_FRAME_ALIASES = {
+    "gripper_link": "gripper",
+}
+
+
 def default_so101_urdf_path() -> str:
     """Return the bundled SO-ARM-101 URDF used for Pinocchio FK."""
     safety_dir = os.path.dirname(os.path.abspath(__file__))
@@ -64,6 +76,12 @@ class _PinocchioForwardKinematics:
         self._pin = pin
         full_model = pin.buildModelFromUrdf(urdf_path)
         all_joint_names = [full_model.names[i] for i in range(1, full_model.njoints)]
+        missing_joints = [name for name in controlled_joint_names if name not in all_joint_names]
+        if missing_joints:
+            raise ValueError(
+                "Controlled joints are missing from FK URDF: "
+                f"{missing_joints}. Available joints: {all_joint_names}"
+            )
         joints_to_lock = [
             full_model.getJointId(name)
             for name in all_joint_names
@@ -72,10 +90,18 @@ class _PinocchioForwardKinematics:
         q_reference = pin.neutral(full_model)
         self.model = pin.buildReducedModel(full_model, joints_to_lock, q_reference)
         self.data = self.model.createData()
+        if not self.model.existFrame(ee_frame_name):
+            available_frames = [frame.name for frame in self.model.frames]
+            raise ValueError(
+                f"EE frame {ee_frame_name!r} is missing from FK model. "
+                f"Available frames: {available_frames}"
+            )
         self.ee_frame_id = self.model.getFrameId(ee_frame_name)
 
     def compute(self, joint_positions: np.ndarray) -> np.ndarray:
         q = np.asarray(joint_positions, dtype=np.float64).reshape(-1)
+        if q.shape[0] != self.model.nq:
+            raise ValueError(f"FK expected {self.model.nq} joint positions, got {q.shape[0]}")
         self._pin.forwardKinematics(self.model, self.data, q)
         self._pin.updateFramePlacements(self.model, self.data)
 
@@ -129,11 +155,22 @@ class IsaacControllerKinematicsResolver:
             raise ValueError("EE-space DAM filtering requires a URDF path for forward kinematics")
         if not os.path.exists(urdf_path):
             raise FileNotFoundError(f"FK URDF not found: {urdf_path}")
+        controlled_joint_names = list(robot_config.arm_joint_names)
+        resolved_ee_frame_name = ee_frame_name or robot_config.ee_body_name
+        if os.path.abspath(urdf_path) == os.path.abspath(default_so101_urdf_path()):
+            controlled_joint_names = [
+                _SO101_ISAAC_TO_URDF_JOINTS.get(name, name)
+                for name in controlled_joint_names
+            ]
+            resolved_ee_frame_name = _SO101_EE_FRAME_ALIASES.get(
+                resolved_ee_frame_name,
+                resolved_ee_frame_name,
+            )
 
         self._fk = _PinocchioForwardKinematics(
             urdf_path=urdf_path,
-            controlled_joint_names=list(robot_config.arm_joint_names),
-            ee_frame_name=ee_frame_name or robot_config.ee_body_name,
+            controlled_joint_names=controlled_joint_names,
+            ee_frame_name=resolved_ee_frame_name,
         )
 
     def inverse_kinematics(

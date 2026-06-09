@@ -9,14 +9,26 @@ import torch
 
 from controll_scripts.safety import DAMSafetyWrapper
 from controll_scripts.safety.isaac_resolver import (
+    IsaacControllerKinematicsResolver,
+    _PinocchioForwardKinematics,
+    default_so101_urdf_path,
     dam_xyzw_to_isaac_wxyz,
     isaac_wxyz_to_dam_xyzw,
 )
 
 
 class _FakeRobotConfig:
+    name = "fake"
     arm_joint_names = ["j0", "j1"]
     gripper_joint_name = "gripper"
+    ee_body_name = "gripper"
+
+
+class _FakeSO101Config:
+    name = "SO-ARM-101"
+    arm_joint_names = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
+    gripper_joint_name = "gripper"
+    ee_body_name = "gripper_link"
 
 
 class _Decision:
@@ -82,6 +94,49 @@ def test_quaternion_conventions_round_trip() -> None:
 
     np.testing.assert_allclose(isaac_pose, [1.0, 2.0, 3.0, 0.9, 0.1, 0.2, 0.3])
     np.testing.assert_allclose(isaac_wxyz_to_dam_xyzw(isaac_pose), dam_pose)
+
+
+def test_default_so101_fk_matches_bundled_urdf_conventions() -> None:
+    fk = _PinocchioForwardKinematics(
+        default_so101_urdf_path(),
+        ["Rotation", "Pitch", "Elbow", "Wrist_Pitch", "Wrist_Roll"],
+        "gripper",
+    )
+
+    pose = fk.compute(np.zeros(5))
+
+    assert pose.shape == (7,)
+    assert fk.model.nq == 5
+    np.testing.assert_allclose(pose[:3], [0.02061531, -0.27747322, 0.26685203], atol=1e-7)
+    assert np.linalg.norm(pose[3:]) == pytest.approx(1.0)
+
+
+def test_so101_resolver_maps_isaac_names_to_bundled_urdf() -> None:
+    resolver = IsaacControllerKinematicsResolver(
+        robot=SimpleNamespace(),
+        controller=SimpleNamespace(),
+        robot_config=_FakeSO101Config(),
+        device="cpu",
+    )
+
+    pose = resolver.forward_kinematics(np.zeros(6))
+
+    assert resolver._fk.model.nq == 5
+    np.testing.assert_allclose(pose[:3], [0.02061531, -0.27747322, 0.26685203], atol=1e-7)
+    assert resolver.last_safe_joint_positions.shape == (6,)
+
+
+def test_fk_rejects_missing_joint_names_and_wrong_vector_size() -> None:
+    with pytest.raises(ValueError, match="missing from FK URDF"):
+        _PinocchioForwardKinematics(default_so101_urdf_path(), ["shoulder_pan"], "gripper")
+
+    fk = _PinocchioForwardKinematics(
+        default_so101_urdf_path(),
+        ["Rotation", "Pitch", "Elbow", "Wrist_Pitch", "Wrist_Roll"],
+        "gripper",
+    )
+    with pytest.raises(ValueError, match="expected 5 joint positions"):
+        fk.compute(np.zeros(6))
 
 
 def test_joint_filter_exposes_validated_gripper_target() -> None:
