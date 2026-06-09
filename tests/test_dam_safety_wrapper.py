@@ -150,6 +150,21 @@ def test_so101_resolver_maps_isaac_names_to_bundled_urdf() -> None:
     assert resolver.last_safe_joint_positions.shape == (6,)
 
 
+def test_so101_resolver_rejects_short_validated_joint_vector_without_updating_cache() -> None:
+    resolver = IsaacControllerKinematicsResolver(
+        robot=SimpleNamespace(),
+        controller=SimpleNamespace(),
+        robot_config=_FakeSO101Config(),
+        device="cpu",
+    )
+    resolver.last_safe_joint_positions = np.array([1.0, 2.0, 3.0])
+
+    with pytest.raises(ValueError, match="expected at least 5 joints"):
+        resolver.forward_kinematics(np.zeros(4))
+
+    np.testing.assert_allclose(resolver.last_safe_joint_positions, [1.0, 2.0, 3.0])
+
+
 def test_fk_rejects_missing_joint_names_and_wrong_vector_size() -> None:
     with pytest.raises(ValueError, match="missing from FK URDF"):
         _PinocchioForwardKinematics(default_so101_urdf_path(), ["shoulder_pan"], "gripper")

@@ -249,8 +249,13 @@ class IsaacControllerKinematicsResolver:
     def forward_kinematics(self, joint_positions: np.ndarray) -> np.ndarray:
         """Return DAM pose [x,y,z,qx,qy,qz,qw] for a validated joint target."""
         joints = np.asarray(joint_positions, dtype=np.float64).reshape(-1)
+        if joints.shape[0] < self._n_arm:
+            raise ValueError(
+                f"FK expected at least {self._n_arm} joints, got {joints.shape[0]}"
+            )
+        pose = self._fk.compute(joints[: self._n_arm])
         self.last_safe_joint_positions = joints.copy()
-        return self._fk.compute(joints[: self._n_arm])
+        return pose
 
     @property
     def current_ee_pose_dam(self) -> np.ndarray:
