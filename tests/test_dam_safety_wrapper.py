@@ -38,12 +38,16 @@ class _Decision:
 
 class _FakeJointGuard:
     stackfiles: list[str] = []
+    seen_action_dtype = None
+    seen_obs_dtype = None
 
     def __init__(self, *args, **kwargs) -> None:
         self.stackfiles.append(str(args[0]))
         self.last_results = [SimpleNamespace(decision=_Decision())]
 
     def __call__(self, action: torch.Tensor, obs: torch.Tensor) -> torch.Tensor:
+        self.seen_action_dtype = action.dtype
+        self.seen_obs_dtype = obs.dtype
         safe = action.clone()
         safe[2] = 0.25
         return safe
@@ -89,6 +93,8 @@ class _FakeEEGuard:
 @pytest.fixture(autouse=True)
 def fake_dam_module(monkeypatch):
     _FakeJointGuard.stackfiles = []
+    _FakeJointGuard.seen_action_dtype = None
+    _FakeJointGuard.seen_obs_dtype = None
     monkeypatch.setitem(sys.modules, "dam", _FakeDam())
 
 
@@ -165,6 +171,28 @@ def test_joint_filter_rejects_multi_env_batches() -> None:
         wrapper.filter(torch.zeros(2, 2), torch.zeros(2, 2))
 
 
+def test_joint_filter_rejects_wrong_arm_width() -> None:
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+
+    with pytest.raises(ValueError, match="action width 2"):
+        wrapper.filter(torch.zeros(3), torch.zeros(2))
+
+
+def test_joint_filter_preserves_input_dtype_for_full_guard_vectors() -> None:
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+
+    safe_arm = wrapper.filter(
+        torch.tensor([1.0, 2.0], dtype=torch.float64),
+        torch.tensor([0.0, 0.0], dtype=torch.float64),
+        gripper_action=0.9,
+        gripper_obs=0.0,
+    )
+
+    assert safe_arm.dtype == torch.float64
+    assert wrapper._guard.seen_action_dtype == torch.float64
+    assert wrapper._guard.seen_obs_dtype == torch.float64
+
+
 def test_wrapper_resolves_bundled_stackfile_by_name() -> None:
     wrapper = DAMSafetyWrapper("soarm_isaac_safety.yaml", _FakeSO101Config(), "cpu")
 
@@ -226,3 +254,13 @@ def test_ee_filter_rejects_multi_env_batches() -> None:
 
     with pytest.raises(ValueError, match="one Isaac environment"):
         wrapper.filter_ee(torch.zeros(2, 7), torch.zeros(2, 2))
+
+
+def test_ee_filter_rejects_wrong_pose_width() -> None:
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+    resolver = _FakeResolver()
+    wrapper._ee_resolver = resolver
+    wrapper._ee_guard = _FakeEEGuard(resolver)
+
+    with pytest.raises(ValueError, match="target_pose width 7"):
+        wrapper.filter_ee(torch.zeros(6), torch.zeros(2))

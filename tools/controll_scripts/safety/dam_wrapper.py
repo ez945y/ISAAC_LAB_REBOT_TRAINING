@@ -150,6 +150,8 @@ class DAMSafetyWrapper:
             action = action.unsqueeze(0)
             obs = obs.unsqueeze(0)
         self._require_single_env(action, obs)
+        self._require_width(action, self._n_arm, "action")
+        self._require_width(obs, self._n_arm, "obs")
 
         # Append gripper to form full joint vector
         g_act = self._to_scalar(gripper_action, 0.0)
@@ -157,11 +159,11 @@ class DAMSafetyWrapper:
 
         full_action = torch.cat([
             action[0],
-            torch.tensor([g_act], device=self._device),
+            torch.tensor([g_act], dtype=action.dtype, device=action.device),
         ])
         full_obs = torch.cat([
             obs[0],
-            torch.tensor([g_obs], device=self._device),
+            torch.tensor([g_obs], dtype=obs.dtype, device=obs.device),
         ])
 
         # DAM accepts torch.Tensor directly (preserves device/dtype)
@@ -212,19 +214,21 @@ class DAMSafetyWrapper:
             target_pose = target_pose.unsqueeze(0)
             obs = obs.unsqueeze(0)
         self._require_single_env(target_pose, obs)
+        self._require_width(target_pose, 7, "target_pose")
+        self._require_width(obs, self._n_arm, "obs")
 
         g_obs = self._to_scalar(gripper_obs, 0.0)
         g_act = self._to_scalar(gripper_action, g_obs)
         self._ee_resolver.set_gripper_target(g_act)
         full_obs = torch.cat([
             obs[0],
-            torch.tensor([g_obs], dtype=obs.dtype, device=self._device),
+            torch.tensor([g_obs], dtype=obs.dtype, device=obs.device),
         ])
 
         dam_target_pose = torch.as_tensor(
             isaac_wxyz_to_dam_xyzw(target_pose[0]),
             dtype=target_pose.dtype,
-            device=self._device,
+            device=target_pose.device,
         )
         self._ee_guard.set_ee_pose(self._ee_resolver.current_ee_pose_dam)
         _ = self._ee_guard(dam_target_pose, full_obs)
@@ -235,7 +239,7 @@ class DAMSafetyWrapper:
         safe_full = torch.as_tensor(
             self._ee_resolver.last_safe_joint_positions,
             dtype=obs.dtype,
-            device=self._device,
+            device=obs.device,
         )
         self._last_safe_gripper = float(safe_full[self._n_arm].item())
         safe_arm = safe_full[: self._n_arm].unsqueeze(0)
@@ -330,4 +334,12 @@ class DAMSafetyWrapper:
             raise ValueError(
                 "DAMSafetyWrapper currently supports one Isaac environment at a time. "
                 f"Got action batch {action.shape[0]} and obs batch {obs.shape[0]}."
+            )
+
+    @staticmethod
+    def _require_width(tensor: torch.Tensor, expected: int, name: str) -> None:
+        if tensor.shape[1] != expected:
+            raise ValueError(
+                f"DAMSafetyWrapper expected {name} width {expected}, "
+                f"got shape {tuple(tensor.shape)}."
             )
