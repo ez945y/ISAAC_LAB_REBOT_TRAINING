@@ -56,6 +56,9 @@ make test PYTHON=/path/to/venv/bin/python
 
 Quick prototyping scripts in [`scripts/`](./scripts/) covering Isaac Lab basics: scene setup, keyboard control, physics demos, trajectory recording, robot teleoperation, and dataset replay.
 
+For the current DAM/Isaac safety integration branch, see the
+[DAM + Isaac demo readiness plan](./docs/dam_isaac_demo_plan.md).
+
 ## Tools
 
 - **[controll_scripts](./tools/controll_scripts/)** — SO-ARM-101 control modules: IK/OSC controllers, input devices, and USD assets
