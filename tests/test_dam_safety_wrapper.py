@@ -33,17 +33,22 @@ class _FakeSO101Config:
 
 
 class _Decision:
-    name = "PASS"
+    def __init__(self, name: str = "PASS") -> None:
+        self.name = name
 
 
 class _FakeJointGuard:
     stackfiles: list[str] = []
     seen_action_dtype = None
     seen_obs_dtype = None
+    decision_names = ["PASS"]
 
     def __init__(self, *args, **kwargs) -> None:
         self.stackfiles.append(str(args[0]))
-        self.last_results = [SimpleNamespace(decision=_Decision())]
+        self.last_results = [
+            SimpleNamespace(decision=_Decision(name))
+            for name in self.decision_names
+        ]
 
     def __call__(self, action: torch.Tensor, obs: torch.Tensor) -> torch.Tensor:
         self.seen_action_dtype = action.dtype
@@ -108,6 +113,7 @@ def fake_dam_module(monkeypatch):
     _FakeJointGuard.stackfiles = []
     _FakeJointGuard.seen_action_dtype = None
     _FakeJointGuard.seen_obs_dtype = None
+    _FakeJointGuard.decision_names = ["PASS"]
     monkeypatch.setitem(sys.modules, "dam", _FakeDam())
 
 
@@ -219,6 +225,27 @@ def test_joint_filter_preserves_input_dtype_for_full_guard_vectors() -> None:
     assert safe_arm.dtype == torch.float64
     assert wrapper._guard.seen_action_dtype == torch.float64
     assert wrapper._guard.seen_obs_dtype == torch.float64
+
+
+def test_joint_filter_reports_reject_over_clamp() -> None:
+    _FakeJointGuard.decision_names = ["CLAMP", "REJECT"]
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+
+    wrapper.filter(torch.zeros(2), torch.zeros(2))
+
+    assert wrapper.last_clamped is True
+    assert wrapper.last_decision == "REJECT"
+    assert wrapper.clamp_rate == pytest.approx(1.0)
+
+
+def test_joint_filter_reports_fault_over_reject() -> None:
+    _FakeJointGuard.decision_names = ["CLAMP", "REJECT", "FAULT"]
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+
+    wrapper.filter(torch.zeros(2), torch.zeros(2))
+
+    assert wrapper.last_clamped is True
+    assert wrapper.last_decision == "FAULT"
 
 
 def test_wrapper_resolves_bundled_stackfile_by_name() -> None:

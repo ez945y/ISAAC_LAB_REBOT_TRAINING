@@ -172,17 +172,7 @@ class DAMSafetyWrapper:
 
         # Track results
         self._step_count += 1
-        results = self._guard.last_results
-        self._last_clamped = any(
-            r.decision.name == "CLAMP" for r in results
-        )
-        if self._last_clamped:
-            self._clamp_count += 1
-            self._last_decision = "CLAMP"
-        elif any(r.decision.name == "REJECT" for r in results):
-            self._last_decision = "REJECT"
-        else:
-            self._last_decision = "PASS"
+        self._record_results(self._guard.last_results)
 
         # Return only arm joints (drop gripper)
         safe_arm = safe_full[: self._n_arm].unsqueeze(0)
@@ -246,15 +236,7 @@ class DAMSafetyWrapper:
         safe_arm = safe_full[: self._n_arm].unsqueeze(0)
 
         self._step_count += 1
-        results = self._ee_guard.last_results
-        self._last_clamped = any(r.decision.name == "CLAMP" for r in results)
-        if self._last_clamped:
-            self._clamp_count += 1
-            self._last_decision = "CLAMP"
-        elif any(r.decision.name == "REJECT" for r in results):
-            self._last_decision = "REJECT"
-        else:
-            self._last_decision = "PASS"
+        self._record_results(self._ee_guard.last_results)
 
         if squeeze:
             safe_arm = safe_arm.squeeze(0)
@@ -344,3 +326,14 @@ class DAMSafetyWrapper:
                 f"DAMSafetyWrapper expected {name} width {expected}, "
                 f"got shape {tuple(tensor.shape)}."
             )
+
+    def _record_results(self, results) -> None:
+        decision_names = [result.decision.name for result in results]
+        self._last_clamped = "CLAMP" in decision_names
+        if self._last_clamped:
+            self._clamp_count += 1
+        for decision in ("FAULT", "REJECT", "CLAMP"):
+            if decision in decision_names:
+                self._last_decision = decision
+                return
+        self._last_decision = "PASS"
