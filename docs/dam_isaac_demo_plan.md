@@ -23,7 +23,33 @@ The demo should prove three claims in order:
 2. DAM decisions are visible and actionable.
 3. DAM failure modes stop safely at the wrapper boundary.
 
-### Segment 1: Joint-Space Safety
+### Segment 1: Audience Comparison
+
+Run:
+
+```bash
+python scripts/dam_scripted_comparison_demo.py --mode compare
+```
+
+This is the preferred recording demo. It replays the same scripted EE target
+twice: first as `RAW COMMAND`, then as `DAM ON`. The trajectory starts with a
+normal reach and then pushes into a deliberately unsafe/uncomfortable region.
+
+Acceptance:
+
+- The terminal clearly separates `RAW COMMAND` and `DAM ON` segments.
+- The target trajectory is deterministic; no keyboard or leader arm is needed.
+- The DAM segment displays `PASS`, `CLAMP`, `REJECT`, or `FAULT`.
+- The recording shows the same input story with and without the safety layer.
+
+Tuning:
+
+```bash
+python scripts/dam_scripted_comparison_demo.py --mode compare --unsafe-scale 1.4
+python scripts/dam_scripted_comparison_demo.py --mode dam --steps 900 --log-every 45
+```
+
+### Segment 2: Joint-Space Safety
 
 Run:
 
@@ -31,7 +57,8 @@ Run:
 python scripts/dam_teleoperate_demo.py --controller ik
 ```
 
-Use a leader-arm joint-space input path. The operator should see:
+Use a leader-arm joint-space input path after the scripted comparison is stable.
+The operator should see:
 
 - `[DAM PASS]` during normal movement.
 - `last_safe_gripper` applied to the gripper joint target.
@@ -43,7 +70,7 @@ Acceptance:
 - Gripper target comes from `dam.last_safe_gripper`.
 - Status output includes decision and clamp rate.
 
-### Segment 2: Safety Intervention
+### Segment 3: Safety Intervention
 
 Use an aggressive or intentionally unsafe input profile that exceeds the DAM
 stackfile limits.
@@ -55,7 +82,7 @@ Acceptance:
   `FAULT > REJECT > CLAMP > PASS`.
 - The robot receives the validated target, not the raw unsafe proposal.
 
-### Segment 3: EE-Space Resolver Path
+### Segment 4: EE-Space Resolver Path
 
 Run:
 
@@ -134,6 +161,8 @@ Official references:
 
 - [ ] `make test` passes in `/tmp/isaac_lab_study`.
 - [ ] Isaac runtime host confirms Isaac Sim and Isaac Lab versions.
+- [ ] `scripts/dam_scripted_comparison_demo.py --mode compare` launches and
+      records the RAW vs DAM comparison.
 - [ ] `scripts/dam_safety_demo.py --controller ik --num_envs 1` launches.
 - [ ] `scripts/dam_teleoperate_demo.py --controller ik` launches with the
       leader-arm input path or a documented substitute.
