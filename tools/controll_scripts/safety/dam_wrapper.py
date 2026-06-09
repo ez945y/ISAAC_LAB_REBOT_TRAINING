@@ -154,8 +154,8 @@ class DAMSafetyWrapper:
         self._require_width(obs, self._n_arm, "obs")
 
         # Append gripper to form full joint vector
-        g_act = self._to_scalar(gripper_action, 0.0)
-        g_obs = self._to_scalar(gripper_obs, 0.0)
+        g_act = self._to_scalar(gripper_action, 0.0, "gripper_action")
+        g_obs = self._to_scalar(gripper_obs, 0.0, "gripper_obs")
 
         full_action = torch.cat([
             action[0],
@@ -211,8 +211,8 @@ class DAMSafetyWrapper:
         self._require_width(target_pose, 7, "target_pose")
         self._require_width(obs, self._n_arm, "obs")
 
-        g_obs = self._to_scalar(gripper_obs, 0.0)
-        g_act = self._to_scalar(gripper_action, g_obs)
+        g_obs = self._to_scalar(gripper_obs, 0.0, "gripper_obs")
+        g_act = self._to_scalar(gripper_action, g_obs, "gripper_action")
         self._ee_resolver.set_gripper_target(g_act)
         full_obs = torch.cat([
             obs[0],
@@ -296,10 +296,15 @@ class DAMSafetyWrapper:
         return str(bundled_path)
 
     @staticmethod
-    def _to_scalar(val: float | torch.Tensor | None, default: float) -> float:
+    def _to_scalar(val: float | torch.Tensor | None, default: float, name: str) -> float:
         if val is None:
             return default
         if isinstance(val, torch.Tensor):
+            if val.numel() != 1:
+                raise ValueError(
+                    f"DAMSafetyWrapper expected {name} to be a scalar or single-element tensor, "
+                    f"got shape {tuple(val.shape)}."
+                )
             return val.item()
         return float(val)
 

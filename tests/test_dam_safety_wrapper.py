@@ -256,6 +256,17 @@ def test_joint_filter_rejects_incomplete_guard_joint_target() -> None:
         wrapper.filter(torch.zeros(2), torch.zeros(2))
 
 
+def test_joint_filter_rejects_vector_gripper_action() -> None:
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+
+    with pytest.raises(ValueError, match="gripper_action.*single-element tensor"):
+        wrapper.filter(
+            torch.zeros(2),
+            torch.zeros(2),
+            gripper_action=torch.zeros(2),
+        )
+
+
 def test_joint_filter_reports_reject_over_clamp() -> None:
     _FakeJointGuard.decision_names = ["CLAMP", "REJECT"]
     wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
@@ -354,6 +365,20 @@ def test_ee_filter_rejects_incomplete_resolver_joint_target() -> None:
         wrapper.filter_ee(
             torch.tensor([0.1, 0.2, 0.3, 1.0, 0.0, 0.0, 0.0]),
             torch.tensor([0.0, 0.0]),
+        )
+
+
+def test_ee_filter_rejects_vector_gripper_obs() -> None:
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+    resolver = _FakeResolver()
+    wrapper._ee_resolver = resolver
+    wrapper._ee_guard = _FakeEEGuard(resolver)
+
+    with pytest.raises(ValueError, match="gripper_obs.*single-element tensor"):
+        wrapper.filter_ee(
+            torch.tensor([0.1, 0.2, 0.3, 1.0, 0.0, 0.0, 0.0]),
+            torch.tensor([0.0, 0.0]),
+            gripper_obs=torch.zeros(2),
         )
 
 
