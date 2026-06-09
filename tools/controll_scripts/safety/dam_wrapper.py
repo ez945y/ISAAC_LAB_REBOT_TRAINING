@@ -231,6 +231,7 @@ class DAMSafetyWrapper:
             device=target_pose.device,
         )
         self._ee_guard.set_ee_pose(self._ee_resolver.current_ee_pose_dam)
+        self._ee_resolver.last_safe_joint_positions = None
         _ = self._ee_guard(dam_target_pose, full_obs)
 
         if self._ee_resolver.last_safe_joint_positions is None:

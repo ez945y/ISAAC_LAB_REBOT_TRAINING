@@ -90,6 +90,19 @@ class _FakeEEGuard:
         pass
 
 
+class _FakeNoFkEEGuard:
+    last_results = [SimpleNamespace(decision=_Decision())]
+
+    def set_ee_pose(self, ee_pose) -> None:
+        pass
+
+    def __call__(self, action: torch.Tensor, obs: torch.Tensor) -> torch.Tensor:
+        return torch.zeros(7, dtype=action.dtype, device=action.device)
+
+    def close(self) -> None:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def fake_dam_module(monkeypatch):
     _FakeJointGuard.stackfiles = []
@@ -244,6 +257,20 @@ def test_ee_filter_returns_validated_joint_target_from_resolver() -> None:
     torch.testing.assert_close(safe_arm, torch.tensor([0.4, 0.5]))
     assert resolver.gripper_target == pytest.approx(0.8)
     assert wrapper.last_safe_gripper == pytest.approx(0.6)
+
+
+def test_ee_filter_does_not_reuse_stale_resolver_joint_target() -> None:
+    wrapper = DAMSafetyWrapper("safety.yaml", _FakeRobotConfig(), "cpu")
+    resolver = _FakeResolver()
+    resolver.last_safe_joint_positions = np.array([9.0, 9.0, 9.0])
+    wrapper._ee_resolver = resolver
+    wrapper._ee_guard = _FakeNoFkEEGuard()
+
+    with pytest.raises(RuntimeError, match="did not produce validated joint positions"):
+        wrapper.filter_ee(
+            torch.tensor([0.1, 0.2, 0.3, 1.0, 0.0, 0.0, 0.0]),
+            torch.tensor([0.0, 0.0]),
+        )
 
 
 def test_ee_filter_rejects_multi_env_batches() -> None:
