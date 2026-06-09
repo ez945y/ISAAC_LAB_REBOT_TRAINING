@@ -28,6 +28,7 @@ Usage:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
@@ -70,10 +71,7 @@ class DAMSafetyWrapper:
                 "unrelated PyPI 'dam' package."
             )
 
-        # Resolve stackfile path relative to this file's directory
-        if not os.path.isabs(stackfile):
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            stackfile = os.path.join(base_dir, stackfile)
+        stackfile = self._resolve_stackfile(stackfile)
 
         # Build joint_names: arm joints + gripper (matches DAM preset order)
         joint_names = list(robot_config.arm_joint_names) + [robot_config.gripper_joint_name]
@@ -291,6 +289,25 @@ class DAMSafetyWrapper:
             self._ee_guard.close()
 
     # -- Helpers --------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_stackfile(stackfile: str) -> str:
+        path = Path(stackfile)
+        if path.is_absolute():
+            return str(path)
+        if path.exists():
+            return str(path)
+
+        safety_dir = Path(__file__).resolve().parent
+        bundled_path = safety_dir / path
+        if bundled_path.exists():
+            return str(bundled_path)
+
+        bundled_name = safety_dir / path.name
+        if bundled_name.exists():
+            return str(bundled_name)
+
+        return str(bundled_path)
 
     @staticmethod
     def _to_scalar(val: float | torch.Tensor | None, default: float) -> float:

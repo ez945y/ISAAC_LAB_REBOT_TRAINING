@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -36,7 +37,10 @@ class _Decision:
 
 
 class _FakeJointGuard:
+    stackfiles: list[str] = []
+
     def __init__(self, *args, **kwargs) -> None:
+        self.stackfiles.append(str(args[0]))
         self.last_results = [SimpleNamespace(decision=_Decision())]
 
     def __call__(self, action: torch.Tensor, obs: torch.Tensor) -> torch.Tensor:
@@ -84,6 +88,7 @@ class _FakeEEGuard:
 
 @pytest.fixture(autouse=True)
 def fake_dam_module(monkeypatch):
+    _FakeJointGuard.stackfiles = []
     monkeypatch.setitem(sys.modules, "dam", _FakeDam())
 
 
@@ -151,6 +156,41 @@ def test_joint_filter_exposes_validated_gripper_target() -> None:
 
     torch.testing.assert_close(safe_arm, torch.tensor([1.0, 2.0]))
     assert wrapper.last_safe_gripper == pytest.approx(0.25)
+
+
+def test_wrapper_resolves_bundled_stackfile_by_name() -> None:
+    wrapper = DAMSafetyWrapper("soarm_isaac_safety.yaml", _FakeSO101Config(), "cpu")
+
+    stackfile = Path(_FakeJointGuard.stackfiles[-1])
+    assert stackfile.name == "soarm_isaac_safety.yaml"
+    assert stackfile.exists()
+    wrapper.close()
+
+
+def test_wrapper_preserves_existing_relative_stackfile() -> None:
+    wrapper = DAMSafetyWrapper(
+        "tools/controll_scripts/safety/soarm_isaac_safety.yaml",
+        _FakeSO101Config(),
+        "cpu",
+    )
+
+    assert _FakeJointGuard.stackfiles[-1] == "tools/controll_scripts/safety/soarm_isaac_safety.yaml"
+    wrapper.close()
+
+
+def test_wrapper_falls_back_to_bundled_name_for_package_style_path(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    wrapper = DAMSafetyWrapper(
+        "controll_scripts/safety/soarm_isaac_safety.yaml",
+        _FakeSO101Config(),
+        "cpu",
+    )
+
+    stackfile = Path(_FakeJointGuard.stackfiles[-1])
+    assert stackfile.name == "soarm_isaac_safety.yaml"
+    assert stackfile.exists()
+    wrapper.close()
 
 
 def test_ee_filter_returns_validated_joint_target_from_resolver() -> None:
