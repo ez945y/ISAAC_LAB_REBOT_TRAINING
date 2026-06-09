@@ -31,6 +31,19 @@ cd ISAAC_LAB_REBOT_TRAINING
 pip install -e .
 ```
 
+## Testing
+
+```bash
+make test
+```
+
+The test target runs `pytest` with `PYTHONPATH=tools`. Override the interpreter
+when needed, for example:
+
+```bash
+make test PYTHON=/path/to/venv/bin/python
+```
+
 ## Projects
 
 | Project | Approach | Robot | Task |
