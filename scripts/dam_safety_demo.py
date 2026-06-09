@@ -101,6 +101,17 @@ def create_scene_cfg(robot_config: SOArm101Config, for_osc: bool) -> type:
     return SceneCfg
 
 
+def _format_dam_decision(decision: str) -> str:
+    colors = {
+        "PASS": "\033[92m",
+        "CLAMP": "\033[93m",
+        "REJECT": "\033[91m",
+        "FAULT": "\033[95m",
+    }
+    color = colors.get(decision, "\033[90m")
+    return f"{color}{decision:<6}\033[0m"
+
+
 # ── Main ─────────────────────────────────────────────────────────────────
 
 def main():
@@ -224,7 +235,7 @@ def main():
 
         # Status output
         if step_count % 120 == 0:
-            tag = f"\033[93mCLAMP\033[0m" if dam.last_clamped else f"\033[92mPASS \033[0m"
+            tag = _format_dam_decision(dam.last_decision)
             print(
                 f"[DAM {tag}] "
                 f"step={step_count:5d}  "

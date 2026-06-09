@@ -60,6 +60,10 @@ from controll_scripts import (
 from controll_scripts.safety import DAMSafetyWrapper
 
 
+def _dam_decision_label(dam: DAMSafetyWrapper) -> str:
+    return f"{dam.last_decision:<6}"
+
+
 # ── SafeTeleoperationRunner ─────────────────────────────────────────────
 
 class SafeTeleoperationRunner:
@@ -188,7 +192,7 @@ class SafeTeleoperationRunner:
         self.step_count += 1
 
         if self.step_count % 100 == 0:
-            tag = "CLAMP" if self.dam.last_clamped else "PASS "
+            tag = _dam_decision_label(self.dam)
             conn = "OK" if self.input_device.is_connected else "--"
             print(f"[DAM {tag}] joint mode | conn={conn} | clamp_rate={self.dam.clamp_rate:.1%}")
 
@@ -217,7 +221,7 @@ class SafeTeleoperationRunner:
 
         if self.step_count % 200 == 0:
             error = torch.norm(target_pose[0, :3] - self.controller.current_ee_pose[0, :3]).item()
-            tag = "CLAMP" if self.dam.last_clamped else "PASS "
+            tag = _dam_decision_label(self.dam)
             conn = "OK" if self.input_device.is_connected else "--"
             print(f"[DAM {tag}] ee mode | err={error:.4f} | conn={conn} | clamp_rate={self.dam.clamp_rate:.1%}")
 
