@@ -17,8 +17,6 @@ import argparse
 import math
 import os
 import sys
-from collections import Counter
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from isaaclab.app import AppLauncher
@@ -67,6 +65,11 @@ from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 
 from controll_scripts import ControllerFactory, ControllerType, SOArm101Config
 from controll_scripts.safety import DAMSafetyWrapper
+from controll_scripts.safety.demo_summary import (
+    SegmentMetrics,
+    format_linkedin_summary,
+    format_segment_summary,
+)
 
 
 def create_scene_cfg(robot_config: SOArm101Config) -> type:
@@ -136,21 +139,6 @@ def _decision_color(decision: str) -> str:
     }
     color = colors.get(decision, "\033[90m")
     return f"{color}{decision:<6}\033[0m"
-
-
-@dataclass
-class SegmentMetrics:
-    mode: str
-    steps: int = 0
-    risky_frames: int = 0
-    max_target_offset: float = 0.0
-    min_target_z: float = float("inf")
-    max_tracking_error: float = 0.0
-    decisions: Counter = field(default_factory=Counter)
-
-    @property
-    def interventions(self) -> int:
-        return sum(self.decisions[name] for name in ("CLAMP", "REJECT", "FAULT"))
 
 
 class ScriptedComparisonDemo:
@@ -321,61 +309,13 @@ class ScriptedComparisonDemo:
         self.marker.visualize(target_pos_w, target_quat_w)
 
     def _print_segment_summary(self, metrics: SegmentMetrics) -> None:
-        decision_text = ", ".join(
-            f"{name}={metrics.decisions[name]}"
-            for name in ("RAW", "PASS", "CLAMP", "REJECT", "FAULT")
-            if metrics.decisions[name]
-        ) or "none"
-        print(
-            f"[SUMMARY {metrics.mode.upper()}] "
-            f"steps={metrics.steps} risky_frames={metrics.risky_frames} "
-            f"max_offset={metrics.max_target_offset:.3f}m "
-            f"min_z={metrics.min_target_z:.3f}m "
-            f"max_err={metrics.max_tracking_error:.4f}m "
-            f"decisions={decision_text}"
-        )
+        print(format_segment_summary(metrics))
 
     def _print_linkedin_summary(self) -> None:
         if not self.segment_metrics:
             return
 
-        raw = next((item for item in self.segment_metrics if item.mode == "raw"), None)
-        dam = next((item for item in self.segment_metrics if item.mode == "dam"), None)
-        risky_frames = max((item.risky_frames for item in self.segment_metrics), default=0)
-        interventions = dam.interventions if dam is not None else 0
-        dam_steps = dam.steps if dam is not None else 0
-        intervention_rate = interventions / dam_steps if dam_steps else 0.0
-
-        lines = [
-            "",
-            "LINKEDIN DEMO SUMMARY",
-            "Problem: robot policies and teleop streams can generate unsafe targets faster than humans can inspect.",
-            "Demo: replay the same scripted risky command twice, first raw and then through DAM.",
-            f"Risky command frames: {risky_frames}",
-            f"DAM interventions: {interventions} ({intervention_rate:.1%} of DAM frames)",
-        ]
-        if raw is not None:
-            lines.append(
-                f"RAW max tracking error: {raw.max_tracking_error:.4f}m; "
-                f"max target offset: {raw.max_target_offset:.3f}m"
-            )
-        if dam is not None:
-            lines.append(
-                f"DAM decisions: PASS={dam.decisions['PASS']} CLAMP={dam.decisions['CLAMP']} "
-                f"REJECT={dam.decisions['REJECT']} FAULT={dam.decisions['FAULT']}"
-            )
-        if dam is not None and interventions == 0:
-            lines.append(
-                "Demo tuning note: no DAM intervention was observed; increase --unsafe-scale "
-                "or tighten the stackfile before recording the final clip."
-            )
-        lines.extend(
-            [
-                "Caption angle: same command, safer robot. DAM turns safety constraints into a runtime control boundary.",
-                "",
-            ]
-        )
-        summary = "\n".join(lines)
+        summary = format_linkedin_summary(self.segment_metrics)
         print(summary)
 
         if args_cli.summary_path:
