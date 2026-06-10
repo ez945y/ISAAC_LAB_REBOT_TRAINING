@@ -1,6 +1,16 @@
 # DAM LinkedIn Launch Kit
 
-Use this after recording `scripts/dam_scripted_comparison_demo.py --mode compare`.
+Use this after recording either comparison demo:
+
+```bash
+python scripts/dam_car_scripted_comparison_demo.py --mode compare --summary-path outputs/car_linkedin_summary.md
+python scripts/dam_scripted_comparison_demo.py --mode compare --summary-path outputs/dam_linkedin_summary.md
+```
+
+For a general LinkedIn audience, lead with the car/Jetbot version. Speed,
+obstacles, and stopping distance are immediately legible even to viewers who do
+not know robot arms.
+
 The goal is to make the value obvious to robotics, simulation, and AI policy
 teams in the first 3 seconds.
 
@@ -14,18 +24,25 @@ On-screen text:
 Same command. Safer robot.
 ```
 
+For the car version, prefer:
+
+```text
+Same command. Safer vehicle.
+```
+
 Visual:
 
 - Split or sequential title card.
 - Left label: `RAW COMMAND`
-- Right label: `DAM ON`
+- Right label: `SAFETY ON` for the car version, or `DAM ON` for the arm version.
 
 ### 3-12s: Show The Problem
 
 Visual:
 
 - RAW segment from the scripted replay.
-- Keep the target marker visible.
+- For the car version, keep the red obstacle and yellow safety gate visible.
+- For the arm version, keep the target marker visible.
 - Show terminal line or overlay with `RAW`, target offset, and tracking error.
 
 Narration:
@@ -41,6 +58,7 @@ Visual:
 - DAM segment from the same replay.
 - Show `PASS`, `CLAMP`, `REJECT`, or `FAULT` status.
 - Show the validated robot motion, not just a terminal log.
+- For the car version, show `SLOW`, `STEER`, or `STOP` near the obstacle.
 
 Narration:
 
@@ -56,7 +74,7 @@ On-screen text:
 
 ```text
 Risky frames: <N>
-DAM interventions: <N>
+Safety interventions: <N>
 Controller rewrite: 0
 ```
 
@@ -69,19 +87,19 @@ If you are testing robot policies in simulation, safety should be a runtime boun
 ## Post Draft
 
 ```text
-Same command. Safer robot.
+Same command. Safer vehicle.
 
-I built a scripted Isaac Sim demo that replays the same risky end-effector command twice:
+I built a scripted Isaac Sim demo that replays the same risky vehicle command twice:
 
 1. RAW COMMAND: the controller receives the target directly.
-2. DAM ON: the same target is filtered by a runtime safety layer before Isaac receives joint commands.
+2. SAFETY ON: the same target is filtered by a runtime safety layer before Isaac receives wheel commands.
 
 Why this matters:
-Robot policies and teleoperation streams can generate unsafe targets faster than humans can inspect them. DAM turns safety rules into a live control boundary: every target is validated before it reaches the simulated robot.
+Robot policies and teleoperation streams can generate unsafe speed commands faster than humans can inspect them. A runtime safety boundary can slow, steer, or stop the vehicle before the command reaches the simulated robot.
 
 In this run:
-- Risky command frames: <from LINKEDIN DEMO SUMMARY>
-- DAM interventions: <from LINKEDIN DEMO SUMMARY>
+- Risky proximity frames: <from LINKEDIN CAR DEMO SUMMARY>
+- Safety interventions: <from LINKEDIN CAR DEMO SUMMARY>
 - Controller rewrite required: 0
 - Isaac scene rewrite required: 0
 
@@ -93,6 +111,7 @@ Next step: run this against richer policy outputs and record how often safety co
 ## Caption Variants
 
 - Same command, safer robot.
+- Same command, safer vehicle.
 - Safety should sit in the control path, not only in the post-run chart.
 - A policy can be creative. The robot still needs boundaries.
 - Runtime safety for robot learning loops: visible, testable, reusable.
@@ -107,10 +126,12 @@ Next step: run this against richer policy outputs and record how often safety co
 ## Recording Checklist
 
 - [ ] Run `make test` first.
-- [ ] Record `python scripts/dam_scripted_comparison_demo.py --mode compare --summary-path outputs/dam_linkedin_summary.md`.
+- [ ] Record `python scripts/dam_car_scripted_comparison_demo.py --mode compare --summary-path outputs/car_linkedin_summary.md`.
+- [ ] Optionally record the arm version with `python scripts/dam_scripted_comparison_demo.py --mode compare --summary-path outputs/dam_linkedin_summary.md`.
 - [ ] Capture the terminal around `RAW COMMAND`, `DAM ON`, and `LINKEDIN DEMO SUMMARY`.
-- [ ] Keep the target marker visible.
-- [ ] Show at least one non-`PASS` DAM decision, or tune `--unsafe-scale` / stackfile before publishing.
+- [ ] For the car version, capture `RAW COMMAND`, `SAFETY ON`, and `LINKEDIN CAR DEMO SUMMARY`.
+- [ ] Keep the red obstacle and yellow safety gate visible.
+- [ ] Show at least one `SLOW`, `STEER`, or `STOP`, or tune `--unsafe-speed` / `--obstacle-x` before publishing.
 - [ ] Save Isaac Sim, Isaac Lab, GPU, driver, and Python versions.
 
 ## Product Message

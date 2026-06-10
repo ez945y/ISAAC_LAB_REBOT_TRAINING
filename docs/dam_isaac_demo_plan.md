@@ -28,12 +28,17 @@ The demo should prove three claims in order:
 Run:
 
 ```bash
+python scripts/dam_car_scripted_comparison_demo.py --mode compare
 python scripts/dam_scripted_comparison_demo.py --mode compare
 ```
 
-This is the preferred recording demo. It replays the same scripted EE target
-twice: first as `RAW COMMAND`, then as `DAM ON`. The trajectory starts with a
-normal reach and then pushes into a deliberately unsafe/uncomfortable region.
+For a general LinkedIn audience, lead with the car version. It replays the same
+scripted high-speed drive command twice: first as `RAW COMMAND`, then as
+`SAFETY ON`. The obstacle, safety gate, slowing, steering, and stopping behavior
+are legible without explaining robot-arm kinematics.
+
+Use the arm version afterward for a more technical audience. It replays the
+same scripted EE target twice: first as `RAW COMMAND`, then as `DAM ON`.
 
 Acceptance:
 
@@ -41,10 +46,13 @@ Acceptance:
 - The target trajectory is deterministic; no keyboard or leader arm is needed.
 - The DAM segment displays `PASS`, `CLAMP`, `REJECT`, or `FAULT`.
 - The recording shows the same input story with and without the safety layer.
+- The car segment displays `SLOW`, `STEER`, or `STOP` near the obstacle.
 
 Tuning:
 
 ```bash
+python scripts/dam_car_scripted_comparison_demo.py --mode compare --unsafe-speed 7.0
+python scripts/dam_car_scripted_comparison_demo.py --mode compare --obstacle-x 1.1
 python scripts/dam_scripted_comparison_demo.py --mode compare --unsafe-scale 1.4
 python scripts/dam_scripted_comparison_demo.py --mode dam --steps 900 --log-every 45
 python scripts/dam_scripted_comparison_demo.py --mode compare --summary-path outputs/dam_linkedin_summary.md
@@ -52,7 +60,7 @@ python scripts/dam_scripted_comparison_demo.py --mode compare --summary-path out
 
 LinkedIn value message:
 
-- **Hook**: "Same command, safer robot."
+- **Hook**: "Same command, safer vehicle."
 - **Problem**: policies and teleop streams can emit unsafe targets faster than
   humans can inspect.
 - **Proof**: the replay prints risky command frames, DAM interventions, and
@@ -177,6 +185,8 @@ Official references:
 
 - [ ] `make test` passes in `/tmp/isaac_lab_study`.
 - [ ] Isaac runtime host confirms Isaac Sim and Isaac Lab versions.
+- [ ] `scripts/dam_car_scripted_comparison_demo.py --mode compare` launches and
+      records the RAW vs SAFETY ON comparison.
 - [ ] `scripts/dam_scripted_comparison_demo.py --mode compare` launches and
       records the RAW vs DAM comparison.
 - [ ] `scripts/dam_safety_demo.py --controller ik --num_envs 1` launches.

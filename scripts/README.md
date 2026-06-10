@@ -16,6 +16,7 @@ Incremental experiment scripts for learning Isaac Lab fundamentals — from basi
 | 08 | `08_augmented_replay.py` | Augmented replay with multiple episodes, cube configs & cameras |
 | 09 | `09_moving_to_hdf5.py` | FK→IK round-trip conversion: LeRobot joints → EE-space HDF5 |
 | 10 | `10_convert_to_lerobot.py` | feat: transfrom to lerobot dataset:  HDF5 → LeRobot|
+| CAR | `dam_car_scripted_comparison_demo.py` | Scripted Jetbot RAW vs safety-boundary comparison |
 | DAM | `dam_scripted_comparison_demo.py` | Scripted RAW vs DAM safety comparison for recording |
 | DAM | `dam_safety_demo.py` | Keyboard EE control with DAM filtering |
 | DAM | `dam_teleoperate_demo.py` | Leader-arm teleoperation with DAM filtering |
@@ -50,6 +51,7 @@ python scripts/07_moving_from_dataset.py --dataset MikeChenYZ/so101_isaac_mimic_
 python scripts/08_augmented_replay.py --enable_cameras
 python scripts/09_moving_to_hdf5.py --dataset MikeChenYZ/soarm-fmb-v2 --output ./datasets/move_demo.hdf5
 python scripts/10_convert_to_lerobot.py --repo_id MikeChenYZ/so101_isaac_mimic_test --push_to_hub
+python scripts/dam_car_scripted_comparison_demo.py --mode compare
 python scripts/dam_scripted_comparison_demo.py --mode compare
 ffplay file-000.mp4
 python scripts/11_stream_top_sender.py --enable_cameras
