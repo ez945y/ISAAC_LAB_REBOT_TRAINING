@@ -17,6 +17,9 @@ import argparse
 import math
 import os
 import sys
+from collections import Counter
+from dataclasses import dataclass, field
+from pathlib import Path
 
 from isaaclab.app import AppLauncher
 
@@ -29,6 +32,12 @@ parser.add_argument("--steps", type=int, default=720, help="Steps per replay seg
 parser.add_argument("--hold-steps", type=int, default=120, help="Settling steps between compare segments")
 parser.add_argument("--unsafe-scale", type=float, default=1.25, help="Scale for the scripted unsafe reach")
 parser.add_argument("--log-every", type=int, default=60)
+parser.add_argument(
+    "--summary-path",
+    type=str,
+    default=None,
+    help="Optional path for a Markdown summary to use in posts or handoff notes.",
+)
 parser.add_argument(
     "--stackfile",
     type=str,
@@ -129,6 +138,21 @@ def _decision_color(decision: str) -> str:
     return f"{color}{decision:<6}\033[0m"
 
 
+@dataclass
+class SegmentMetrics:
+    mode: str
+    steps: int = 0
+    risky_frames: int = 0
+    max_target_offset: float = 0.0
+    min_target_z: float = float("inf")
+    max_tracking_error: float = 0.0
+    decisions: Counter = field(default_factory=Counter)
+
+    @property
+    def interventions(self) -> int:
+        return sum(self.decisions[name] for name in ("CLAMP", "REJECT", "FAULT"))
+
+
 class ScriptedComparisonDemo:
     def __init__(self) -> None:
         self.robot_config = SOArm101Config()
@@ -140,6 +164,7 @@ class ScriptedComparisonDemo:
         self.dam = None
         self.marker = None
         self.sim_dt = 0.0
+        self.segment_metrics: list[SegmentMetrics] = []
 
     def setup(self) -> bool:
         if not os.path.exists(self.robot_config.usd_path):
@@ -191,12 +216,14 @@ class ScriptedComparisonDemo:
         for index, mode in enumerate(modes):
             self._reset_scene()
             self._hold(f"{mode.upper()} settling", args_cli.hold_steps)
-            self._run_segment(mode)
+            metrics = self._run_segment(mode)
+            self.segment_metrics.append(metrics)
             if index < len(modes) - 1:
                 self._hold("transition", args_cli.hold_steps)
 
         self.dam.close()
         print(f"\n[DAM] {self.dam.step_count} protected steps, {self.dam.clamp_rate:.1%} clamped")
+        self._print_linkedin_summary()
 
     def _reset_scene(self) -> None:
         cube: RigidObject = self.scene["cube"]
@@ -216,13 +243,15 @@ class ScriptedComparisonDemo:
             self.sim.step()
             self.robot.update(self.sim_dt)
 
-    def _run_segment(self, mode: str) -> None:
+    def _run_segment(self, mode: str) -> SegmentMetrics:
         initial_pose = self.controller.current_ee_pose.clone()
+        initial_position = initial_pose[0, :3].detach().clone()
+        metrics = SegmentMetrics(mode=mode)
         print(f"\n{'RAW COMMAND' if mode == 'raw' else 'DAM ON'} segment")
 
         for step in range(args_cli.steps):
             if not simulation_app.is_running():
-                return
+                return metrics
             target_pose = _scripted_pose(initial_pose, step, args_cli.steps, args_cli.unsafe_scale)
             self._visualize_target(target_pose)
 
@@ -236,15 +265,26 @@ class ScriptedComparisonDemo:
             self.sim.step()
             self.robot.update(self.sim_dt)
 
+            current_pose = self.controller.current_ee_pose
+            error = torch.norm(target_pose[0, :3] - current_pose[0, :3]).item()
+            target_offset = torch.norm(target_pose[0, :3] - initial_position).item()
+            metrics.steps += 1
+            metrics.max_tracking_error = max(metrics.max_tracking_error, error)
+            metrics.max_target_offset = max(metrics.max_target_offset, target_offset)
+            metrics.min_target_z = min(metrics.min_target_z, float(target_pose[0, 2].item()))
+            metrics.decisions[decision] += 1
+            if target_offset > 0.16 or target_pose[0, 2].item() < 0.08:
+                metrics.risky_frames += 1
+
             if step % args_cli.log_every == 0 or step == args_cli.steps - 1:
-                current_pose = self.controller.current_ee_pose
-                error = torch.norm(target_pose[0, :3] - current_pose[0, :3]).item()
                 tag = _decision_color(decision)
                 print(
                     f"[{tag}] step={step:04d} "
                     f"target=({target_pose[0,0]:+.3f},{target_pose[0,1]:+.3f},{target_pose[0,2]:+.3f}) "
                     f"err={error:.4f} clamp_rate={self.dam.clamp_rate:.1%}"
                 )
+        self._print_segment_summary(metrics)
+        return metrics
 
     def _apply_dam_target(self, target_pose: torch.Tensor, gripper_pos: float) -> None:
         arm_joint_ids = self.controller._arm_joint_ids
@@ -279,6 +319,70 @@ class ScriptedComparisonDemo:
             target_pose[:, 3:7],
         )
         self.marker.visualize(target_pos_w, target_quat_w)
+
+    def _print_segment_summary(self, metrics: SegmentMetrics) -> None:
+        decision_text = ", ".join(
+            f"{name}={metrics.decisions[name]}"
+            for name in ("RAW", "PASS", "CLAMP", "REJECT", "FAULT")
+            if metrics.decisions[name]
+        ) or "none"
+        print(
+            f"[SUMMARY {metrics.mode.upper()}] "
+            f"steps={metrics.steps} risky_frames={metrics.risky_frames} "
+            f"max_offset={metrics.max_target_offset:.3f}m "
+            f"min_z={metrics.min_target_z:.3f}m "
+            f"max_err={metrics.max_tracking_error:.4f}m "
+            f"decisions={decision_text}"
+        )
+
+    def _print_linkedin_summary(self) -> None:
+        if not self.segment_metrics:
+            return
+
+        raw = next((item for item in self.segment_metrics if item.mode == "raw"), None)
+        dam = next((item for item in self.segment_metrics if item.mode == "dam"), None)
+        risky_frames = max((item.risky_frames for item in self.segment_metrics), default=0)
+        interventions = dam.interventions if dam is not None else 0
+        dam_steps = dam.steps if dam is not None else 0
+        intervention_rate = interventions / dam_steps if dam_steps else 0.0
+
+        lines = [
+            "",
+            "LINKEDIN DEMO SUMMARY",
+            "Problem: robot policies and teleop streams can generate unsafe targets faster than humans can inspect.",
+            "Demo: replay the same scripted risky command twice, first raw and then through DAM.",
+            f"Risky command frames: {risky_frames}",
+            f"DAM interventions: {interventions} ({intervention_rate:.1%} of DAM frames)",
+        ]
+        if raw is not None:
+            lines.append(
+                f"RAW max tracking error: {raw.max_tracking_error:.4f}m; "
+                f"max target offset: {raw.max_target_offset:.3f}m"
+            )
+        if dam is not None:
+            lines.append(
+                f"DAM decisions: PASS={dam.decisions['PASS']} CLAMP={dam.decisions['CLAMP']} "
+                f"REJECT={dam.decisions['REJECT']} FAULT={dam.decisions['FAULT']}"
+            )
+        if dam is not None and interventions == 0:
+            lines.append(
+                "Demo tuning note: no DAM intervention was observed; increase --unsafe-scale "
+                "or tighten the stackfile before recording the final clip."
+            )
+        lines.extend(
+            [
+                "Caption angle: same command, safer robot. DAM turns safety constraints into a runtime control boundary.",
+                "",
+            ]
+        )
+        summary = "\n".join(lines)
+        print(summary)
+
+        if args_cli.summary_path:
+            path = Path(args_cli.summary_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(summary, encoding="utf-8")
+            print(f"[INFO] Wrote LinkedIn summary: {path}")
 
 
 def main() -> None:

@@ -47,7 +47,18 @@ Tuning:
 ```bash
 python scripts/dam_scripted_comparison_demo.py --mode compare --unsafe-scale 1.4
 python scripts/dam_scripted_comparison_demo.py --mode dam --steps 900 --log-every 45
+python scripts/dam_scripted_comparison_demo.py --mode compare --summary-path outputs/dam_linkedin_summary.md
 ```
+
+LinkedIn value message:
+
+- **Hook**: "Same command, safer robot."
+- **Problem**: policies and teleop streams can emit unsafe targets faster than
+  humans can inspect.
+- **Proof**: the replay prints risky command frames, DAM interventions, and
+  decision counts.
+- **Buyer value**: safer robot iteration without rewriting the controller,
+  policy, or Isaac scene.
 
 ### Segment 2: Joint-Space Safety
 
@@ -116,6 +127,8 @@ For a credible demo package, capture:
 - Screen recording of the robot moving under normal DAM `PASS` status.
 - A second clip showing a visible `CLAMP`, `REJECT`, or `FAULT`.
 - Terminal log lines for `step`, `clamp_rate`, `ee_err`, and gripper target.
+- The `LINKEDIN DEMO SUMMARY` block, or a summary file produced with
+  `--summary-path`.
 - The exact stackfile path used.
 - Isaac Sim, Isaac Lab, GPU, driver, and Python environment versions.
 - `make test` output from this sidecar branch.
