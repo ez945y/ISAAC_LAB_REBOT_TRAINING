@@ -133,6 +133,9 @@ For a credible demo package, capture:
 - Isaac Sim, Isaac Lab, GPU, driver, and Python environment versions.
 - `make test` output from this sidecar branch.
 
+For post structure, captions, and the 30-second shot list, use
+[`dam_linkedin_launch_kit.md`](./dam_linkedin_launch_kit.md).
+
 ## Isaac Sim 6.0 / Isaac Lab 3.0 Watchlist
 
 The repository README currently targets Isaac Sim 5.1+ and Isaac Lab 2.3.0.
