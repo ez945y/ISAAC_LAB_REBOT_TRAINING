@@ -8,6 +8,11 @@ from typing import Tuple
 import torch
 import carb.input
 
+# Kit 110 下 `omni.appwindow` 是 namespace 子模組，不會被自動載入；
+# Se3Keyboard 內部會呼叫 omni.appwindow.get_default_app_window()，
+# 先顯式 import 才不會出現 "module 'omni' has no attribute 'appwindow'"。
+import omni.appwindow  # noqa: F401
+
 from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg
 
 from .base import BaseInputDevice
