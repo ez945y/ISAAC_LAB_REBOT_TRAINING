@@ -221,17 +221,15 @@ class CarSafetyComparisonDemo:
             print(f"[INFO] Wrote car summary: {path}")
 
     def _reset_scene(self) -> None:
-        root_state = self.jetbot.data.default_root_state.clone()
-        root_state[:, :3] += self.scene.env_origins
-        self.jetbot.write_root_pose_to_sim(root_state[:, :7])
-        self.jetbot.write_root_velocity_to_sim(root_state[:, 7:])
-        self.jetbot.write_joint_state_to_sim(
-            self.jetbot.data.default_joint_pos.clone(),
-            self.jetbot.data.default_joint_vel.clone(),
-        )
+        root_pose = self.jetbot.data.default_root_pose.torch.clone()
+        root_pose[:, :3] += self.scene.env_origins
+        self.jetbot.write_root_pose_to_sim_index(root_pose=root_pose)
+        self.jetbot.write_root_velocity_to_sim_index(root_velocity=self.jetbot.data.default_root_vel.torch.clone())
+        self.jetbot.write_joint_position_to_sim_index(position=self.jetbot.data.default_joint_pos.torch.clone())
+        self.jetbot.write_joint_velocity_to_sim_index(velocity=self.jetbot.data.default_joint_vel.torch.clone())
         obstacle_pose = torch.tensor([[args_cli.obstacle_x, 0.0, 0.175, 1.0, 0.0, 0.0, 0.0]], device=self.sim.device)
-        self.obstacle.write_root_pose_to_sim(obstacle_pose)
-        self.obstacle.write_root_velocity_to_sim(torch.zeros(1, 6, device=self.sim.device))
+        self.obstacle.write_root_pose_to_sim_index(root_pose=obstacle_pose)
+        self.obstacle.write_root_velocity_to_sim_index(root_velocity=torch.zeros(1, 6, device=self.sim.device))
         self.scene.reset()
         self.jetbot.update(dt=self.sim_dt)
 
@@ -260,7 +258,7 @@ class CarSafetyComparisonDemo:
             else:
                 speed, omega, decision = _filter_vehicle_command(raw_speed, raw_omega, distance)
 
-            self.jetbot.set_joint_velocity_target(_wheel_targets(speed, omega, self.sim.device))
+            self.jetbot.set_joint_velocity_target_index(target=_wheel_targets(speed, omega, self.sim.device))
             self.scene.write_data_to_sim()
             self.sim.step()
             self.scene.update(self.sim_dt)
