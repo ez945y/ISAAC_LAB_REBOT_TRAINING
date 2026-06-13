@@ -8,11 +8,6 @@ from typing import Tuple
 import torch
 import carb.input
 
-# Kit 110 下 `omni.appwindow` 是 namespace 子模組，不會被自動載入；
-# Se3Keyboard 內部會呼叫 omni.appwindow.get_default_app_window()，
-# 先顯式 import 才不會出現 "module 'omni' has no attribute 'appwindow'"。
-import omni.appwindow  # noqa: F401
-
 from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg
 
 from .base import BaseInputDevice
@@ -67,6 +62,17 @@ class KeyboardInputDevice(BaseInputDevice):
         self._gripper_closing = False
         self._reset_requested = False
         
+        # Se3Keyboard 內部會呼叫 omni.appwindow.get_default_app_window()。
+        # Kit 110 下 omni.appwindow 是延遲載入的子模組，建構前先顯式 import；
+        # 此處 AppLauncher 已啟動且 extension 已就緒（不同於 module import 時）。
+        try:
+            import omni.appwindow  # noqa: F401
+        except ModuleNotFoundError as exc:
+            raise RuntimeError(
+                "鍵盤輸入需要 omni.appwindow（app window）。請以 GUI 模式啟動，"
+                "不要用 --headless。"
+            ) from exc
+
         # 創建 Se3Keyboard
         self._keyboard = Se3Keyboard(
             cfg=Se3KeyboardCfg(pos_sensitivity=1.0, rot_sensitivity=1.0, gripper_term=True)
