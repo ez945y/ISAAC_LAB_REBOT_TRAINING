@@ -27,20 +27,13 @@ Usage (one line, right after parse_args and before AppLauncher):
 
     AppLauncher.add_app_launcher_args(parser)
     args_cli = parser.parse_args()
-    from livestream_support import apply_livestream_defaults
+    from tools.livestream.livestream_support import apply_livestream_defaults
     apply_livestream_defaults(args_cli)
     app_launcher = AppLauncher(args_cli)
 
 Then run:  python scripts/<your_script>.py --livestream 2
 The advertised IP is auto-detected (host's private LAN IP). Override with:
     export LIVESTREAM_PUBLIC_IP=192.168.90.162
-
-For demos that finish and close, guard a keep-alive loop with is_livestreaming()
-so the final scene stays streamable:
-
-    if args_cli.hold_open or is_livestreaming(args_cli):
-        while simulation_app.is_running():
-            sim.step()
 """
 
 from __future__ import annotations
@@ -51,11 +44,6 @@ import socket
 import subprocess
 
 _STREAM = "/exts/omni.kit.livestream.app/primaryStream"
-
-# Cached at apply time, BEFORE AppLauncher runs. AppLauncher pops "livestream"
-# out of args_cli.__dict__ (app_launcher.py:266/759), so reading args_cli.livestream
-# after launch is unreliable -- callers should rely on this cache instead.
-_ACTIVE: bool | None = None
 
 
 def _is_private(ip: str) -> bool:
@@ -108,18 +96,6 @@ def _livestream_enabled(args_cli) -> bool:
     return int(os.environ.get("LIVESTREAM", 0)) >= 1
 
 
-def is_livestreaming(args_cli=None) -> bool:
-    """Whether livestreaming is enabled.
-
-    Returns the value cached by :func:`apply_livestream_defaults` (captured before
-    AppLauncher strips the ``livestream`` arg). Falls back to inspecting ``args_cli``
-    only if the cache was never set.
-    """
-    if _ACTIVE is not None:
-        return _ACTIVE
-    return _livestream_enabled(args_cli) if args_cli is not None else False
-
-
 def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
     """Inject publicIp + allowDynamicResize into ``args_cli.kit_args`` when streaming.
 
@@ -128,9 +104,7 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
         public_ip: override the advertised IP. Defaults to env ``LIVESTREAM_PUBLIC_IP``
             or the host's auto-detected primary LAN IP.
     """
-    global _ACTIVE
-    _ACTIVE = _livestream_enabled(args_cli)
-    if not _ACTIVE:
+    if not _livestream_enabled(args_cli):
         return
 
     # Livestreaming needs the Kit visualizer: it is what pumps app.update() so the

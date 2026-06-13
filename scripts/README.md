@@ -1,6 +1,7 @@
-# Standalone Scripts
+# Demo Scripts
 
-Incremental experiment scripts for learning Isaac Lab fundamentals — from basic scene setup to robot teleoperation and dataset replay.
+Numbered demo scripts for learning Isaac Lab fundamentals — from basic scene setup
+to robot teleoperation, dataset replay, and DAM safety demos.
 
 ## Scripts
 
@@ -14,14 +15,10 @@ Incremental experiment scripts for learning Isaac Lab fundamentals — from basi
 | 06 | `06_teleoperate_demo.py` | Leader arm teleoperation via socket |
 | 07 | `07_moving_from_dataset.py` | Load & replay LeRobot dataset episodes in sim with video export |
 | 08 | `08_augmented_replay.py` | Augmented replay with multiple episodes, cube configs & cameras |
-| 09 | `09_moving_to_hdf5.py` | FK→IK round-trip conversion: LeRobot joints → EE-space HDF5 |
-| 10 | `10_convert_to_lerobot.py` | feat: transfrom to lerobot dataset:  HDF5 → LeRobot|
-| CAR | `dam_car_scripted_comparison_demo.py` | Scripted Jetbot RAW vs safety-boundary comparison |
-| DAM | `dam_scripted_comparison_demo.py` | Scripted RAW vs DAM safety comparison for recording |
-| DAM | `dam_safety_demo.py` | Keyboard EE control with DAM filtering |
-| DAM | `dam_teleoperate_demo.py` | Leader-arm teleoperation with DAM filtering |
-| LIVE | `livestream_support.py` | Helper: auto-configure WebRTC streaming for `--livestream` (see below) |
-| LIVE | `livestream_keepalive.py` | Minimal blue-cube scene for testing the WebRTC stream in isolation |
+| 09 | `09_dam_car_scripted_comparison_demo.py` | Twin-lane Jetbot RAW vs DAM SafetyGuard comparison |
+| 10 | `10_dam_scripted_comparison_demo.py` | Scripted RAW vs DAM safety comparison for recording |
+| 11 | `11_dam_safety_demo.py` | Keyboard EE control with DAM filtering |
+| 12 | `12_dam_teleoperate_demo.py` | Leader-arm teleoperation with DAM filtering |
 ## Progression
 
 ```
@@ -41,7 +38,13 @@ Incremental experiment scripts for learning Isaac Lab fundamentals — from basi
  ↓
 08  + Augmented replay (multi-episode, multi-camera)
  ↓
-09  + FK→IK conversion to EE-space HDF5
+09  + Scripted Jetbot safety comparison
+ ↓
+10  + Scripted SO-ARM DAM comparison
+ ↓
+11  + Keyboard DAM safety filtering
+ ↓
+12  + Leader-arm DAM teleoperation
 ```
 
 ## Usage
@@ -51,14 +54,11 @@ All scripts are standalone. Run from the repo root:
 ```bash
 python scripts/07_moving_from_dataset.py --dataset MikeChenYZ/so101_isaac_mimic_test --episode 0 --video --video_dir ./videos --enable_cameras
 python scripts/08_augmented_replay.py --enable_cameras
-python scripts/09_moving_to_hdf5.py --dataset MikeChenYZ/soarm-fmb-v2 --output ./datasets/move_demo.hdf5
-python scripts/10_convert_to_lerobot.py --repo_id MikeChenYZ/so101_isaac_mimic_test --push_to_hub
-python scripts/dam_car_scripted_comparison_demo.py --mode compare
-python scripts/dam_scripted_comparison_demo.py --mode compare
-ffplay file-000.mp4
-python scripts/11_stream_top_sender.py --enable_cameras
-python scripts/12_stream_top_receiver.py
+python scripts/09_dam_car_scripted_comparison_demo.py
+python scripts/10_dam_scripted_comparison_demo.py --mode compare
 ```
+
+Dataset conversion and streaming utilities live under `tools/`.
 
 ## WebRTC Livestreaming (remote viewing)
 
@@ -67,7 +67,7 @@ Mac) by adding `--livestream 2`:
 
 ```bash
 source ~/IsaacLab/env_isaaclab/bin/activate
-python scripts/dam_car_scripted_comparison_demo.py --mode compare --livestream 2
+python scripts/09_dam_car_scripted_comparison_demo.py --livestream 2
 ```
 
 On the client: enter the server IP, ports **49100** (signal) / **47998** (stream), Connect.
@@ -76,13 +76,13 @@ On the client: enter the server IP, ports **49100** (signal) / **47998** (stream
 
 Isaac Lab's `--livestream 2` only enables the livestream extension on its headless
 experience — it does **not** configure what a remote client actually needs. The
-official `isaacsim.exp.full.streaming` app bakes those in; [`livestream_support.py`](livestream_support.py)
+official `isaacsim.exp.full.streaming` app bakes those in; `tools/livestream/livestream_support.py`
 reproduces them so you don't hand-type a long `--kit_args="..."`. Every script here
 already calls it (one line after `parse_args()`, before `AppLauncher`):
 
 ```python
 args_cli = parser.parse_args()
-from livestream_support import apply_livestream_defaults
+from tools.livestream.livestream_support import apply_livestream_defaults
 apply_livestream_defaults(args_cli)          # no-op unless --livestream is set
 app_launcher = AppLauncher(args_cli)
 ```
@@ -102,17 +102,14 @@ It injects, only when streaming:
 
 - **Advertised IP** is auto-detected (the host's private LAN IP). Override with
   `export LIVESTREAM_PUBLIC_IP=<ip>` before running.
-- **Keep-alive**: demos that finish and `close()` would drop the stream. Guard a
-  keep-alive loop with `is_livestreaming()` (the car demo does this; it also has a
-  `--hold-open` flag), so the final scene stays viewable:
+- **Finished scripted demos**: if a demo should remain viewable after its scripted
+  replay finishes, keep the official visualizer loop alive instead of checking
+  livestream flags:
   ```python
-  from livestream_support import is_livestreaming
-  if args_cli.hold_open or is_livestreaming(args_cli):
-      while simulation_app.is_running():
-          sim.step()
+  while sim.is_headless_or_exist_active_visualizer():
+      sim.step()
   ```
 - **Network**: the client must be able to reach the server on TCP 49100 + UDP 47998
   (open them in the server firewall; over a VPN the routing must reach the server's
-  LAN). `livestream_keepalive.py` is a minimal blue-cube scene for testing the
-  stream in isolation.
-
+  LAN). `tools/livestream/livestream_keepalive.py` is a minimal blue-cube scene for
+  testing the stream in isolation.

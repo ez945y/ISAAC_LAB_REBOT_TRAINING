@@ -57,7 +57,7 @@ ee_pos_w  = physx_to_torch(robot.data.body_pos_w)[:, ee_idx]
 root_quat = physx_to_torch(robot.data.root_quat_w)
 ```
 已套用：`controllers/base.py`、`ik_controller.py`、`osc_controller.py`、
-`safety/isaac_resolver.py`、`scripts/dam_safety_demo.py`。
+`safety/isaac_resolver.py`、`scripts/11_dam_safety_demo.py`。
 
 > ⚠️ 還沒走到的程式路徑（OSC 模式、其他腳本主迴圈）可能還有沒包到的
 > `robot.data.*`。再撞到 `ProxyArray` / `wp.array` 的 cast error，作法一樣：
@@ -89,7 +89,7 @@ module 層級 import 會 `ModuleNotFoundError` 把整個套件匯入打掛。已
 
 ## 4. 預設 headless / 遠端看畫面要用 livestream
 
-**診斷**（`scripts/diag_appwindow.py`，只啟動 app 查狀態）
+**診斷**（`tools/livestream/diag_appwindow.py`，只啟動 app 查狀態）
 ```
 [DIAG] headless 設定 : True            ← 沒下 --headless 也是 True
 [DIAG] omni.appwindow enabled= False   ← 因 headless 被關
@@ -102,7 +102,7 @@ Vulkan 視窗本來就難成立。
 
 **解法：WebRTC livestream**（NVIDIA 對遠端/headless 的官方做法）
 ```bash
-python scripts/dam_safety_demo.py --controller ik --livestream 2
+python scripts/11_dam_safety_demo.py --controller ik --livestream 2
 ```
 - livestream 模式仍是 headless，但會啟用串流用的 app window → `omni.appwindow`
   變 `enabled=True` → 鍵盤可用（事件透過 WebRTC client 轉發）。
@@ -114,7 +114,7 @@ python scripts/dam_safety_demo.py --controller ik --livestream 2
 4. 需要時放行防火牆：`sudo ufw allow 8211`。
 
 > 不需要鍵盤、純驗證 DAM 行為時，用 scripted demo（完全不碰視窗）：
-> `python scripts/dam_scripted_comparison_demo.py --mode compare`
+> `python scripts/10_dam_scripted_comparison_demo.py --mode compare`
 
 ---
 
@@ -161,5 +161,5 @@ GB10 是 sm_121，目前裝的 PyTorch 只支援到 sm_120。目前只是 warnin
   `py_compile`）。
 - **型別 / 語意變動**（warp array、ProxyArray）→ 不能無腦換，要在「讀取 → 運算」
   邊界做轉換（`physx_to_torch`），一處一處包。
-- **extension / 啟動模式問題**（omni.appwindow、headless）→ 先用 `diag_appwindow.py`
+- **extension / 啟動模式問題**（omni.appwindow、headless）→ 先用 `tools/livestream/diag_appwindow.py`
   之類的最小腳本確認狀態，再決定解法，不要猜。

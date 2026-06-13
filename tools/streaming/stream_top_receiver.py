@@ -11,9 +11,9 @@ Sender 會循環回放模擬，每輪都是重新跑物理引擎，
   q / ESC  — 退出
 
 Usage:
-    python scripts/12_stream_top_receiver.py
-    python scripts/12_stream_top_receiver.py --port 9999
-    python scripts/12_stream_top_receiver.py --host 192.168.1.100 --port 9999
+    python tools/streaming/stream_top_receiver.py
+    python tools/streaming/stream_top_receiver.py --port 9999
+    python tools/streaming/stream_top_receiver.py --host 192.168.1.100 --port 9999
 """
 
 import argparse

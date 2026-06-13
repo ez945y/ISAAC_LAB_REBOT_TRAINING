@@ -22,7 +22,7 @@ SO-ARM-101 cube pick-and-place via **imitation learning** using Isaac Lab Mimic 
 ### Move Cube Pipeline (from LeRobot dataset)
 
 ```
-LeRobot joints → 09_moving_to_hdf5.py (FK→IK) → HDF5 → Replay / Annotate / Generate
+LeRobot joints → tools/datasets/moving_to_hdf5.py (FK→IK) → HDF5 → Replay / Annotate / Generate
 ```
 
 ## Usage
@@ -46,12 +46,12 @@ python scripts/tools/record_demos.py \
 
 ```bash
 # Single episode
-python scripts/09_moving_to_hdf5.py \
+python tools/datasets/moving_to_hdf5.py \
     --dataset MikeChenYZ/soarm-fmb-v2 --episode 0 \
     --output ./datasets/move_demo.hdf5
 
 # All episodes
-python scripts/09_moving_to_hdf5.py \
+python tools/datasets/moving_to_hdf5.py \
     --dataset MikeChenYZ/soarm-fmb-v2 --all_episodes \
     --output ./datasets/move_demo.hdf5
 ```

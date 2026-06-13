@@ -1,0 +1,57 @@
+# jetbot_lane_safety.yaml -- DAM safety config for Jetbot wheel velocity demos.
+#
+# The action vector is [left_wheel_velocity, right_wheel_velocity] in rad/s.
+# The first boundary uses DAM's joint_position_limits callback as an absolute
+# command-envelope clamp for this two-value wheel command. The second boundary
+# limits how aggressively each command can jump away from the observed wheel
+# velocity, making the intervention visible in the twin-lane demo.
+
+version: "1"
+
+safety:
+  control_frequency_hz: 120
+  enforcement_mode: enforce
+  no_task_behavior: hold_position
+
+fallbacks:
+  hold_position:
+    type: hold_position
+    severity: 80
+  slow_down:
+    type: slow_down
+    severity: 40
+    requires_proposal: true
+    params:
+      scale: 0.45
+
+guards:
+  - L1: motion
+    phase: 0
+    timeout_ms: 10
+
+boundaries:
+  wheel_command_envelope:
+    layer: L1
+    type: single
+    nodes:
+      - callback: joint_position_limits
+        fallback: slow_down
+        params:
+          upper: [2.2, 2.2]
+          lower: [-2.2, -2.2]
+
+  wheel_acceleration_limit:
+    layer: L1
+    type: single
+    nodes:
+      - callback: joint_acceleration_limit
+        fallback: slow_down
+        params:
+          max_acceleration: [4.0, 4.0]
+
+tasks:
+  default:
+    description: "Jetbot wheel velocity command envelope for twin-lane DAM demo"
+    boundaries:
+      - wheel_command_envelope
+      - wheel_acceleration_limit

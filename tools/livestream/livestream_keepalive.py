@@ -7,21 +7,25 @@
 #
 # Usage (server):
 #   source ~/IsaacLab/env_isaaclab/bin/activate
-#   python scripts/livestream_keepalive.py --livestream 2
+#   python tools/livestream/livestream_keepalive.py --livestream 2
 #
 # Then on the Mac client: Server 192.168.90.162, Signal 49100, Stream 47998 -> Connect.
 # Stop with Ctrl+C in this terminal (or by closing the client).
 
 import argparse
+import os
+import sys
 
 from isaaclab.app import AppLauncher
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 parser = argparse.ArgumentParser(description="Minimal livestream keep-alive")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
 # Inject publicIp + allowDynamicResize so a remote WebRTC client can connect.
-from livestream_support import apply_livestream_defaults
+from tools.livestream.livestream_support import apply_livestream_defaults
 
 apply_livestream_defaults(args_cli)
 

@@ -9,8 +9,8 @@ end-effector target trajectory with DAM bypassed and with DAM enabled so viewers
 can see why the safety layer matters.
 
 Usage:
-    python scripts/dam_scripted_comparison_demo.py --mode compare
-    python scripts/dam_scripted_comparison_demo.py --mode dam --unsafe-scale 1.4
+    python scripts/10_dam_scripted_comparison_demo.py --mode compare
+    python scripts/10_dam_scripted_comparison_demo.py --mode dam --unsafe-scale 1.4
 """
 
 import argparse
@@ -46,7 +46,7 @@ AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
 # Auto-configure WebRTC livestream (publicIp + dynamic resize) when --livestream is set.
-from livestream_support import apply_livestream_defaults
+from tools.livestream.livestream_support import apply_livestream_defaults
 apply_livestream_defaults(args_cli)
 if args_cli.num_envs != 1:
     parser.error("Scripted DAM comparison currently supports --num_envs 1 only.")

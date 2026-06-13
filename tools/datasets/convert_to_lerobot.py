@@ -68,7 +68,7 @@ parser.add_argument(
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(SCRIPT_DIR)
+ROOT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 SIM2REAL_DIR = os.path.join(ROOT_DIR, "tools", "sim2real")
 
 sys.path.insert(0, ROOT_DIR)

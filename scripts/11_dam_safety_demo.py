@@ -16,10 +16,10 @@ Install:
 
 Usage:
     # Keyboard IK control with DAM safety
-    python scripts/dam_safety_demo.py
+    python scripts/11_dam_safety_demo.py
 
     # Show clamping in action — high-speed keyboard input will be smoothed
-    python scripts/dam_safety_demo.py --controller ik
+    python scripts/11_dam_safety_demo.py --controller ik
 """
 
 import argparse
@@ -44,7 +44,7 @@ AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
 # Auto-configure WebRTC livestream (publicIp + dynamic resize) when --livestream is set.
-from livestream_support import apply_livestream_defaults
+from tools.livestream.livestream_support import apply_livestream_defaults
 apply_livestream_defaults(args_cli)
 if args_cli.num_envs != 1:
     parser.error("DAM safety demo currently supports --num_envs 1 only.")

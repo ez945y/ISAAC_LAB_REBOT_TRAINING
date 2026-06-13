@@ -12,7 +12,7 @@ Pipeline per frame:
   6. Save verified EE poses as HDF5 actions: [pos(3), quat(4), gripper(1)]
 
 Usage:
-    python scripts/09_moving_to_hdf5.py \
+    python tools/datasets/moving_to_hdf5.py \
         --dataset MikeChenYZ/soarm-fmb-v2 \
         --episode 0 \
         --output ./datasets/move_demo.hdf5
@@ -28,7 +28,7 @@ import numpy as np
 
 # ── Path setup ──────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(SCRIPT_DIR)
+ROOT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 SIM2REAL_DIR = os.path.join(ROOT_DIR, "tools", "sim2real")
 
 sys.path.insert(0, ROOT_DIR)

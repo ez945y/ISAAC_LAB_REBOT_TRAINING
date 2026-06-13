@@ -4,12 +4,16 @@
 """診斷：確認啟動後 omni.appwindow / app window 是否就緒。
 
 用法（跟你跑 demo 一樣的方式，不要加 --headless）：
-    python scripts/diag_appwindow.py
+    python tools/livestream/diag_appwindow.py
 """
 
 import argparse
+import os
+import sys
 
 from isaaclab.app import AppLauncher
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 parser = argparse.ArgumentParser(description="omni.appwindow diagnostic")
 # 先加一個自有參數，與 demo 一致；空 parser 會讓 add_app_launcher_args
@@ -19,7 +23,7 @@ AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
 # Auto-configure WebRTC livestream (publicIp + dynamic resize) when --livestream is set.
-from livestream_support import apply_livestream_defaults
+from tools.livestream.livestream_support import apply_livestream_defaults
 apply_livestream_defaults(args_cli)
 
 app_launcher = AppLauncher(args_cli)

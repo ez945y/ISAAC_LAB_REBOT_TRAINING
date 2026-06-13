@@ -17,6 +17,16 @@ tools/
 ├── contoller_client/   
 │   ├── teleoperate_port.py     # Leader arm sender (Mac side)
 │   ├── teleop_processors.py    # Teleoperation support module
+├── datasets/                   # Dataset conversion utilities
+│   ├── moving_to_hdf5.py       # LeRobot joints → EE-space HDF5
+│   └── convert_to_lerobot.py   # IsaacLab HDF5 → LeRobot Dataset
+├── livestream/                 # WebRTC livestream helpers and diagnostics
+│   ├── livestream_support.py   # Shared AppLauncher livestream defaults
+│   ├── livestream_keepalive.py # Minimal streaming smoke-test scene
+│   └── diag_appwindow.py       # App window / extension diagnostic
+├── streaming/                  # TCP camera streaming utilities
+│   ├── stream_top_sender.py    # Isaac top-camera TCP sender
+│   └── stream_top_receiver.py  # OpenCV TCP receiver
 └── README.md
 ```
 
@@ -38,3 +48,27 @@ Scripts in `contoller_client/` are for the workstation connected to the physical
 ### teleoperate_port.py
 
 Reads joint positions from a physical leader arm using LeRobot and sends them over network.
+
+## Dataset Tools
+
+```bash
+python tools/datasets/moving_to_hdf5.py --dataset MikeChenYZ/soarm-fmb-v2 --output ./datasets/move_demo.hdf5
+python tools/datasets/convert_to_lerobot.py --repo_id MikeChenYZ/so101_isaac_mimic_test --push_to_hub
+```
+
+## Streaming Tools
+
+```bash
+python tools/streaming/stream_top_sender.py --enable_cameras
+python tools/streaming/stream_top_receiver.py
+```
+
+## Livestream Tools
+
+`livestream/` contains support code and diagnostics used by the demos, but it is
+not itself part of the numbered demo progression:
+
+```bash
+python tools/livestream/livestream_keepalive.py --livestream 2
+python tools/livestream/diag_appwindow.py --livestream 2
+```

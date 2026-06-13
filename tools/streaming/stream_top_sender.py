@@ -11,10 +11,10 @@ Protocol:
 
 Usage:
     # 終端 1 (Isaac Lab 環境):
-    python scripts/11_stream_top_sender.py --port 9999 --enable_cameras
+    python tools/streaming/stream_top_sender.py --port 9999 --enable_cameras
 
     # 終端 2 (任意有 cv2 的環境):
-    python scripts/12_stream_top_receiver.py --port 9999
+    python tools/streaming/stream_top_receiver.py --port 9999
 """
 
 import argparse
@@ -27,7 +27,7 @@ import struct
 
 from isaaclab.app import AppLauncher
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 parser = argparse.ArgumentParser(description="Replay episode in Isaac Sim & stream top camera via TCP")
 parser.add_argument("--num_envs", type=int, default=1)
@@ -41,7 +41,7 @@ AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
 # Auto-configure WebRTC livestream (publicIp + dynamic resize) when --livestream is set.
-from livestream_support import apply_livestream_defaults
+from tools.livestream.livestream_support import apply_livestream_defaults
 apply_livestream_defaults(args_cli)
 
 app_launcher = AppLauncher(args_cli)

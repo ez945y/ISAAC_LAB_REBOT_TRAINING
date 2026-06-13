@@ -28,34 +28,33 @@ The demo should prove three claims in order:
 Run:
 
 ```bash
-python scripts/dam_car_scripted_comparison_demo.py --mode compare
-python scripts/dam_scripted_comparison_demo.py --mode compare
+python scripts/09_dam_car_scripted_comparison_demo.py
+python scripts/10_dam_scripted_comparison_demo.py --mode compare
 ```
 
-For a general LinkedIn audience, lead with the car version. It replays the same
-scripted high-speed drive command twice: first as `RAW COMMAND`, then as
-`SAFETY ON`. The obstacle, safety gate, slowing, steering, and stopping behavior
-are legible without explaining robot-arm kinematics.
+For a general LinkedIn audience, lead with the car version. It runs two Jetbots
+side by side with the same scripted wheel command stream: the RAW lane applies
+the action directly, while the DAM lane applies only the output returned by
+`dam.SafetyGuard`.
 
 Use the arm version afterward for a more technical audience. It replays the
 same scripted EE target twice: first as `RAW COMMAND`, then as `DAM ON`.
 
 Acceptance:
 
-- The terminal clearly separates `RAW COMMAND` and `DAM ON` segments.
+- The viewport shows RAW and DAM lanes side by side in the same run.
 - The target trajectory is deterministic; no keyboard or leader arm is needed.
 - The DAM segment displays `PASS`, `CLAMP`, `REJECT`, or `FAULT`.
 - The recording shows the same input story with and without the safety layer.
-- The car segment displays `SLOW`, `STEER`, or `STOP` near the obstacle.
+- The car segment displays at least one `CLAMP`, `REJECT`, or `FAULT` from DAM.
 
 Tuning:
 
 ```bash
-python scripts/dam_car_scripted_comparison_demo.py --mode compare --unsafe-speed 7.0
-python scripts/dam_car_scripted_comparison_demo.py --mode compare --obstacle-x 1.1
-python scripts/dam_scripted_comparison_demo.py --mode compare --unsafe-scale 1.4
-python scripts/dam_scripted_comparison_demo.py --mode dam --steps 900 --log-every 45
-python scripts/dam_scripted_comparison_demo.py --mode compare --summary-path outputs/dam_linkedin_summary.md
+python scripts/09_dam_car_scripted_comparison_demo.py --unsafe-speed 7.0 --turn-command 5.0
+python scripts/10_dam_scripted_comparison_demo.py --mode compare --unsafe-scale 1.4
+python scripts/10_dam_scripted_comparison_demo.py --mode dam --steps 900 --log-every 45
+python scripts/10_dam_scripted_comparison_demo.py --mode compare --summary-path outputs/dam_linkedin_summary.md
 ```
 
 LinkedIn value message:
@@ -63,8 +62,8 @@ LinkedIn value message:
 - **Hook**: "Same command, safer vehicle."
 - **Problem**: policies and teleop streams can emit unsafe targets faster than
   humans can inspect.
-- **Proof**: the replay prints risky command frames, DAM interventions, and
-  decision counts.
+- **Proof**: the replay prints raw wheel commands, DAM wheel commands, guard
+  decisions, intervention rate, and closest gate distance.
 - **Buyer value**: safer robot iteration without rewriting the controller,
   policy, or Isaac scene.
 
@@ -73,7 +72,7 @@ LinkedIn value message:
 Run:
 
 ```bash
-python scripts/dam_teleoperate_demo.py --controller ik
+python scripts/12_dam_teleoperate_demo.py --controller ik
 ```
 
 Use a leader-arm joint-space input path after the scripted comparison is stable.
@@ -106,7 +105,7 @@ Acceptance:
 Run:
 
 ```bash
-python scripts/dam_safety_demo.py --controller ik
+python scripts/11_dam_safety_demo.py --controller ik
 ```
 
 This path should show Isaac EE pose targets flowing through:
@@ -185,12 +184,12 @@ Official references:
 
 - [ ] `make test` passes in `/tmp/isaac_lab_study`.
 - [ ] Isaac runtime host confirms Isaac Sim and Isaac Lab versions.
-- [ ] `scripts/dam_car_scripted_comparison_demo.py --mode compare` launches and
-      records the RAW vs SAFETY ON comparison.
-- [ ] `scripts/dam_scripted_comparison_demo.py --mode compare` launches and
+- [ ] `scripts/09_dam_car_scripted_comparison_demo.py` launches and records the
+      twin-lane RAW vs DAM comparison.
+- [ ] `scripts/10_dam_scripted_comparison_demo.py --mode compare` launches and
       records the RAW vs DAM comparison.
-- [ ] `scripts/dam_safety_demo.py --controller ik --num_envs 1` launches.
-- [ ] `scripts/dam_teleoperate_demo.py --controller ik` launches with the
+- [ ] `scripts/11_dam_safety_demo.py --controller ik --num_envs 1` launches.
+- [ ] `scripts/12_dam_teleoperate_demo.py --controller ik` launches with the
       leader-arm input path or a documented substitute.
 - [ ] Demo records at least one non-`PASS` DAM decision.
 - [ ] No command reaches Isaac without passing through DAM wrapper output.

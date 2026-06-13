@@ -5,5 +5,6 @@
 
 from .dam_wrapper import DAMSafetyWrapper
 from .isaac_resolver import IsaacControllerKinematicsResolver
+from .jetbot_dam_wrapper import JetbotDAMWrapper
 
-__all__ = ["DAMSafetyWrapper", "IsaacControllerKinematicsResolver"]
+__all__ = ["DAMSafetyWrapper", "IsaacControllerKinematicsResolver", "JetbotDAMWrapper"]
