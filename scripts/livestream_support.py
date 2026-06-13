@@ -142,6 +142,12 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
         # gets one frame then the stream drops. Both -> stable.
         "--/app/livestream/allowResize=true",
         f"--{_STREAM}/allowDynamicResize=true",
+        # Re-enable the main run-loop rate limit (60 Hz), like the official
+        # isaacsim.exp.full / uidoc streaming kits. Isaac Lab's headless experience
+        # sets rateLimitEnabled=false, so the loop runs flat-out -> steps dumped at
+        # once and the stream has no steady cadence. Cap it for real-time playback.
+        "--/app/runLoops/main/rateLimitEnabled=true",
+        "--/app/runLoops/main/rateLimitFrequency=60",
         # Stop NvStreamer-*.etli trace logs piling up in the working dir.
         f"--{_STREAM}/enableEventTracing=false",
     ]
@@ -151,6 +157,6 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
 
     print(
         f"[livestream] enabled -> client connects to {public_ip} "
-        "(signal 49100 / stream 47998), no-window, resize on, viz=kit",
+        "(signal 49100 / stream 47998), no-window, resize on, viz=kit, 60fps cap",
         flush=True,
     )
