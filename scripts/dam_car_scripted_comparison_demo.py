@@ -55,6 +55,11 @@ if args_cli.steps <= 0:
 if args_cli.hold_steps < 0:
     parser.error("--hold-steps must be non-negative.")
 
+# Auto-configure WebRTC livestream (publicIp + dynamic resize + no-window) when --livestream is set.
+from livestream_support import apply_livestream_defaults
+
+apply_livestream_defaults(args_cli)
+
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 

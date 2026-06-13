@@ -104,6 +104,11 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
     public_ip = public_ip or os.environ.get("LIVESTREAM_PUBLIC_IP") or _primary_ip()
 
     extra = [
+        # Run without an OS window. The streaming app otherwise opens a window at
+        # the desktop resolution (e.g. 1440x900) that differs from the resolution
+        # the client negotiated (1920x1080) -> "Cannot stream video frame" -> black.
+        # The official isaacsim.exp.full.streaming app passes this too.
+        "--no-window",
         # ICE candidate the remote client must reach (NAT/VPN-friendly).
         f"--{_STREAM}/publicIp={public_ip}",
         # Let the client drive the stream resolution, else it stays black.
