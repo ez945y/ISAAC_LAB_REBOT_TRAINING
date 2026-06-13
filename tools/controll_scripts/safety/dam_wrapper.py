@@ -18,7 +18,7 @@ Usage:
 
     # Joint-space control — filter joint targets before sending to sim
     safe_targets = wrapper.filter(joint_pos_des, current_joint_pos)
-    robot.set_joint_position_target(safe_targets, joint_ids)
+    robot.set_joint_position_target_index(safe_targets, joint_ids)
 
     # EE-space control — attach the live Isaac controller once, then filter poses
     wrapper.attach_isaac_controller(robot, controller, robot_config)

@@ -182,8 +182,8 @@ safe_arm_targets = dam.filter(
     gripper_action=gripper_target,
     gripper_obs=current_gripper,
 )
-robot.set_joint_position_target(safe_arm_targets, arm_joint_ids)
-robot.set_joint_position_target(
+robot.set_joint_position_target_index(safe_arm_targets, arm_joint_ids)
+robot.set_joint_position_target_index(
     torch.tensor([[dam.last_safe_gripper]], device=sim.device),
     gripper_joint_ids,
 )

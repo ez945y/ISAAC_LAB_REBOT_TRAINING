@@ -182,8 +182,8 @@ class SafeTeleoperationRunner:
             gripper_obs=current_grip,
         )
 
-        self.robot.set_joint_position_target(safe_targets.unsqueeze(0), joint_ids=self.arm_joint_ids)
-        self.robot.set_joint_position_target(
+        self.robot.set_joint_position_target_index(safe_targets.unsqueeze(0), joint_ids=self.arm_joint_ids)
+        self.robot.set_joint_position_target_index(
             torch.tensor([[self.dam.last_safe_gripper]], device=self.sim.device),
             joint_ids=[self.gripper_joint_id],
         )
@@ -209,8 +209,8 @@ class SafeTeleoperationRunner:
             gripper_obs=current_grip,
         )
 
-        self.robot.set_joint_position_target(safe_targets, self.arm_joint_ids)
-        self.robot.set_joint_position_target(
+        self.robot.set_joint_position_target_index(safe_targets, self.arm_joint_ids)
+        self.robot.set_joint_position_target_index(
             torch.tensor([[self.dam.last_safe_gripper]], device=self.sim.device),
             joint_ids=[self.gripper_joint_id],
         )

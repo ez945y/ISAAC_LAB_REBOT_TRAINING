@@ -290,8 +290,8 @@ class ScriptedComparisonDemo:
             gripper_action=gripper_target,
             gripper_obs=current_gripper,
         )
-        self.robot.set_joint_position_target(safe_targets, arm_joint_ids)
-        self.robot.set_joint_position_target(
+        self.robot.set_joint_position_target_index(safe_targets, arm_joint_ids)
+        self.robot.set_joint_position_target_index(
             torch.tensor([[self.dam.last_safe_gripper]], device=self.sim.device),
             gripper_joint_ids,
         )

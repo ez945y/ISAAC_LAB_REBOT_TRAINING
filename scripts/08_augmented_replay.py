@@ -284,7 +284,7 @@ def main():
         configure_cube(scene, cube_id, pos, rot, device)
 
         init_pos = actions_rad[0].unsqueeze(0)
-        robot.set_joint_position_target(init_pos, joint_ids=all_joint_ids)
+        robot.set_joint_position_target_index(init_pos, joint_ids=all_joint_ids)
         robot.write_data_to_sim()
 
         for _ in range(10):
@@ -312,7 +312,7 @@ def main():
             for step_i in range(num_physics_steps):
                 alpha = (step_i + 1) / num_physics_steps
                 interp_pos = prev_pos + alpha * (next_pos - prev_pos)
-                robot.set_joint_position_target(interp_pos.unsqueeze(0), joint_ids=all_joint_ids)
+                robot.set_joint_position_target_index(interp_pos.unsqueeze(0), joint_ids=all_joint_ids)
                 robot.write_data_to_sim()
                 sim.step()
 

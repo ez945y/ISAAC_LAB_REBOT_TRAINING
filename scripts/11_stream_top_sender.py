@@ -318,7 +318,7 @@ def main():
 
         # 重置 robot 到初始位姿
         init_pos = actions_rad[0].unsqueeze(0)  # [1, 6]
-        robot.set_joint_position_target(init_pos, joint_ids=all_joint_ids)
+        robot.set_joint_position_target_index(init_pos, joint_ids=all_joint_ids)
         robot.write_data_to_sim()
 
         # 重置物件位置
@@ -349,7 +349,7 @@ def main():
                 alpha = (step_i + 1) / num_physics_steps
                 interp_pos = prev_pos + alpha * (next_pos - prev_pos)
                 all_pos = interp_pos.unsqueeze(0)
-                robot.set_joint_position_target(all_pos, joint_ids=all_joint_ids)
+                robot.set_joint_position_target_index(all_pos, joint_ids=all_joint_ids)
                 robot.write_data_to_sim()
                 sim.step()
 

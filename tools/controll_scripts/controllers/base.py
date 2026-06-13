@@ -172,4 +172,4 @@ class BaseController(ABC):
         # 將 [0, 1] 映射到實際關節限制
         actual_pos = self._gripper_lower + gripper_pos * (self._gripper_upper - self._gripper_lower)
         jaw_pos = torch.tensor([[actual_pos]], device=self._device)
-        self._robot.set_joint_position_target(jaw_pos, self._gripper_joint_ids)
+        self._robot.set_joint_position_target_index(jaw_pos, self._gripper_joint_ids)

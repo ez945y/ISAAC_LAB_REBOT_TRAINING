@@ -101,7 +101,7 @@ class IKController(BaseController):
         joint_pos_des = self._ik_controller.compute(ee_pos_b, ee_quat_b, jacobian_b, joint_pos)
         
         # 應用關節目標
-        self._robot.set_joint_position_target(joint_pos_des, self._arm_joint_ids)
+        self._robot.set_joint_position_target_index(joint_pos_des, self._arm_joint_ids)
         
         # 應用夾爪
         self._apply_gripper(gripper_pos)
