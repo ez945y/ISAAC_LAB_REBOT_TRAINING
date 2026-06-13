@@ -188,16 +188,18 @@ class IsaacControllerKinematicsResolver:
             raise ValueError(f"Expected at least {self._n_arm} current joints, got {current.shape[0]}")
 
         target_pose_isaac = dam_xyzw_to_isaac_wxyz(target_ee_pose)
+        # Kit 110 的 robot.data.* 為 warp ProxyArray，轉成 torch 再運算
+        joint_pos_t = physx_to_torch(self._robot.data.joint_pos)
         target_pose = torch.as_tensor(
             target_pose_isaac,
-            dtype=self._robot.data.joint_pos.dtype,
+            dtype=joint_pos_t.dtype,
             device=self._device,
         ).unsqueeze(0)
 
-        ee_pos_w = self._robot.data.body_pos_w[:, self._controller._ee_body_idx]
-        ee_quat_w = self._robot.data.body_quat_w[:, self._controller._ee_body_idx]
-        root_pos_w = self._robot.data.root_pos_w
-        root_quat_w = self._robot.data.root_quat_w
+        ee_pos_w = physx_to_torch(self._robot.data.body_pos_w)[:, self._controller._ee_body_idx]
+        ee_quat_w = physx_to_torch(self._robot.data.body_quat_w)[:, self._controller._ee_body_idx]
+        root_pos_w = physx_to_torch(self._robot.data.root_pos_w)
+        root_quat_w = physx_to_torch(self._robot.data.root_quat_w)
         ee_pos_b, ee_quat_b = math_utils.subtract_frame_transforms(
             root_pos_w,
             root_quat_w,
@@ -226,7 +228,7 @@ class IsaacControllerKinematicsResolver:
 
         joint_pos = torch.as_tensor(
             current[: self._n_arm],
-            dtype=self._robot.data.joint_pos.dtype,
+            dtype=joint_pos_t.dtype,
             device=self._device,
         ).unsqueeze(0)
         joint_pos_des = self._controller._ik_controller.compute(

@@ -56,13 +56,13 @@ class OSCController(BaseController):
         # 設定 OSC 指令
         self._osc_controller.set_command(target_pose)
         
-        # 獲取當前狀態
-        ee_pos_w = self._robot.data.body_pos_w[:, self._ee_body_idx]
-        ee_quat_w = self._robot.data.body_quat_w[:, self._ee_body_idx]
-        ee_vel_w = self._robot.data.body_vel_w[:, self._ee_body_idx, :]
-        root_pos_w = self._robot.data.root_pos_w
-        root_quat_w = self._robot.data.root_quat_w
-        root_vel_w = self._robot.data.root_vel_w
+        # 獲取當前狀態（Kit 110 的 robot.data.* 為 warp ProxyArray，轉成 torch）
+        ee_pos_w = physx_to_torch(self._robot.data.body_pos_w)[:, self._ee_body_idx]
+        ee_quat_w = physx_to_torch(self._robot.data.body_quat_w)[:, self._ee_body_idx]
+        ee_vel_w = physx_to_torch(self._robot.data.body_vel_w)[:, self._ee_body_idx, :]
+        root_pos_w = physx_to_torch(self._robot.data.root_pos_w)
+        root_quat_w = physx_to_torch(self._robot.data.root_quat_w)
+        root_vel_w = physx_to_torch(self._robot.data.root_vel_w)
         
         # 轉換到基座座標系
         ee_pos_b, ee_quat_b = math_utils.subtract_frame_transforms(
@@ -92,8 +92,8 @@ class OSCController(BaseController):
         mass_matrix = mass_matrix_full[:, self._arm_joint_ids, :][:, :, self._arm_joint_ids]
         gravity = physx_to_torch(self._robot.root_physx_view.get_gravity_compensation_forces())[:, self._arm_joint_ids]
         
-        joint_pos = self._robot.data.joint_pos[:, self._arm_joint_ids]
-        joint_vel = self._robot.data.joint_vel[:, self._arm_joint_ids]
+        joint_pos = physx_to_torch(self._robot.data.joint_pos)[:, self._arm_joint_ids]
+        joint_vel = physx_to_torch(self._robot.data.joint_vel)[:, self._arm_joint_ids]
         
         # 計算 OSC 力矩
         joint_efforts = self._osc_controller.compute(

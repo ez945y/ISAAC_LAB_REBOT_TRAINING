@@ -66,6 +66,7 @@ from controll_scripts import (
     SOArm101Config,
 )
 from controll_scripts.safety import DAMSafetyWrapper
+from controll_scripts.utils import physx_to_torch
 
 
 # ── Scene ────────────────────────────────────────────────────────────────
@@ -195,8 +196,8 @@ def main():
             print("[INFO] Scene reset")
             continue
 
-        root_pos_w = robot.data.root_pos_w
-        root_quat_w = robot.data.root_quat_w
+        root_pos_w = physx_to_torch(robot.data.root_pos_w)
+        root_quat_w = physx_to_torch(robot.data.root_quat_w)
 
         # Visualize target
         target_pos_w, target_quat_w = math_utils.combine_frame_transforms(
@@ -205,8 +206,8 @@ def main():
         target_marker.visualize(target_pos_w, target_quat_w)
 
         # ── DAM resolver-backed EE safety filter ───────────────────
-        current_pos = robot.data.joint_pos[:, arm_joint_ids]
-        current_gripper = robot.data.joint_pos[:, gripper_joint_ids[0]].item()
+        current_pos = physx_to_torch(robot.data.joint_pos)[:, arm_joint_ids]
+        current_gripper = physx_to_torch(robot.data.joint_pos)[:, gripper_joint_ids[0]].item()
         gripper_target = (
             controller._gripper_lower
             + gripper_pos * (controller._gripper_upper - controller._gripper_lower)

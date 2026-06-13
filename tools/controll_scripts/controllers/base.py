@@ -116,12 +116,13 @@ class BaseController(ABC):
             torch.Tensor: 姿態 [pos(3) + quat(4)], Shape: (num_envs, 7)
         """
         import isaaclab.utils.math as math_utils
-        
-        ee_pos_w = self._robot.data.body_pos_w[:, self._ee_body_idx]
-        ee_quat_w = self._robot.data.body_quat_w[:, self._ee_body_idx]
-        root_pos_w = self._robot.data.root_pos_w
-        root_quat_w = self._robot.data.root_quat_w
-        
+
+        # Kit 110 的 robot.data.* 為 warp ProxyArray，轉成 torch 再做數學運算
+        ee_pos_w = physx_to_torch(self._robot.data.body_pos_w)[:, self._ee_body_idx]
+        ee_quat_w = physx_to_torch(self._robot.data.body_quat_w)[:, self._ee_body_idx]
+        root_pos_w = physx_to_torch(self._robot.data.root_pos_w)
+        root_quat_w = physx_to_torch(self._robot.data.root_quat_w)
+
         ee_pos_b, ee_quat_b = math_utils.subtract_frame_transforms(
             root_pos_w, root_quat_w, ee_pos_w, ee_quat_w
         )
@@ -131,7 +132,7 @@ class BaseController(ABC):
     def _save_initial_state(self) -> None:
         """保存初始狀態（在控制器創建時的實際姿態）"""
         # 保存當前關節位置
-        self._initial_joint_pos = self._robot.data.joint_pos.clone()
+        self._initial_joint_pos = physx_to_torch(self._robot.data.joint_pos).clone()
         # 保存當前 EE 姿態
         self._initial_ee_pose = self.current_ee_pose.clone()
         print(f"[{self.__class__.__name__}] 保存初始狀態:")

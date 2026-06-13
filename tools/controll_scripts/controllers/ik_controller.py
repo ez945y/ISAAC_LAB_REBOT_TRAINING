@@ -59,11 +59,11 @@ class IKController(BaseController):
             target_pose: 絕對目標姿態 [pos(3) + quat(4)] 在 base frame
             gripper_pos: 夾爪位置 [0, 1]
         """
-        # 獲取當前狀態
-        ee_pos_w = self._robot.data.body_pos_w[:, self._ee_body_idx]
-        ee_quat_w = self._robot.data.body_quat_w[:, self._ee_body_idx]
-        root_pos_w = self._robot.data.root_pos_w
-        root_quat_w = self._robot.data.root_quat_w
+        # 獲取當前狀態（Kit 110 的 robot.data.* 為 warp ProxyArray，轉成 torch）
+        ee_pos_w = physx_to_torch(self._robot.data.body_pos_w)[:, self._ee_body_idx]
+        ee_quat_w = physx_to_torch(self._robot.data.body_quat_w)[:, self._ee_body_idx]
+        root_pos_w = physx_to_torch(self._robot.data.root_pos_w)
+        root_quat_w = physx_to_torch(self._robot.data.root_quat_w)
         
         # 轉換到基座座標系
         ee_pos_b, ee_quat_b = math_utils.subtract_frame_transforms(
@@ -95,7 +95,7 @@ class IKController(BaseController):
         jacobian_b[:, 3:, :] = torch.bmm(base_rot_matrix, jacobian_w[:, 3:, :])
         
         # 獲取當前關節位置
-        joint_pos = self._robot.data.joint_pos[:, self._arm_joint_ids]
+        joint_pos = physx_to_torch(self._robot.data.joint_pos)[:, self._arm_joint_ids]
         
         # 計算 IK
         joint_pos_des = self._ik_controller.compute(ee_pos_b, ee_quat_b, jacobian_b, joint_pos)
