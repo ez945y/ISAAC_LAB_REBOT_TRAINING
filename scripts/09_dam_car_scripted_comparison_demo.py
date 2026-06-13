@@ -102,8 +102,8 @@ def _cuboid(
 def create_scene_cfg() -> type:
     red = (0.92, 0.04, 0.04)
     green = (0.03, 0.45, 0.16)
-    raw_floor = (0.36, 0.07, 0.06)
-    dam_floor = (0.04, 0.24, 0.11)
+    raw_floor_color = (0.36, 0.07, 0.06)
+    dam_floor_color = (0.04, 0.24, 0.11)
     white = (0.86, 0.86, 0.86)
 
     class SceneCfg(InteractiveSceneCfg):
@@ -115,12 +115,12 @@ def create_scene_cfg() -> type:
 
         raw_floor = AssetBaseCfg(
             prim_path="/World/RawArena/Floor",
-            spawn=_cuboid((ARENA_LENGTH, ARENA_WIDTH, 0.012), raw_floor),
+            spawn=_cuboid((ARENA_LENGTH, ARENA_WIDTH, 0.012), raw_floor_color),
             init_state=AssetBaseCfg.InitialStateCfg(pos=(LANE_CENTER_X, RAW_LANE_Y, 0.006)),
         )
         dam_floor = AssetBaseCfg(
             prim_path="/World/DamArena/Floor",
-            spawn=_cuboid((ARENA_LENGTH, ARENA_WIDTH, 0.012), dam_floor),
+            spawn=_cuboid((ARENA_LENGTH, ARENA_WIDTH, 0.012), dam_floor_color),
             init_state=AssetBaseCfg.InitialStateCfg(pos=(LANE_CENTER_X, DAM_LANE_Y, 0.006)),
         )
         raw_safe = AssetBaseCfg(

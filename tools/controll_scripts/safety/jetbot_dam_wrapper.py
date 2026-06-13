@@ -9,6 +9,11 @@ from pathlib import Path
 
 import torch
 
+JETBOT_TARGET_PRESET = "jetbot_target_2d"
+JETBOT_BOUNDARY_CALLBACK = "jetbot_target_inside_safe_region"
+JETBOT_TARGET_NAMES = ["x_target", "y_target"]
+_DAM_JETBOT_REGISTERED = False
+
 
 class JetbotDAMWrapper:
     """Filter Jetbot 2D target positions through DAM.
@@ -40,10 +45,12 @@ class JetbotDAMWrapper:
                 "Install the robot-dam package from https://github.com/ez945y/DAM."
             )
 
+        _register_jetbot_target_api(dam)
+
         self._guard = dam.SafetyGuard(
             self._resolve_stackfile(stackfile),
             task=task,
-            joint_names=joint_names or ["x_target", "y_target"],
+            joint_names=joint_names or JETBOT_TARGET_NAMES,
             degrees_mode=False,
         )
         self._device = device
@@ -131,3 +138,70 @@ class JetbotDAMWrapper:
                 self._last_decision = decision
                 return
         self._last_decision = "CLAMP" if delta > 1e-5 else "PASS"
+
+
+def _register_jetbot_target_api(dam) -> None:
+    """Register the Jetbot target preset and boundary callback with DAM."""
+    global _DAM_JETBOT_REGISTERED
+    if _DAM_JETBOT_REGISTERED:
+        return
+    missing = [name for name in ("register_preset", "register_callback") if not hasattr(dam, name)]
+    if missing:
+        raise ImportError(
+            "JetbotDAMWrapper needs the DAM runtime with register_preset/register_callback. "
+            f"Missing: {', '.join(missing)}."
+        )
+
+    # This is a semantic action preset, not a robot-arm hardware preset.
+    _register_preset_once(dam)
+
+    @dam.register_callback(JETBOT_BOUNDARY_CALLBACK, layer="L1", category="execution")
+    def jetbot_target_inside_safe_region(
+        *,
+        obs,
+        action,
+        x_min=-0.28,
+        x_max=1.20,
+        y_abs_max=0.24,
+    ):
+        target = _as_flat(action)
+        x_target = float(target[0])
+        y_target = float(target[1])
+        return x_min <= x_target <= x_max and abs(y_target) <= y_abs_max
+
+    _DAM_JETBOT_REGISTERED = True
+
+
+def _as_flat(value):
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu().reshape(-1).tolist()
+    if hasattr(value, "detach") and hasattr(value.detach(), "cpu"):
+        return value.detach().cpu().reshape(-1).tolist()
+    if hasattr(value, "reshape"):
+        return value.reshape(-1).tolist()
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    raise TypeError(f"Cannot interpret DAM action/obs value as a flat vector: {type(value)!r}")
+
+
+def _register_preset_once(dam) -> None:
+    try:
+        dam.register_preset(
+            JETBOT_TARGET_PRESET,
+            joint_names=JETBOT_TARGET_NAMES,
+            degrees_mode=False,
+            urdf_path=None,
+        )
+    except TypeError:
+        try:
+            dam.register_preset(
+                JETBOT_TARGET_PRESET,
+                joint_names=JETBOT_TARGET_NAMES,
+                degrees_mode=False,
+            )
+        except ValueError as exc:
+            if "already" not in str(exc).lower() and "exists" not in str(exc).lower():
+                raise
+    except ValueError as exc:
+        if "already" not in str(exc).lower() and "exists" not in str(exc).lower():
+            raise
