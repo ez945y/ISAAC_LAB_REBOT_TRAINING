@@ -33,9 +33,9 @@ python scripts/10_dam_scripted_comparison_demo.py --mode compare
 ```
 
 For a general LinkedIn audience, lead with the car version. It runs two Jetbots
-side by side with the same scripted wheel command stream: the RAW lane applies
-the action directly, while the DAM lane applies only the output returned by
-`dam.SafetyGuard`.
+side by side with the same scripted 2D target stream: the RAW lane follows the
+target directly, while the DAM lane first clamps the target through
+`dam.SafetyGuard` to avoid the red left/right/bottom boundary bands.
 
 Use the arm version afterward for a more technical audience. It replays the
 same scripted EE target twice: first as `RAW COMMAND`, then as `DAM ON`.
@@ -51,7 +51,7 @@ Acceptance:
 Tuning:
 
 ```bash
-python scripts/09_dam_car_scripted_comparison_demo.py --unsafe-speed 7.0 --turn-command 5.0
+python scripts/09_dam_car_scripted_comparison_demo.py --target-scale 1.25
 python scripts/10_dam_scripted_comparison_demo.py --mode compare --unsafe-scale 1.4
 python scripts/10_dam_scripted_comparison_demo.py --mode dam --steps 900 --log-every 45
 python scripts/10_dam_scripted_comparison_demo.py --mode compare --summary-path outputs/dam_linkedin_summary.md
@@ -62,8 +62,8 @@ LinkedIn value message:
 - **Hook**: "Same command, safer vehicle."
 - **Problem**: policies and teleop streams can emit unsafe targets faster than
   humans can inspect.
-- **Proof**: the replay prints raw wheel commands, DAM wheel commands, guard
-  decisions, intervention rate, and closest gate distance.
+- **Proof**: the replay prints raw targets, SafetyGuard-clamped targets, guard
+  decisions, intervention rate, and forbidden-zone frames.
 - **Buyer value**: safer robot iteration without rewriting the controller,
   policy, or Isaac scene.
 

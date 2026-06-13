@@ -1,7 +1,7 @@
 # Copyright (c) 2024, Robot Control Library
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""DAM SafetyGuard wrapper for Jetbot wheel-velocity commands."""
+"""DAM SafetyGuard wrapper for Jetbot 2D position targets."""
 
 from __future__ import annotations
 
@@ -11,11 +11,12 @@ import torch
 
 
 class JetbotDAMWrapper:
-    """Filter Jetbot wheel velocity targets through DAM.
+    """Filter Jetbot 2D target positions through DAM.
 
-    The action space is ``[left_wheel_velocity, right_wheel_velocity]`` in
-    radians/second. The wrapper is intentionally thin: all action changes come
-    from ``dam.SafetyGuard`` rather than demo-side obstacle heuristics.
+    The action space is ``[x_target, y_target]`` in world meters. The demo then
+    converts the validated target into wheel velocities. Keeping the action as a
+    position target makes the visual story concrete: DAM clamps commands away
+    from the forbidden left, right, and bottom boundary bands.
     """
 
     def __init__(
@@ -39,37 +40,36 @@ class JetbotDAMWrapper:
                 "Install the robot-dam package from https://github.com/ez945y/DAM."
             )
 
-        self._device = device
-        self._joint_names = joint_names or ["left_wheel", "right_wheel"]
         self._guard = dam.SafetyGuard(
             self._resolve_stackfile(stackfile),
             task=task,
-            joint_names=self._joint_names,
+            joint_names=joint_names or ["x_target", "y_target"],
             degrees_mode=False,
         )
+        self._device = device
         self._last_decision = "PASS"
         self._last_delta = 0.0
         self._step_count = 0
         self._intervention_count = 0
 
-    def filter(self, action: torch.Tensor, obs: torch.Tensor) -> torch.Tensor:
-        """Return the DAM-validated wheel velocity target."""
-        squeeze = action.dim() == 1
+    def filter(self, target_xy: torch.Tensor, current_xy: torch.Tensor) -> torch.Tensor:
+        """Return the DAM-validated 2D target."""
+        squeeze = target_xy.dim() == 1
         if squeeze:
-            action = action.unsqueeze(0)
-            obs = obs.unsqueeze(0)
-        self._require_shape(action, "action")
-        self._require_shape(obs, "obs")
+            target_xy = target_xy.unsqueeze(0)
+            current_xy = current_xy.unsqueeze(0)
+        self._require_shape(target_xy, "target_xy")
+        self._require_shape(current_xy, "current_xy")
 
-        raw = action[0]
-        current = obs[0]
+        raw = target_xy[0]
+        obs = current_xy[0]
         safe = torch.as_tensor(
-            self._guard(raw, current),
+            self._guard(raw, obs),
             dtype=raw.dtype,
             device=raw.device,
         ).reshape(-1)
         if safe.shape[0] != 2:
-            raise RuntimeError(f"DAM returned {safe.shape[0]} wheel targets; expected 2.")
+            raise RuntimeError(f"DAM returned {safe.shape[0]} target values; expected 2.")
 
         self._step_count += 1
         self._last_delta = torch.max(torch.abs(safe - raw)).item()

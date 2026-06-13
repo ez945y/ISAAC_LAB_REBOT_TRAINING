@@ -1,10 +1,8 @@
-# jetbot_lane_safety.yaml -- DAM safety config for Jetbot wheel velocity demos.
+# jetbot_lane_safety.yaml -- DAM safety config for Jetbot boundary demo.
 #
-# The action vector is [left_wheel_velocity, right_wheel_velocity] in rad/s.
-# The first boundary uses DAM's joint_position_limits callback as an absolute
-# command-envelope clamp for this two-value wheel command. The second boundary
-# limits how aggressively each command can jump away from the observed wheel
-# velocity, making the intervention visible in the twin-lane demo.
+# Action vector: [x_target, y_target] in world meters.
+# The safe region deliberately excludes the left/right side bands and the bottom
+# band drawn in red in scripts/09_dam_car_scripted_comparison_demo.py.
 
 version: "1"
 
@@ -17,41 +15,33 @@ fallbacks:
   hold_position:
     type: hold_position
     severity: 80
-  slow_down:
+  clamp_to_region:
     type: slow_down
     severity: 40
     requires_proposal: true
     params:
-      scale: 0.45
+      scale: 1.0
 
 guards:
-  - L1: motion
+  - L1: boundary
     phase: 0
     timeout_ms: 10
 
 boundaries:
-  wheel_command_envelope:
+  arena_position_limits:
     layer: L1
     type: single
     nodes:
       - callback: joint_position_limits
-        fallback: slow_down
+        fallback: clamp_to_region
         params:
-          upper: [2.2, 2.2]
-          lower: [-2.2, -2.2]
-
-  wheel_acceleration_limit:
-    layer: L1
-    type: single
-    nodes:
-      - callback: joint_acceleration_limit
-        fallback: slow_down
-        params:
-          max_acceleration: [4.0, 4.0]
+          # x lower bound keeps the target away from the bottom red band.
+          # y bounds keep the target away from the left/right red bands.
+          lower: [-0.28, -0.24]
+          upper: [1.20, 0.24]
 
 tasks:
   default:
-    description: "Jetbot wheel velocity command envelope for twin-lane DAM demo"
+    description: "Jetbot 2D target stays inside the green safe region"
     boundaries:
-      - wheel_command_envelope
-      - wheel_acceleration_limit
+      - arena_position_limits

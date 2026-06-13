@@ -41,7 +41,7 @@ Visual:
 Visual:
 
 - RAW lane from the scripted replay.
-- For the car version, keep both lanes and the red gate visible.
+- For the car version, keep both lanes and the red forbidden boundary bands visible.
 - For the arm version, keep the target marker visible.
 - Show terminal line or overlay with `RAW`, target offset, and tracking error.
 
@@ -63,7 +63,7 @@ Visual:
 Narration:
 
 ```text
-DAM sits between the command and Isaac, validates every wheel target, and only passes through SafetyGuard output.
+DAM sits between the command and Isaac, validates every 2D target, and only passes through SafetyGuard-clamped targets.
 ```
 
 ### 24-30s: Proof + CTA
@@ -90,8 +90,8 @@ Same command. Safer vehicle.
 
 I built a scripted Isaac Sim demo that runs the same risky vehicle command in two lanes at once:
 
-1. RAW COMMAND: Isaac receives the wheel target directly.
-2. DAM GUARDED: the same target is filtered by `dam.SafetyGuard` before Isaac receives wheel commands.
+1. RAW COMMAND: the vehicle follows the raw 2D target directly.
+2. DAM GUARDED: the same target is clamped by `dam.SafetyGuard` before wheel commands are generated.
 
 Why this matters:
 Robot policies and teleoperation streams can generate unsafe speed commands faster than humans can inspect them. A runtime action monitor can clamp or reject the command before it reaches the simulated robot.
@@ -128,8 +128,8 @@ Next step: run this against richer policy outputs and record how often safety co
 - [ ] Record `python scripts/09_dam_car_scripted_comparison_demo.py --summary-path outputs/car_linkedin_summary.md`.
 - [ ] Optionally record the arm version with `python scripts/10_dam_scripted_comparison_demo.py --mode compare --summary-path outputs/dam_linkedin_summary.md`.
 - [ ] Capture the terminal around DAM `PASS` / `CLAMP` / `REJECT` decisions and `TWIN-LANE DAM DEMO SUMMARY`.
-- [ ] For the car version, capture both lanes and the red gate in the same frame.
-- [ ] Show at least one `CLAMP`, `REJECT`, or `FAULT`, or tune `--unsafe-speed` / `--turn-command` before publishing.
+- [ ] For the car version, capture both lanes and the red forbidden boundary bands in the same frame.
+- [ ] Show at least one `CLAMP`, `REJECT`, or `FAULT`, or tune `--target-scale` before publishing.
 - [ ] Save Isaac Sim, Isaac Lab, GPU, driver, and Python versions.
 
 ## Product Message
