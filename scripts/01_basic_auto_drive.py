@@ -17,6 +17,10 @@ AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
 
+# Auto-configure WebRTC livestream (publicIp + dynamic resize) when --livestream is set.
+from livestream_support import apply_livestream_defaults
+apply_livestream_defaults(args_cli)
+
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app

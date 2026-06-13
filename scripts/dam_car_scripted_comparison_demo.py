@@ -35,6 +35,12 @@ parser.add_argument("--turn-command", type=float, default=2.0, help="Small scrip
 parser.add_argument("--obstacle-x", type=float, default=1.35, help="Obstacle x position in meters")
 parser.add_argument("--log-every", type=int, default=60)
 parser.add_argument(
+    "--hold-open",
+    action="store_true",
+    help="After the demo finishes, keep stepping (and streaming) instead of closing. "
+    "Auto-enabled when --livestream is set so you can watch over the WebRTC client.",
+)
+parser.add_argument(
     "--summary-path",
     type=str,
     default=None,
@@ -334,9 +340,17 @@ class CarSafetyComparisonDemo:
 
 
 def main() -> None:
+    from livestream_support import is_livestreaming
+
     demo = CarSafetyComparisonDemo()
     if demo.setup():
         demo.run()
+        # Keep stepping so the final framed scene stays visible to the WebRTC
+        # client instead of vanishing the instant the demo ends.
+        if args_cli.hold_open or is_livestreaming(args_cli):
+            print("[demo] holding open for livestream -- press Ctrl+C to exit.", flush=True)
+            while simulation_app.is_running():
+                demo.sim.step()
 
 
 if __name__ == "__main__":

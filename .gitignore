@@ -72,3 +72,7 @@ tests/
 
 # Docker history
 .isaac-lab-docker-history
+
+# Isaac Sim WebRTC streamer trace logs
+*.etli
+NvStreamer-*.etli
