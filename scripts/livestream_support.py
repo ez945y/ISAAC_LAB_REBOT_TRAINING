@@ -115,6 +115,17 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
     if not _ACTIVE:
         return
 
+    # Livestreaming needs the Kit visualizer: it is what pumps app.update() so the
+    # WebRTC encoder actually delivers frames. AppLauncher only auto-injects a Kit
+    # visualizer for XR, not livestream (simulation_context.py), so without --viz kit
+    # the client gets a few frames then the stream stalls and drops. Add it unless
+    # the user already requested a visualizer set.
+    viz = getattr(args_cli, "visualizer", None)
+    if viz is None:
+        args_cli.visualizer = ["kit"]
+    elif "kit" not in viz:
+        args_cli.visualizer = list(viz) + ["kit"]
+
     public_ip = public_ip or os.environ.get("LIVESTREAM_PUBLIC_IP") or _primary_ip()
 
     extra = [
@@ -140,6 +151,6 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
 
     print(
         f"[livestream] enabled -> client connects to {public_ip} "
-        "(signal 49100 / stream 47998), no-window, resize on",
+        "(signal 49100 / stream 47998), no-window, resize on, viz=kit",
         flush=True,
     )
