@@ -20,6 +20,8 @@ Incremental experiment scripts for learning Isaac Lab fundamentals — from basi
 | DAM | `dam_scripted_comparison_demo.py` | Scripted RAW vs DAM safety comparison for recording |
 | DAM | `dam_safety_demo.py` | Keyboard EE control with DAM filtering |
 | DAM | `dam_teleoperate_demo.py` | Leader-arm teleoperation with DAM filtering |
+| LIVE | `livestream_support.py` | Helper: auto-configure WebRTC streaming for `--livestream` (see below) |
+| LIVE | `livestream_keepalive.py` | Minimal blue-cube scene for testing the WebRTC stream in isolation |
 ## Progression
 
 ```
@@ -57,3 +59,60 @@ ffplay file-000.mp4
 python scripts/11_stream_top_sender.py --enable_cameras
 python scripts/12_stream_top_receiver.py
 ```
+
+## WebRTC Livestreaming (remote viewing)
+
+Any script can be streamed to the **Isaac Sim WebRTC Streaming Client** (e.g. on a
+Mac) by adding `--livestream 2`:
+
+```bash
+source ~/IsaacLab/env_isaaclab/bin/activate
+python scripts/dam_car_scripted_comparison_demo.py --mode compare --livestream 2
+```
+
+On the client: enter the server IP, ports **49100** (signal) / **47998** (stream), Connect.
+
+### Why `livestream_support.py` exists
+
+Isaac Lab's `--livestream 2` only enables the livestream extension on its headless
+experience — it does **not** configure what a remote client actually needs. The
+official `isaacsim.exp.full.streaming` app bakes those in; [`livestream_support.py`](livestream_support.py)
+reproduces them so you don't hand-type a long `--kit_args="..."`. Every script here
+already calls it (one line after `parse_args()`, before `AppLauncher`):
+
+```python
+args_cli = parser.parse_args()
+from livestream_support import apply_livestream_defaults
+apply_livestream_defaults(args_cli)          # no-op unless --livestream is set
+app_launcher = AppLauncher(args_cli)
+```
+
+It injects, only when streaming:
+
+| Setting | Fixes |
+|---|---|
+| `primaryStream/publicIp` (auto-detected LAN IP) | black screen over NAT/VPN (mode 2 defaults to 127.0.0.1) |
+| `--no-window` | "Cannot stream video frame" resolution mismatch |
+| `app/livestream/allowResize` + `primaryStream/allowDynamicResize` | client gets one frame then drops |
+| `visualizer=kit` | stream stalls after a few frames (Kit visualizer pumps `app.update()`) |
+| `runLoops/main/rateLimitEnabled=true` (60 Hz) | steps dumped all at once / no stream cadence |
+| `primaryStream/enableEventTracing=false` | stops `NvStreamer-*.etli` log spam |
+
+### Notes
+
+- **Advertised IP** is auto-detected (the host's private LAN IP). Override with
+  `export LIVESTREAM_PUBLIC_IP=<ip>` before running.
+- **Keep-alive**: demos that finish and `close()` would drop the stream. Guard a
+  keep-alive loop with `is_livestreaming()` (the car demo does this; it also has a
+  `--hold-open` flag), so the final scene stays viewable:
+  ```python
+  from livestream_support import is_livestreaming
+  if args_cli.hold_open or is_livestreaming(args_cli):
+      while simulation_app.is_running():
+          sim.step()
+  ```
+- **Network**: the client must be able to reach the server on TCP 49100 + UDP 47998
+  (open them in the server firewall; over a VPN the routing must reach the server's
+  LAN). `livestream_keepalive.py` is a minimal blue-cube scene for testing the
+  stream in isolation.
+
