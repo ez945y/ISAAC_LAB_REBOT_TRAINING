@@ -1,28 +1,46 @@
 """Project livestream helper for Isaac Lab scripts.
 
-Isaac Lab's ``--livestream`` flag only does ``--enable omni.kit.livestream.app``;
-it does NOT set the two Kit settings a *remote* WebRTC client needs:
+Isaac Lab's ``--livestream 2`` only does ``--enable omni.kit.livestream.app`` on
+its headless experience. That alone does NOT give a remote WebRTC client a usable
+stream -- several Kit settings the official isaacsim.exp.full.streaming app bakes
+in are missing. This helper reproduces them by injecting into ``args_cli.kit_args``
+(and ``args_cli.visualizer``) so you never hand-type the long ``--kit_args="..."``.
 
-* ``primaryStream/publicIp``      -- the ICE candidate the client must reach
-  (``--livestream 2`` leaves this at 127.0.0.1, so media never connects and the
-  client stays black even though signaling succeeds).
-* ``primaryStream/allowDynamicResize`` -- otherwise the client's resize request
-  is rejected and the stream never comes up.
+What it sets when streaming (each fixed a real failure we hit):
 
-This helper injects both into ``args_cli.kit_args`` so you never have to hand-type
-the long ``--kit_args="..."`` again. It is a no-op when livestreaming is disabled,
-so it is safe to call unconditionally in every script.
+* ``primaryStream/publicIp``        -- ICE candidate the client must reach; mode 2
+  leaves it at 127.0.0.1, so media never connects over NAT/VPN (black screen).
+* ``--no-window``                   -- else an OS window opens at the desktop res
+  and mismatches the client-negotiated res ("Cannot stream video frame").
+* ``app/livestream/allowResize`` + ``primaryStream/allowDynamicResize`` -- BOTH
+  layers, like the official kit; only one => client gets one frame then drops.
+* ``visualizer=kit``                -- the Kit visualizer pumps ``app.update()``
+  which delivers frames; AppLauncher auto-injects it only for XR, not livestream,
+  so without it the stream stalls after a few frames.
+* ``runLoops/main/rateLimitEnabled=true`` (60 Hz) -- Isaac Lab's headless kit sets
+  it false, so the loop runs flat-out (steps dumped at once, no stream cadence).
+* ``primaryStream/enableEventTracing=false`` -- stop NvStreamer-*.etli log spam.
+
+It is a no-op when livestreaming is disabled, so it is safe to call unconditionally.
 
 Usage (one line, right after parse_args and before AppLauncher):
 
+    AppLauncher.add_app_launcher_args(parser)
     args_cli = parser.parse_args()
     from livestream_support import apply_livestream_defaults
     apply_livestream_defaults(args_cli)
     app_launcher = AppLauncher(args_cli)
 
-The advertised IP is auto-detected (this host's primary LAN IP). Override with:
-
+Then run:  python scripts/<your_script>.py --livestream 2
+The advertised IP is auto-detected (host's private LAN IP). Override with:
     export LIVESTREAM_PUBLIC_IP=192.168.90.162
+
+For demos that finish and close, guard a keep-alive loop with is_livestreaming()
+so the final scene stays streamable:
+
+    if args_cli.hold_open or is_livestreaming(args_cli):
+        while simulation_app.is_running():
+            sim.step()
 """
 
 from __future__ import annotations
