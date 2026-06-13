@@ -25,41 +25,67 @@ ISAAC_LAB_ROBOT_TRAINING/
 
 ## Installation
 
+Isaac Sim / Isaac Lab are installed first via NVIDIA's official `uv` flow, which
+provisions the simulator runtime (PyTorch, NumPy, etc.). This repository is then
+installed **into that same environment** — it only registers its own local
+packages and intentionally does **not** install or upgrade `torch`/`numpy`,
+because those must match the simulator runtime.
+
 ```bash
 git clone https://github.com/ez945y/ISAAC_LAB_REBOT_TRAINING.git
 cd ISAAC_LAB_REBOT_TRAINING
-pip install -e .
+
+# Activate the venv that NVIDIA's uv flow created for Isaac Sim / Isaac Lab
+# e.g. source /path/to/isaac/.venv/bin/activate
 ```
 
 ### Isaac Lab Runtime Dependencies
 
-Install this repository inside an existing Isaac Sim / Isaac Lab environment.
-The project intentionally does not install `torch` or `numpy` for you, because
-those packages must match the simulator runtime.
+For Isaac Sim 5.1 + Isaac Lab 2.3, the runtime is guarded at the versions in
+[`constraints/isaaclab-2.3-isaacsim-5.1.txt`](constraints/isaaclab-2.3-isaacsim-5.1.txt):
 
-For Isaac Sim 5.1 + Isaac Lab 2.3, keep the runtime on the guarded versions in:
-
-```bash
-constraints/isaaclab-2.3-isaacsim-5.1.txt
+```text
+torch==2.7.0  torchvision==0.22.0  torchaudio==2.7.0  (cu128)
+numpy<2  packaging==23.0
 ```
 
-If a previous install upgraded PyTorch, restore the simulator-compatible stack
-before launching demos:
+Install PyTorch **only if it is not already present** — the import guard leaves
+the simulator's existing stack untouched and never upgrades it:
 
 ```bash
-python -m pip install --force-reinstall \
-  --index-url https://download.pytorch.org/whl/cu128 \
-  torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0
-
-python -m pip install --force-reinstall \
-  -c constraints/isaaclab-2.3-isaacsim-5.1.txt \
-  "numpy<2" packaging==23.0
+python -c "import torch" 2>/dev/null || \
+  uv pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 \
+    --index-url https://download.pytorch.org/whl/cu128
 ```
 
-Then install this repo without changing simulator dependencies:
+> Do not pass `-U`/`--upgrade` for torch: that forces a re-resolve and can
+> overwrite the simulator-matched build. If a previous install already broke the
+> stack, restore it explicitly:
+>
+> ```bash
+> uv pip install --reinstall \
+>   --index-url https://download.pytorch.org/whl/cu128 \
+>   torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0
+> uv pip install --reinstall \
+>   -c constraints/isaaclab-2.3-isaacsim-5.1.txt \
+>   "numpy<2" packaging==23.0
+> ```
+
+### DAM Safety Wrapper
+
+The demos depend on the `robot-dam` package. Install it **only if it is not
+already installed**, so re-running setup never reinstalls it:
 
 ```bash
-python -m pip install -e . --no-deps
+uv pip show robot-dam >/dev/null 2>&1 || uv pip install robot-dam
+```
+
+### Install this repository
+
+Finally, install this repo without touching any simulator dependencies:
+
+```bash
+uv pip install -e . --no-deps
 ```
 
 ## Testing
