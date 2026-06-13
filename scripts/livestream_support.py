@@ -34,6 +34,11 @@ import subprocess
 
 _STREAM = "/exts/omni.kit.livestream.app/primaryStream"
 
+# Cached at apply time, BEFORE AppLauncher runs. AppLauncher pops "livestream"
+# out of args_cli.__dict__ (app_launcher.py:266/759), so reading args_cli.livestream
+# after launch is unreliable -- callers should rely on this cache instead.
+_ACTIVE: bool | None = None
+
 
 def _is_private(ip: str) -> bool:
     try:
@@ -85,9 +90,16 @@ def _livestream_enabled(args_cli) -> bool:
     return int(os.environ.get("LIVESTREAM", 0)) >= 1
 
 
-def is_livestreaming(args_cli) -> bool:
-    """Public check for whether livestreaming is effectively enabled."""
-    return _livestream_enabled(args_cli)
+def is_livestreaming(args_cli=None) -> bool:
+    """Whether livestreaming is enabled.
+
+    Returns the value cached by :func:`apply_livestream_defaults` (captured before
+    AppLauncher strips the ``livestream`` arg). Falls back to inspecting ``args_cli``
+    only if the cache was never set.
+    """
+    if _ACTIVE is not None:
+        return _ACTIVE
+    return _livestream_enabled(args_cli) if args_cli is not None else False
 
 
 def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
@@ -98,7 +110,9 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
         public_ip: override the advertised IP. Defaults to env ``LIVESTREAM_PUBLIC_IP``
             or the host's auto-detected primary LAN IP.
     """
-    if not _livestream_enabled(args_cli):
+    global _ACTIVE
+    _ACTIVE = _livestream_enabled(args_cli)
+    if not _ACTIVE:
         return
 
     public_ip = public_ip or os.environ.get("LIVESTREAM_PUBLIC_IP") or _primary_ip()
