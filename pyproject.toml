@@ -9,8 +9,6 @@ description = "Robot Control Library for Isaac Lab"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "torch",
-    "numpy",
 ]
 
 [tool.setuptools]

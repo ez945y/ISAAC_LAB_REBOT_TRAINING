@@ -31,6 +31,37 @@ cd ISAAC_LAB_REBOT_TRAINING
 pip install -e .
 ```
 
+### Isaac Lab Runtime Dependencies
+
+Install this repository inside an existing Isaac Sim / Isaac Lab environment.
+The project intentionally does not install `torch` or `numpy` for you, because
+those packages must match the simulator runtime.
+
+For Isaac Sim 5.1 + Isaac Lab 2.3, keep the runtime on the guarded versions in:
+
+```bash
+constraints/isaaclab-2.3-isaacsim-5.1.txt
+```
+
+If a previous install upgraded PyTorch, restore the simulator-compatible stack
+before launching demos:
+
+```bash
+python -m pip install --force-reinstall \
+  --index-url https://download.pytorch.org/whl/cu128 \
+  torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0
+
+python -m pip install --force-reinstall \
+  -c constraints/isaaclab-2.3-isaacsim-5.1.txt \
+  "numpy<2" packaging==23.0
+```
+
+Then install this repo without changing simulator dependencies:
+
+```bash
+python -m pip install -e . --no-deps
+```
+
 ## Testing
 
 ```bash

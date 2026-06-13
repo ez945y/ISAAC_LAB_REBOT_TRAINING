@@ -1,0 +1,10 @@
+# Dependency guardrails for the Isaac Sim 5.1 / Isaac Lab 2.3 runtime.
+#
+# Do not use this file as a generic "latest works" lock. It documents the
+# runtime versions that Isaac Sim 5.1 and Isaac Lab 2.3 expect, so editable
+# installs of this repo do not accidentally upgrade core simulator packages.
+torch==2.7.0
+torchvision==0.22.0
+torchaudio==2.7.0
+numpy<2
+packaging==23.0
