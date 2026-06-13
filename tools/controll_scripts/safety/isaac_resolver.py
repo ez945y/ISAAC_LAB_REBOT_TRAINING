@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import torch
 
+from ..utils import physx_to_torch
+
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation
 
@@ -214,7 +216,7 @@ class IsaacControllerKinematicsResolver:
 
         self._controller._ik_controller.set_command(weighted_target)
 
-        jacobian_w = self._robot.root_physx_view.get_jacobians()[
+        jacobian_w = physx_to_torch(self._robot.root_physx_view.get_jacobians())[
             :, self._controller._jacobi_body_idx, :, self._controller._jacobi_joint_ids
         ]
         base_rot = math_utils.matrix_from_quat(math_utils.quat_inv(root_quat_w))

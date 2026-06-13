@@ -11,6 +11,7 @@ from isaaclab.controllers import DifferentialIKController, DifferentialIKControl
 
 from .base import BaseController
 from ..configs.base import BaseRobotConfig
+from ..utils import physx_to_torch
 
 
 class IKController(BaseController):
@@ -82,8 +83,8 @@ class IKController(BaseController):
         # 設定 IK 指令
         self._ik_controller.set_command(weighted_target)
         
-        # 獲取 Jacobian
-        jacobian_w = self._robot.root_physx_view.get_jacobians()[
+        # 獲取 Jacobian（Kit 110 回傳 warp array，需轉 torch）
+        jacobian_w = physx_to_torch(self._robot.root_physx_view.get_jacobians())[
             :, self._jacobi_body_idx, :, self._jacobi_joint_ids
         ]
         

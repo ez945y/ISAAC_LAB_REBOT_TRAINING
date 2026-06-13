@@ -58,6 +58,7 @@ from controll_scripts import (
     SOArm101Config,
 )
 from controll_scripts.safety import DAMSafetyWrapper
+from controll_scripts.utils import physx_to_torch
 
 
 def _dam_decision_label(dam: DAMSafetyWrapper) -> str:
@@ -125,7 +126,7 @@ class SafeTeleoperationRunner:
         gripper_ids, _ = self.robot.find_joints([self.robot_config.gripper_joint_name])
         self.gripper_joint_id = gripper_ids[0]
 
-        joint_limits = self.robot.root_physx_view.get_dof_limits()
+        joint_limits = physx_to_torch(self.robot.root_physx_view.get_dof_limits())
         self.arm_lower = joint_limits[0, self.arm_joint_ids, 0].to(self.sim.device)
         self.arm_upper = joint_limits[0, self.arm_joint_ids, 1].to(self.sim.device)
         self.grip_lower = joint_limits[0, self.gripper_joint_id, 0].item()

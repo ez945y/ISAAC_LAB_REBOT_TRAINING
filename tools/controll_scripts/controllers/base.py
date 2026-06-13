@@ -11,6 +11,7 @@ import torch
 from isaaclab.assets import Articulation
 
 from ..configs.base import BaseRobotConfig
+from ..utils import physx_to_torch
 
 
 class BaseController(ABC):
@@ -75,9 +76,9 @@ class BaseController(ABC):
     
     def _read_joint_limits(self) -> None:
         """從機器人讀取關節限制"""
-        # 從 PhysX view 讀取關節限制
-        joint_limits = self._robot.root_physx_view.get_dof_limits()
-        
+        # 從 PhysX view 讀取關節限制（Kit 110 回傳 warp array，需轉 torch）
+        joint_limits = physx_to_torch(self._robot.root_physx_view.get_dof_limits())
+
         # 手臂關節限制
         self._arm_joint_lower = joint_limits[0, self._arm_joint_ids, 0]
         self._arm_joint_upper = joint_limits[0, self._arm_joint_ids, 1]

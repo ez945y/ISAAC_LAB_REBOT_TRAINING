@@ -75,6 +75,7 @@ from controll_scripts import (
     SOArm101Config,
 )
 from controll_scripts.configs.base import BaseRobotConfig
+from controll_scripts.utils import physx_to_torch
 
 
 # ========================================
@@ -219,7 +220,7 @@ class TeleoperationRunner:
         self.gripper_joint_id = gripper_ids[0] if gripper_ids else 0
 
         # Get joint limits from physics
-        joint_limits = self.robot.root_physx_view.get_dof_limits()
+        joint_limits = physx_to_torch(self.robot.root_physx_view.get_dof_limits())
         self.arm_joint_lower = joint_limits[0, self.arm_joint_ids, 0].to(self.sim.device)
         self.arm_joint_upper = joint_limits[0, self.arm_joint_ids, 1].to(self.sim.device)
         self.gripper_lower = joint_limits[0, self.gripper_joint_id, 0].item()

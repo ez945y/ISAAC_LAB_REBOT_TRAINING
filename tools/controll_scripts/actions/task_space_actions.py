@@ -16,6 +16,7 @@ import isaaclab.utils.math as math_utils
 import isaaclab.utils.string as string_utils
 from isaaclab.assets.articulation import Articulation
 from controll_scripts.controllers.differential_ik import DifferentialIKController
+from controll_scripts.utils import physx_to_torch
 from isaaclab.controllers.operational_space import OperationalSpaceController
 from isaaclab.managers.action_manager import ActionTerm
 from isaaclab.sensors import ContactSensor, ContactSensorCfg, FrameTransformer, FrameTransformerCfg
@@ -138,7 +139,7 @@ class DifferentialInverseKinematicsAction(ActionTerm):
 
     @property
     def jacobian_w(self) -> torch.Tensor:
-        return self._asset.root_physx_view.get_jacobians()[:, self._jacobi_body_idx, :, self._jacobi_joint_ids]
+        return physx_to_torch(self._asset.root_physx_view.get_jacobians())[:, self._jacobi_body_idx, :, self._jacobi_joint_ids]
 
     @property
     def jacobian_b(self) -> torch.Tensor:
@@ -439,7 +440,7 @@ class OperationalSpaceControllerAction(ActionTerm):
 
     @property
     def jacobian_w(self) -> torch.Tensor:
-        return self._asset.root_physx_view.get_jacobians()[:, self._jacobi_ee_body_idx, :, self._jacobi_joint_idx]
+        return physx_to_torch(self._asset.root_physx_view.get_jacobians())[:, self._jacobi_ee_body_idx, :, self._jacobi_joint_idx]
 
     @property
     def jacobian_b(self) -> torch.Tensor:
@@ -650,10 +651,10 @@ class OperationalSpaceControllerAction(ActionTerm):
     def _compute_dynamic_quantities(self):
         """Computes the dynamic quantities for operational space control."""
 
-        self._mass_matrix[:] = self._asset.root_physx_view.get_generalized_mass_matrices()[:, self._joint_ids, :][
+        self._mass_matrix[:] = physx_to_torch(self._asset.root_physx_view.get_generalized_mass_matrices())[:, self._joint_ids, :][
             :, :, self._joint_ids
         ]
-        self._gravity[:] = self._asset.root_physx_view.get_gravity_compensation_forces()[:, self._joint_ids]
+        self._gravity[:] = physx_to_torch(self._asset.root_physx_view.get_gravity_compensation_forces())[:, self._joint_ids]
 
     def _compute_ee_jacobian(self):
         """Computes the geometric Jacobian of the ee body frame in root frame.

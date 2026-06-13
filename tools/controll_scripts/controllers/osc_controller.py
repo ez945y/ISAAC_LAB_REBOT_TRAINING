@@ -11,6 +11,7 @@ from isaaclab.controllers import OperationalSpaceController, OperationalSpaceCon
 
 from .base import BaseController
 from ..configs.base import BaseRobotConfig
+from ..utils import physx_to_torch
 
 
 class OSCController(BaseController):
@@ -77,8 +78,8 @@ class OSCController(BaseController):
         # 當前 EE 姿態
         current_ee_pose_b = torch.cat([ee_pos_b, ee_quat_b], dim=-1)
         
-        # 獲取 Jacobian
-        jacobian_w = self._robot.root_physx_view.get_jacobians()[
+        # 獲取 Jacobian（Kit 110 回傳 warp array，需轉 torch）
+        jacobian_w = physx_to_torch(self._robot.root_physx_view.get_jacobians())[
             :, self._jacobi_body_idx, :, self._jacobi_joint_ids
         ]
         base_rot_matrix = math_utils.matrix_from_quat(math_utils.quat_inv(root_quat_w))
@@ -86,10 +87,10 @@ class OSCController(BaseController):
         jacobian_b[:, :3, :] = torch.bmm(base_rot_matrix, jacobian_w[:, :3, :])
         jacobian_b[:, 3:, :] = torch.bmm(base_rot_matrix, jacobian_w[:, 3:, :])
         
-        # 獲取動力學信息
-        mass_matrix_full = self._robot.root_physx_view.get_generalized_mass_matrices()
+        # 獲取動力學信息（Kit 110 回傳 warp array，需轉 torch）
+        mass_matrix_full = physx_to_torch(self._robot.root_physx_view.get_generalized_mass_matrices())
         mass_matrix = mass_matrix_full[:, self._arm_joint_ids, :][:, :, self._arm_joint_ids]
-        gravity = self._robot.root_physx_view.get_gravity_compensation_forces()[:, self._arm_joint_ids]
+        gravity = physx_to_torch(self._robot.root_physx_view.get_gravity_compensation_forces())[:, self._arm_joint_ids]
         
         joint_pos = self._robot.data.joint_pos[:, self._arm_joint_ids]
         joint_vel = self._robot.data.joint_vel[:, self._arm_joint_ids]
