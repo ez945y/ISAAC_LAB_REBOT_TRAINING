@@ -125,8 +125,11 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
         "--no-window",
         # ICE candidate the remote client must reach (NAT/VPN-friendly).
         f"--{_STREAM}/publicIp={public_ip}",
-        # Let the client drive the stream resolution, else it stays black.
-        f"--{_STREAM}/allowDynamicResize=true",
+        # Keep dynamic resize OFF (the official streaming app's default). With
+        # --no-window the render resolution already matches the resolution the
+        # client negotiates, so resize is unnecessary; leaving it on makes the
+        # stream churn through odd sizes (e.g. 795x462) and crashes the client.
+        f"--{_STREAM}/allowDynamicResize=false",
         # Stop NvStreamer-*.etli trace logs piling up in the working dir.
         f"--{_STREAM}/enableEventTracing=false",
     ]
@@ -136,6 +139,6 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
 
     print(
         f"[livestream] enabled -> client connects to {public_ip} "
-        "(signal 49100 / stream 47998), dynamic resize on",
+        "(signal 49100 / stream 47998), no-window, fixed resolution",
         flush=True,
     )
