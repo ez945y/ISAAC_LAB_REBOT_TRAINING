@@ -125,11 +125,12 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
         "--no-window",
         # ICE candidate the remote client must reach (NAT/VPN-friendly).
         f"--{_STREAM}/publicIp={public_ip}",
-        # Keep dynamic resize OFF (the official streaming app's default). With
-        # --no-window the render resolution already matches the resolution the
-        # client negotiates, so resize is unnecessary; leaving it on makes the
-        # stream churn through odd sizes (e.g. 795x462) and crashes the client.
-        f"--{_STREAM}/allowDynamicResize=false",
+        # Resize must be enabled at BOTH layers, exactly like the stable official
+        # isaacsim.exp.full.streaming.kit. With only primaryStream/allowDynamicResize
+        # (and not app/livestream/allowResize) the resize is half-wired: the client
+        # gets one frame then the stream drops. Both -> stable.
+        "--/app/livestream/allowResize=true",
+        f"--{_STREAM}/allowDynamicResize=true",
         # Stop NvStreamer-*.etli trace logs piling up in the working dir.
         f"--{_STREAM}/enableEventTracing=false",
     ]
@@ -139,6 +140,6 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
 
     print(
         f"[livestream] enabled -> client connects to {public_ip} "
-        "(signal 49100 / stream 47998), no-window, fixed resolution",
+        "(signal 49100 / stream 47998), no-window, resize on",
         flush=True,
     )
