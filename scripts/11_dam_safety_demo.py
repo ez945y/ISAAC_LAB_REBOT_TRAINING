@@ -229,9 +229,9 @@ def main():
         )
 
         # ── Apply safe targets back to simulation ───────────────────────
-        robot.set_joint_position_target_index(safe_targets, joint_ids=arm_joint_ids)
+        robot.set_joint_position_target_index(target=safe_targets, joint_ids=arm_joint_ids)
         safe_gripper = torch.tensor([[dam.last_safe_gripper]], device=sim.device)
-        robot.set_joint_position_target_index(safe_gripper, joint_ids=gripper_joint_ids)
+        robot.set_joint_position_target_index(target=safe_gripper, joint_ids=gripper_joint_ids)
         robot.write_data_to_sim()
 
         sim.step()

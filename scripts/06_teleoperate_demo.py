@@ -301,12 +301,12 @@ class TeleoperationRunner:
         arm_targets = self.arm_joint_lower + norm_j * (self.arm_joint_upper - self.arm_joint_lower)
 
         # Apply targets
-        self.robot.set_joint_position_target_index(arm_targets, joint_ids=self.arm_joint_ids)
+        self.robot.set_joint_position_target_index(target=arm_targets, joint_ids=self.arm_joint_ids)
 
         # Gripper
         gripper_target = self.gripper_lower + gripper_pos * (self.gripper_upper - self.gripper_lower)
         self.robot.set_joint_position_target_index(
-            torch.tensor([[gripper_target]], device=self.sim.device),
+            target=torch.tensor([[gripper_target]], device=self.sim.device),
             joint_ids=[self.gripper_joint_id],
         )
 
