@@ -32,8 +32,8 @@ class AckermannSolver:
     track_width: float = 0.12
     wheel_radius: float = 1.0
     default_dt: float = 1.0 / 60.0
-    max_v: float = 1.8
-    max_omega: float = 8.0
+    max_v: float = 1.4
+    max_omega: float = 6.0
 
     def rollout(self, state, command, dt: float | None = None):
         """Predict the next planar state from ``state`` and ``[v, omega]``.

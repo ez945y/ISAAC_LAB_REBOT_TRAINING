@@ -60,8 +60,8 @@ def _register_jetbot_api(solver: AckermannSolver) -> None:
             track_width=float(params.get("track_width", 0.12)),
             wheel_radius=float(params.get("wheel_radius", 1.0)),
             default_dt=float(params.get("default_dt", 1.0 / 60.0)),
-            max_v=float(params.get("max_v", 1.8)),
-            max_omega=float(params.get("max_omega", 8.0)),
+            max_v=float(params.get("max_v", 1.4)),
+            max_omega=float(params.get("max_omega", 6.0)),
         )
 
     # -- Boundary callback ---------------------------------------------------

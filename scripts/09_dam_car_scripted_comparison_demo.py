@@ -291,7 +291,7 @@ class TwinLaneDAMDemo:
         self.dam_guard = JetbotDAMWrapper(
             self.stackfile,
             device=self.sim.device,
-            solver=AckermannSolver(track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03, max_v=1.8, max_omega=8.0)
+            solver=AckermannSolver(track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03, max_v=1.4, max_omega=6.0)
         )
         self._reset_robots()
 
@@ -390,7 +390,7 @@ class TwinLaneDAMDemo:
             torch.sin(desired_heading - yaw), torch.cos(desired_heading - yaw)
         )
         distance = torch.linalg.norm(delta, dim=1)
-        forward = torch.clamp(args_cli.drive_gain * distance * torch.cos(heading_error), -1.8, 1.8)
+        forward = torch.clamp(args_cli.drive_gain * distance * torch.cos(heading_error), -1.4, 1.4)
         omega = torch.clamp(5.0 * heading_error, -5.0, 5.0)
         return torch.stack([forward, omega], dim=1).to(dtype=torch.float32)
 

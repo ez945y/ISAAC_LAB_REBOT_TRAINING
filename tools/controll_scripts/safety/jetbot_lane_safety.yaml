@@ -53,9 +53,9 @@ boundaries:
     nodes:
       - callback: jetbot_rollout_inside_safe_region
         params:
-          x_min: -0.35
-          x_max: 1.40
-          y_abs_max: 0.48
+          x_min: -0.25
+          x_max: 1.30
+          y_abs_max: 0.38
           dt: 0.12
 
 tasks:
