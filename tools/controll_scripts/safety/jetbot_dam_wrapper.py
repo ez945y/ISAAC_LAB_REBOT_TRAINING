@@ -27,7 +27,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+import osqp
 import torch
+from scipy import sparse
 
 from .ackermann_solver import AckermannSolver
 
@@ -97,10 +100,6 @@ def _register_jetbot_api(solver: AckermannSolver) -> None:
             return True
 
         # 2. If unsafe, solve QP to correct it
-        import numpy as np
-        import osqp
-        from scipy import sparse
-
         # Clamp command to actuator limits to avoid zero gradients during linearization
         v_clamped = max(-solver.max_v, min(solver.max_v, command[0]))
         omega_clamped = max(-solver.max_omega, min(solver.max_omega, command[1]))
