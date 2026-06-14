@@ -132,16 +132,6 @@ def create_scene_cfg() -> type:
             spawn=sim_utils.DomeLightCfg(intensity=3800.0, color=(0.85, 0.85, 0.85)),
         )
 
-        raw_floor = AssetBaseCfg(
-            prim_path="/World/RawArena/Floor",
-            spawn=_cuboid((ARENA_LENGTH, ARENA_WIDTH, 0.01), raw_floor_color),
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(LANE_CENTER_X, RAW_LANE_Y, -0.005)),
-        )
-        dam_floor = AssetBaseCfg(
-            prim_path="/World/DamArena/Floor",
-            spawn=_cuboid((ARENA_LENGTH, ARENA_WIDTH, 0.01), dam_floor_color),
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(LANE_CENTER_X, DAM_LANE_Y, -0.005)),
-        )
         raw_safe = AssetBaseCfg(
             prim_path="/World/RawArena/SafeRegion",
             spawn=_cuboid((SAFE_X_MAX - SAFE_X_MIN, SAFE_Y_LIMIT * 2.0, 0.001), green),
@@ -202,13 +192,13 @@ def create_scene_cfg() -> type:
         )
         raw_badge = AssetBaseCfg(
             prim_path="/World/RawArena/RawBadge",
-            spawn=_cuboid((0.42, 0.08, 0.055), (1.0, 0.08, 0.05)),
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(1.35, RAW_LANE_Y, 0.05)),
+            spawn=_cuboid((0.08, 0.42, 0.055), (1.0, 0.08, 0.05)),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(1.55, RAW_LANE_Y, 0.0275)),
         )
         dam_badge = AssetBaseCfg(
             prim_path="/World/DamArena/DamBadge",
-            spawn=_cuboid((0.42, 0.08, 0.055), (0.08, 0.95, 0.22)),
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(1.35, DAM_LANE_Y, 0.05)),
+            spawn=_cuboid((0.08, 0.42, 0.055), (0.08, 0.95, 0.22)),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(1.55, DAM_LANE_Y, 0.0275)),
         )
 
         raw_jetbot = JETBOT_CONFIG.replace(prim_path="/World/RawArena/Jetbot")
