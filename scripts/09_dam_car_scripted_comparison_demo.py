@@ -131,7 +131,7 @@ def create_scene_cfg() -> type:
                 scale=(0.25, 0.25, 0.25),
             ),
             init_state=AssetBaseCfg.InitialStateCfg(
-                rot=(0.7071, 0.0, 0.0, 0.7071)
+                rot=(0.7071, 0.0, 0.0, -0.7071)
             ),
         )
         dome_light = AssetBaseCfg(
