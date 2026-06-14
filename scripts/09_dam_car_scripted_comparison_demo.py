@@ -77,7 +77,7 @@ from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
-from controll_scripts.safety import JetbotDAMWrapper
+from controll_scripts.safety import JetbotDAMWrapper, AckermannSolver
 from controll_scripts.utils import physx_to_torch
 
 import dam
@@ -303,7 +303,11 @@ class TwinLaneDAMDemo:
 
         self.raw_jetbot = self.scene["raw_jetbot"]
         self.dam_jetbot = self.scene["dam_jetbot"]
-        self.dam_guard = JetbotDAMWrapper(self.stackfile, device=self.sim.device)
+        self.dam_guard = JetbotDAMWrapper(
+            self.stackfile,
+            device=self.sim.device,
+            solver=AckermannSolver(track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03)
+        )
         self._reset_robots()
 
         print("\n" + "=" * 78)
@@ -407,8 +411,9 @@ class TwinLaneDAMDemo:
 
     @staticmethod
     def _command_to_wheels(command: torch.Tensor) -> torch.Tensor:
-        left = command[:, 0] - command[:, 1] * JETBOT_TRACK_WIDTH / 2.0
-        right = command[:, 0] + command[:, 1] * JETBOT_TRACK_WIDTH / 2.0
+        wheel_radius = 0.03
+        left = (command[:, 0] - command[:, 1] * JETBOT_TRACK_WIDTH / 2.0) / wheel_radius
+        right = (command[:, 0] + command[:, 1] * JETBOT_TRACK_WIDTH / 2.0) / wheel_radius
         return torch.stack([left, right], dim=1).to(dtype=torch.float32)
 
     def _record_step(self, raw_command: torch.Tensor, safe_command: torch.Tensor) -> None:

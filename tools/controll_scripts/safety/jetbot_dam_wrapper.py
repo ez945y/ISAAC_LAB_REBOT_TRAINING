@@ -88,10 +88,84 @@ def _register_jetbot_api(solver: AckermannSolver) -> None:
         # action.target_joint_positions  = [x, y, yaw, v, omega]
         state = list(obs.joint_positions[:3])               # [x, y, yaw]
         command = list(action.target_joint_positions[3:5])   # [v, omega]
+
+        # 1. Check if the proposed command is already safe
         next_state = solver.rollout(state, command, dt=dt)
         x_next = float(next_state[0])
         y_next = float(next_state[1])
-        return x_min <= x_next <= x_max and abs(y_next) <= y_abs_max
+        if x_min <= x_next <= x_max and abs(y_next) <= y_abs_max:
+            return True
+
+        # 2. If unsafe, solve QP to correct it
+        import numpy as np
+        import osqp
+        from scipy import sparse
+
+        # Clamp command to actuator limits to avoid zero gradients during linearization
+        v_clamped = max(-solver.max_v, min(solver.max_v, command[0]))
+        omega_clamped = max(-solver.max_omega, min(solver.max_omega, command[1]))
+
+        state_t = torch.tensor(state, dtype=torch.float32)
+        cmd_t = torch.tensor([v_clamped, omega_clamped], dtype=torch.float32, requires_grad=True)
+
+        # Rollout & compute gradients via Autograd
+        next_state_t = solver.rollout(state_t, cmd_t, dt=dt)
+        x_next_val = next_state_t[0].item()
+        y_next_val = next_state_t[1].item()
+
+        next_state_t[0].backward(retain_graph=True)
+        grad_x = cmd_t.grad.clone().numpy()
+
+        cmd_t.grad.zero_()
+        next_state_t[1].backward()
+        grad_y = cmd_t.grad.clone().numpy()
+
+        # Set up OSQP
+        v_cmd, omega_cmd = command[0], command[1]
+        v_max, omega_max = solver.max_v, solver.max_omega
+
+        # Constraint: l <= A * delta_u <= u
+        A_np = np.array([
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [grad_x[0], grad_x[1]],
+            [grad_y[0], grad_y[1]]
+        ])
+        A_csc = sparse.csc_matrix(A_np)
+
+        l_np = np.array([
+            -v_max - v_cmd,
+            -omega_max - omega_cmd,
+            x_min - x_next_val,
+            -y_abs_max - y_next_val
+        ])
+        u_np = np.array([
+            v_max - v_cmd,
+            omega_max - omega_cmd,
+            x_max - x_next_val,
+            y_abs_max - y_next_val
+        ])
+
+        P_csc = sparse.csc_matrix(np.diag([1.0, 0.5])) # Slightly prioritize linear velocity correction
+        q_np = np.zeros(2)
+
+        prob = osqp.OSQP()
+        prob.setup(P_csc, q_np, A_csc, l_np, u_np, verbose=False, eps_abs=1e-5, eps_rel=1e-5)
+        res = prob.solve()
+
+        if res.info.status == 'solved':
+            delta_v, delta_omega = res.x[0], res.x[1]
+            safe_v = float(v_cmd + delta_v)
+            safe_omega = float(omega_cmd + delta_omega)
+        else:
+            # Fallback on solver failure: stop
+            safe_v = 0.0
+            safe_omega = 0.0
+
+        # Modify the proposed action in-place
+        action.target_joint_positions[3] = safe_v
+        action.target_joint_positions[4] = safe_omega
+        return True
 
     _CALLBACKS_REGISTERED = True
 
