@@ -52,7 +52,6 @@ class JetbotDAMWrapper:
         self._guard = dam.SafetyGuard(
             self._resolve_stackfile(stackfile),
             task=task,
-            input_space="ackermann",
             solvers={"base": self.solver},
             degrees_mode=False,
         )
