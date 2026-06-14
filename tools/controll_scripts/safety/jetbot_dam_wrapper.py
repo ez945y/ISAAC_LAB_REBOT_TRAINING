@@ -54,6 +54,7 @@ class JetbotDAMWrapper:
             task=task,
             input_space="ackermann",
             solvers={"base": self.solver},
+            degrees_mode=False,
         )
         self._device = device
         self._last_decision = "PASS"
@@ -208,7 +209,6 @@ def _register_jetbot_api(dam, solver: AckermannSolver) -> None:
 def _register_preset_once(dam) -> None:
     kwargs = {
         "joint_names": JETBOT_COMMAND_NAMES,
-        "degrees_mode": False,
         "assets": {},
         "solvers": {
             "base": {
@@ -223,14 +223,12 @@ def _register_preset_once(dam) -> None:
                 },
             }
         },
-        "chains": {},
     }
     try:
         dam.register_preset(JETBOT_PRESET, **kwargs)
     except TypeError:
         minimal = {
             "joint_names": JETBOT_COMMAND_NAMES,
-            "degrees_mode": False,
         }
         try:
             dam.register_preset(JETBOT_PRESET, **minimal)
