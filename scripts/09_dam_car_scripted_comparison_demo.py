@@ -87,10 +87,10 @@ DAM_LANE_Y = -0.72
 LANE_CENTER_X = 0.42
 ARENA_LENGTH = 3.00
 ARENA_WIDTH = 1.20
-BOTTOM_BAND_X = -0.70
+BOTTOM_BAND_X = -0.51
 SAFE_X_MIN = -0.35
 SAFE_X_MAX = 1.40
-SAFE_Y_LIMIT = 0.35
+SAFE_Y_LIMIT = 0.48
 SIDE_BAND_WIDTH = 0.12
 START_X = 0.18
 START_LOCAL_Y = 0.0
@@ -291,7 +291,7 @@ class TwinLaneDAMDemo:
         self.dam_guard = JetbotDAMWrapper(
             self.stackfile,
             device=self.sim.device,
-            solver=AckermannSolver(track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03, max_omega=8.0)
+            solver=AckermannSolver(track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03, max_v=1.8, max_omega=8.0)
         )
         self._reset_robots()
 
@@ -390,7 +390,7 @@ class TwinLaneDAMDemo:
             torch.sin(desired_heading - yaw), torch.cos(desired_heading - yaw)
         )
         distance = torch.linalg.norm(delta, dim=1)
-        forward = torch.clamp(args_cli.drive_gain * distance * torch.cos(heading_error), -1.2, 1.2)
+        forward = torch.clamp(args_cli.drive_gain * distance * torch.cos(heading_error), -1.8, 1.8)
         omega = torch.clamp(5.0 * heading_error, -5.0, 5.0)
         return torch.stack([forward, omega], dim=1).to(dtype=torch.float32)
 

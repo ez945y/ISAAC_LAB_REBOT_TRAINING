@@ -32,7 +32,7 @@ class AckermannSolver:
     track_width: float = 0.12
     wheel_radius: float = 1.0
     default_dt: float = 1.0 / 60.0
-    max_v: float = 1.2
+    max_v: float = 1.8
     max_omega: float = 8.0
 
     def rollout(self, state, command, dt: float | None = None):
