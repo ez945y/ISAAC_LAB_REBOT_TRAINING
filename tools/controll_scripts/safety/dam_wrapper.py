@@ -33,8 +33,6 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from .isaac_resolver import IsaacControllerKinematicsResolver, isaac_wxyz_to_dam_xyzw
-
 if TYPE_CHECKING:
     from ..configs.base import BaseRobotConfig
     from ..controllers.base import BaseController
@@ -86,8 +84,6 @@ class DAMSafetyWrapper:
             joint_names=joint_names,
             degrees_mode=False,  # Isaac Sim uses radians
         )
-        self._ee_guard = None
-        self._ee_resolver: IsaacControllerKinematicsResolver | None = None
         self._device = device
         self._n_arm = len(robot_config.arm_joint_names)
         self._last_clamped = False
@@ -95,33 +91,6 @@ class DAMSafetyWrapper:
         self._step_count = 0
         self._clamp_count = 0
         self._last_safe_gripper = 0.0
-
-    def attach_isaac_controller(
-        self,
-        robot: "Articulation",
-        controller: "BaseController",
-        robot_config: "BaseRobotConfig",
-        *,
-        urdf_path: str | None = None,
-        ee_frame_name: str | None = None,
-    ) -> None:
-        """Enable EE-space filtering with the live Isaac robot/controller state."""
-        self._ee_resolver = IsaacControllerKinematicsResolver(
-            robot=robot,
-            controller=controller,
-            robot_config=robot_config,
-            device=self._device,
-            urdf_path=urdf_path,
-            ee_frame_name=ee_frame_name,
-        )
-        self._ee_guard = self._dam.SafetyGuard(
-            self._stackfile,
-            task=self._task,
-            joint_names=self._joint_names,
-            degrees_mode=False,
-            input_space="ee",
-            kinematics_resolver=self._ee_resolver,
-        )
 
     def filter(
         self,
@@ -184,89 +153,7 @@ class DAMSafetyWrapper:
             safe_arm = safe_arm.squeeze(0)
         return safe_arm
 
-    def filter_ee(
-        self,
-        target_pose: torch.Tensor,
-        obs: torch.Tensor,
-        gripper_action: float | torch.Tensor | None = None,
-        gripper_obs: float | torch.Tensor | None = None,
-        workspace_center: torch.Tensor | None = None,
-        workspace_radius: float | None = None,
-        min_z: float | None = None,
-    ) -> torch.Tensor:
-        """Filter an Isaac EE pose target and return safe arm joint targets.
 
-        Args:
-            target_pose: Isaac pose [x,y,z,qw,qx,qy,qz], shape (1, 7) or (7,).
-            obs: Current arm joint positions, shape (1, N_arm) or (N_arm,).
-            gripper_action: Optional gripper target. EE IK preserves it as the
-                gripper joint target while DAM validates the full joint vector.
-            gripper_obs: Optional current gripper position.
-            workspace_center: Optional (3,) or (1, 3) tensor for Cartesian workspace center.
-            workspace_radius: Optional float for Cartesian workspace radius.
-            min_z: Optional float for minimum Cartesian height.
-        """
-        if self._ee_guard is None or self._ee_resolver is None:
-            raise RuntimeError("Call attach_isaac_controller() before filter_ee().")
-
-        squeeze = target_pose.dim() == 1
-        if squeeze:
-            target_pose = target_pose.unsqueeze(0)
-            obs = obs.unsqueeze(0)
-        self._require_single_env(target_pose, obs)
-        self._require_width(target_pose, 7, "target_pose")
-        self._require_width(obs, self._n_arm, "obs")
-
-        # Apply Cartesian workspace clamping if requested
-        clamped_ee = False
-        target_pose_filtered = target_pose.clone()
-        if workspace_center is not None and workspace_radius is not None:
-            center = torch.as_tensor(workspace_center, dtype=target_pose.dtype, device=target_pose.device).reshape(3)
-            pos = target_pose_filtered[0, :3]
-            diff = pos - center
-            dist = torch.norm(diff)
-            if dist > workspace_radius:
-                target_pose_filtered[0, :3] = center + (diff / dist) * workspace_radius
-                clamped_ee = True
-
-        if min_z is not None:
-            if target_pose_filtered[0, 2] < min_z:
-                target_pose_filtered[0, 2] = min_z
-                clamped_ee = True
-
-        g_obs = self._to_scalar(gripper_obs, 0.0, "gripper_obs")
-        g_act = self._to_scalar(gripper_action, g_obs, "gripper_action")
-        self._ee_resolver.set_gripper_target(g_act)
-        full_obs = torch.cat([
-            obs[0],
-            torch.tensor([g_obs], dtype=obs.dtype, device=obs.device),
-        ])
-
-        dam_target_pose = torch.as_tensor(
-            isaac_wxyz_to_dam_xyzw(target_pose_filtered[0]),
-            dtype=target_pose.dtype,
-            device=target_pose.device,
-        )
-        self._ee_guard.set_ee_pose(self._ee_resolver.current_ee_pose_dam)
-        self._ee_resolver.last_safe_joint_positions = None
-        _ = self._ee_guard(dam_target_pose, full_obs)
-
-        safe_full = self._resolver_safe_full_tensor(obs)
-        self._last_safe_gripper = float(safe_full[self._n_arm].item())
-        safe_arm = safe_full[: self._n_arm].unsqueeze(0)
-
-        self._step_count += 1
-        self._record_results(self._ee_guard.last_results)
-
-        if clamped_ee:
-            if not self._last_clamped:
-                self._last_clamped = True
-                self._clamp_count += 1
-            self._last_decision = "CLAMP"
-
-        if squeeze:
-            safe_arm = safe_arm.squeeze(0)
-        return safe_arm
 
     # -- Properties -----------------------------------------------------------
 
@@ -300,8 +187,6 @@ class DAMSafetyWrapper:
     def close(self) -> None:
         """Stop MCAP recording if active."""
         self._guard.close()
-        if self._ee_guard is not None:
-            self._ee_guard.close()
 
     # -- Helpers --------------------------------------------------------------
 
@@ -358,14 +243,6 @@ class DAMSafetyWrapper:
                 f"got shape {tuple(tensor.shape)}."
             )
 
-    def _resolver_safe_full_tensor(self, obs: torch.Tensor) -> torch.Tensor:
-        if self._ee_resolver is None or self._ee_resolver.last_safe_joint_positions is None:
-            raise RuntimeError("DAM EE guard did not produce validated joint positions")
-        return self._as_full_joint_target(
-            self._ee_resolver.last_safe_joint_positions,
-            like=obs,
-            source="DAM EE guard",
-        )
 
     def _as_full_joint_target(
         self,

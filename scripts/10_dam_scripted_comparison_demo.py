@@ -280,7 +280,6 @@ class ScriptedComparisonDemo:
                 device=self.sim.device,
                 task="default",
             )
-            self.left_dam.attach_isaac_controller(self.left_robot, self.left_controller, self.robot_config)
 
         if args_cli.mode == "dam":
             self.right_dam = DAMSafetyWrapper(
@@ -289,7 +288,6 @@ class ScriptedComparisonDemo:
                 device=self.sim.device,
                 task="default",
               )
-            self.right_dam.attach_isaac_controller(self.right_robot, self.right_controller, self.robot_config)
 
         print("\n" + "=" * 72)
         print("  Scripted DAM Comparison Demo (Twin-Arm)")
@@ -429,22 +427,41 @@ class ScriptedComparisonDemo:
     def _apply_dam_target(self, robot, controller, dam, target_pose: torch.Tensor, gripper_pos: float, workspace_center=None) -> None:
         arm_joint_ids = controller._arm_joint_ids
         gripper_joint_ids = controller._gripper_joint_ids
+
+        # Apply Cartesian workspace clamping if requested
+        target_pose_filtered = target_pose.clone()
+        if workspace_center is not None:
+            center = torch.as_tensor(workspace_center, dtype=target_pose.dtype, device=target_pose.device).reshape(3)
+            pos = target_pose_filtered[0, :3]
+            diff = pos - center
+            dist = torch.norm(diff)
+            if dist > 0.16:
+                target_pose_filtered[0, :3] = center + (diff / dist) * 0.16
+
+        # Apply min_z check
+        if target_pose_filtered[0, 2] < 0.08:
+            target_pose_filtered[0, 2] = 0.08
+
+        # 1. Compute raw target using controller's compute (sets robot target)
+        controller.compute(target_pose_filtered, gripper_pos)
+
+        # 2. Extract targets set on the robot
+        raw_arm_target = robot.data.joint_pos_target[:, arm_joint_ids]
+        raw_gripper_target = robot.data.joint_pos_target[:, gripper_joint_ids]
+
+        # 3. Read current observations
         current_pos = robot.data.joint_pos[:, arm_joint_ids]
-        current_gripper = robot.data.joint_pos[:, gripper_joint_ids[0]].item()
-        gripper_target = (
-            controller._gripper_lower
-            + gripper_pos * (controller._gripper_upper - controller._gripper_lower)
+        current_gripper = robot.data.joint_pos[:, gripper_joint_ids]
+
+        # 4. Filter using joint-space DAM filter
+        safe_targets = dam.filter(
+            raw_arm_target,
+            current_pos,
+            gripper_action=raw_gripper_target,
+            gripper_obs=current_gripper,
         )
 
-        safe_targets = dam.filter_ee(
-            target_pose,
-            current_pos,
-            gripper_action=gripper_target,
-            gripper_obs=current_gripper,
-            workspace_center=workspace_center,
-            workspace_radius=0.16,
-            min_z=0.08,
-        )
+        # 5. Apply filtered targets back to the robot
         robot.set_joint_position_target_index(safe_targets, arm_joint_ids)
         robot.set_joint_position_target_index(
             torch.tensor([[dam.last_safe_gripper]], device=self.sim.device),
