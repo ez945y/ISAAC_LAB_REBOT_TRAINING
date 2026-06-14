@@ -381,7 +381,7 @@ class TwinLaneDAMDemo:
 
     def _yaw(self, robot) -> torch.Tensor:
         quat = physx_to_torch(robot.data.root_quat_w)
-        w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
+        x, y, z, w = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
         return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 
     def _local_state(self, robot, lane_y: float) -> torch.Tensor:
