@@ -61,7 +61,7 @@ def _register_jetbot_api(solver: AckermannSolver) -> None:
             wheel_radius=float(params.get("wheel_radius", 1.0)),
             default_dt=float(params.get("default_dt", 1.0 / 60.0)),
             max_v=float(params.get("max_v", 1.2)),
-            max_omega=float(params.get("max_omega", 4.0)),
+            max_omega=float(params.get("max_omega", 8.0)),
         )
 
     # -- Boundary callback ---------------------------------------------------
@@ -145,7 +145,7 @@ def _register_jetbot_api(solver: AckermannSolver) -> None:
             y_abs_max - y_next_val
         ])
 
-        P_csc = sparse.csc_matrix(np.diag([1.0, 0.5])) # Slightly prioritize linear velocity correction
+        P_csc = sparse.csc_matrix(np.diag([1.0, 0.05])) # Prioritize keeping the turning command (smaller penalty on delta_omega)
         q_np = np.zeros(2)
 
         prob = osqp.OSQP()

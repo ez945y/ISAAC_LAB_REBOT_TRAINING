@@ -85,12 +85,12 @@ JETBOT_TRACK_WIDTH = 0.12
 RAW_LANE_Y = 0.72
 DAM_LANE_Y = -0.72
 LANE_CENTER_X = 0.42
-ARENA_LENGTH = 2.45
-ARENA_WIDTH = 0.92
-BOTTOM_BAND_X = -0.48
-SAFE_X_MIN = -0.28
-SAFE_X_MAX = 1.20
-SAFE_Y_LIMIT = 0.24
+ARENA_LENGTH = 3.00
+ARENA_WIDTH = 1.20
+BOTTOM_BAND_X = -0.70
+SAFE_X_MIN = -0.35
+SAFE_X_MAX = 1.40
+SAFE_Y_LIMIT = 0.35
 SIDE_BAND_WIDTH = 0.12
 START_X = 0.18
 START_LOCAL_Y = 0.0
@@ -190,15 +190,25 @@ def create_scene_cfg() -> type:
             spawn=_cuboid((ARENA_LENGTH, 0.045, 0.045), white),
             init_state=AssetBaseCfg.InitialStateCfg(pos=(LANE_CENTER_X, 0.0, 0.0225)),
         )
-        raw_badge = AssetBaseCfg(
-            prim_path="/World/RawArena/RawBadge",
-            spawn=_cuboid((0.08, 0.42, 0.055), (1.0, 0.08, 0.05)),
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(1.55, RAW_LANE_Y, 0.0275)),
+        raw_flagpole = AssetBaseCfg(
+            prim_path="/World/RawArena/Flagpole",
+            spawn=_cuboid((0.02, 0.02, 0.40), (0.7, 0.7, 0.7)),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(1.55, RAW_LANE_Y - 0.5, 0.20)),
         )
-        dam_badge = AssetBaseCfg(
-            prim_path="/World/DamArena/DamBadge",
-            spawn=_cuboid((0.08, 0.42, 0.055), (0.08, 0.95, 0.22)),
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(1.55, DAM_LANE_Y, 0.0275)),
+        raw_flag = AssetBaseCfg(
+            prim_path="/World/RawArena/Flag",
+            spawn=_cuboid((0.15, 0.01, 0.08), (1.0, 0.08, 0.05)),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(1.485, RAW_LANE_Y - 0.5, 0.36)),
+        )
+        dam_flagpole = AssetBaseCfg(
+            prim_path="/World/DamArena/Flagpole",
+            spawn=_cuboid((0.02, 0.02, 0.40), (0.7, 0.7, 0.7)),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(1.55, DAM_LANE_Y + 0.5, 0.20)),
+        )
+        dam_flag = AssetBaseCfg(
+            prim_path="/World/DamArena/Flag",
+            spawn=_cuboid((0.15, 0.01, 0.08), (0.08, 0.95, 0.22)),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(1.485, DAM_LANE_Y + 0.5, 0.36)),
         )
 
         raw_jetbot = JETBOT_CONFIG.replace(prim_path="/World/RawArena/Jetbot")
@@ -281,7 +291,7 @@ class TwinLaneDAMDemo:
         self.dam_guard = JetbotDAMWrapper(
             self.stackfile,
             device=self.sim.device,
-            solver=AckermannSolver(track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03)
+            solver=AckermannSolver(track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03, max_omega=8.0)
         )
         self._reset_robots()
 
