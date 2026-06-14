@@ -19,6 +19,8 @@ version: "1"
 
 hardware:
   preset: jetbot_diff_drive
+  joint_names: [x, y, yaw, v, omega]
+  degrees_mode: false
   action_layout:
     - name: pose
       keys: [x, y, yaw]
