@@ -80,21 +80,6 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from controll_scripts.safety import JetbotDAMWrapper, AckermannSolver
 from controll_scripts.utils import physx_to_torch
 
-import dam
-from dam.kinematics.ackermann import AckermannSolver
-
-
-# Public solver-registration API: the name you register under IS the name the
-# stackfile/preset references (key == type == implementation) — same sugar as
-# @dam.register_callback. DAM also ships a built-in "ackermann" factory; this
-# registers it again from application code (replace=True) to show the path.
-@dam.register_solver_factory("ackermann", capabilities=["rollout"], replace=True)
-def make_ackermann(params):
-    return AckermannSolver(
-        wheel_base=params.get("wheel_base"),
-        track_width=params.get("track_width"),
-    )
-
 
 JETBOT_TRACK_WIDTH = 0.12
 RAW_LANE_Y = 0.72
