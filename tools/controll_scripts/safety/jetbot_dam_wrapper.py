@@ -195,8 +195,10 @@ def _register_jetbot_api(dam, solver: AckermannSolver) -> None:
         y_abs_max=0.24,
         dt=1.0 / 15.0,
     ):
-        state = _as_flat(obs)
-        command = _as_flat(action)
+        # obs is an Observation; action is an ActionProposal.
+        # joint_positions holds [x, y, yaw]; target_joint_positions holds [v, omega].
+        state = list(obs.joint_positions)
+        command = list(action.target_joint_positions)
         next_state = solver.rollout(state, command, dt=dt)
         x_next = float(next_state[0])
         y_next = float(next_state[1])
