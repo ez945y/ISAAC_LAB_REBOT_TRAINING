@@ -170,7 +170,7 @@ def main():
         device=sim.device,
         task="default",
     )
-    dam.attach_isaac_controller(robot, controller, robot_config)
+
 
     print("\n" + "=" * 60)
     print("  SO-ARM-101 + DAM Safety Guard")
@@ -209,20 +209,26 @@ def main():
         )
         target_marker.visualize(target_pos_w, target_quat_w)
 
-        # ── DAM resolver-backed EE safety filter ───────────────────
+        # ── Compute raw target using controller's compute (sets robot target) ──
+        controller.compute(target_pose, gripper_pos)
+
+        # ── Extract targets set on the robot ──
+        raw_arm_target = physx_to_torch(robot.data.joint_pos_target)[:, arm_joint_ids]
+        raw_gripper_target = physx_to_torch(robot.data.joint_pos_target)[:, gripper_joint_ids]
+
+        # ── Read current observations ──
         current_pos = physx_to_torch(robot.data.joint_pos)[:, arm_joint_ids]
-        current_gripper = physx_to_torch(robot.data.joint_pos)[:, gripper_joint_ids[0]].item()
-        gripper_target = (
-            controller._gripper_lower
-            + gripper_pos * (controller._gripper_upper - controller._gripper_lower)
-        )
-        safe_targets = dam.filter_ee(
-            target_pose, current_pos,
-            gripper_action=gripper_target,
+        current_gripper = physx_to_torch(robot.data.joint_pos)[:, gripper_joint_ids]
+
+        # ── Filter using joint-space DAM filter ──
+        safe_targets = dam.filter(
+            raw_arm_target,
+            current_pos,
+            gripper_action=raw_gripper_target,
             gripper_obs=current_gripper,
         )
 
-        # ── Apply safe targets to simulation ───────────────────────
+        # ── Apply safe targets back to simulation ───────────────────────
         robot.set_joint_position_target_index(safe_targets, arm_joint_ids)
         safe_gripper = torch.tensor([[dam.last_safe_gripper]], device=sim.device)
         robot.set_joint_position_target_index(safe_gripper, gripper_joint_ids)

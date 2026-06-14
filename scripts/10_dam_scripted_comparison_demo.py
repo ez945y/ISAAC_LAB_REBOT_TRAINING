@@ -69,6 +69,7 @@ from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 
 from controll_scripts import ControllerFactory, ControllerType, SOArm101Config
 from controll_scripts.safety import DAMSafetyWrapper
+from controll_scripts.utils import physx_to_torch
 from controll_scripts.safety.demo_summary import (
     SegmentMetrics,
     format_linkedin_summary,
@@ -446,12 +447,12 @@ class ScriptedComparisonDemo:
         controller.compute(target_pose_filtered, gripper_pos)
 
         # 2. Extract targets set on the robot
-        raw_arm_target = robot.data.joint_pos_target[:, arm_joint_ids]
-        raw_gripper_target = robot.data.joint_pos_target[:, gripper_joint_ids]
+        raw_arm_target = physx_to_torch(robot.data.joint_pos_target)[:, arm_joint_ids]
+        raw_gripper_target = physx_to_torch(robot.data.joint_pos_target)[:, gripper_joint_ids]
 
         # 3. Read current observations
-        current_pos = robot.data.joint_pos[:, arm_joint_ids]
-        current_gripper = robot.data.joint_pos[:, gripper_joint_ids]
+        current_pos = physx_to_torch(robot.data.joint_pos)[:, arm_joint_ids]
+        current_gripper = physx_to_torch(robot.data.joint_pos)[:, gripper_joint_ids]
 
         # 4. Filter using joint-space DAM filter
         safe_targets = dam.filter(
@@ -470,8 +471,8 @@ class ScriptedComparisonDemo:
         robot.write_data_to_sim()
 
     def _visualize_target(self, robot, marker, target_pose: torch.Tensor) -> None:
-        root_pos_w = robot.data.root_pos_w
-        root_quat_w = robot.data.root_quat_w
+        root_pos_w = physx_to_torch(robot.data.root_pos_w)
+        root_quat_w = physx_to_torch(robot.data.root_quat_w)
         target_pos_w, target_quat_w = math_utils.combine_frame_transforms(
             root_pos_w,
             root_quat_w,

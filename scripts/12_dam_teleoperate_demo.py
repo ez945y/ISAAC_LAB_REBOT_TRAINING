@@ -120,7 +120,7 @@ class SafeTeleoperationRunner:
             device=self.sim.device,
             num_envs=1,
         )
-        self.dam.attach_isaac_controller(self.robot, self.controller, self.robot_config)
+
         self.input_device.reset_target(self.controller.current_ee_pose)
 
         # Joint mapping
@@ -174,10 +174,10 @@ class SafeTeleoperationRunner:
         """Joint-space control with DAM safety filter."""
         norm_j = self.input_device.joint_positions.to(self.sim.device)
         arm_targets = self.arm_lower + norm_j * (self.arm_upper - self.arm_lower)
-        current_pos = self.robot.data.joint_pos[0, self.arm_joint_ids]
+        current_pos = physx_to_torch(self.robot.data.joint_pos)[0, self.arm_joint_ids]
 
         gripper_target = self.grip_lower + gripper_pos * (self.grip_upper - self.grip_lower)
-        current_grip = self.robot.data.joint_pos[0, self.gripper_joint_id].item()
+        current_grip = physx_to_torch(self.robot.data.joint_pos)[0, self.gripper_joint_id]
 
         # ── DAM filter ──
         safe_targets = self.dam.filter(
@@ -202,14 +202,23 @@ class SafeTeleoperationRunner:
             print(f"[DAM {tag}] joint mode | conn={conn} | clamp_rate={self.dam.clamp_rate:.1%}")
 
     def _step_ee_safe(self, target_pose: torch.Tensor, gripper_pos: float):
-        """EE-space control through DAM resolver-backed filtering."""
-        current_pos = self.robot.data.joint_pos[:, self.arm_joint_ids]
-        gripper_target = self.grip_lower + gripper_pos * (self.grip_upper - self.grip_lower)
-        current_grip = self.robot.data.joint_pos[:, self.gripper_joint_id].item()
+        """EE-space control through joint-space DAM safety filter."""
+        # 1. Compute raw target using controller's compute (sets robot target)
+        self.controller.compute(target_pose, gripper_pos)
 
-        safe_targets = self.dam.filter_ee(
-            target_pose, current_pos,
-            gripper_action=gripper_target,
+        # 2. Extract targets set on the robot
+        raw_arm_target = physx_to_torch(self.robot.data.joint_pos_target)[:, self.arm_joint_ids]
+        raw_gripper_target = physx_to_torch(self.robot.data.joint_pos_target)[:, [self.gripper_joint_id]]
+
+        # 3. Read current observations
+        current_pos = physx_to_torch(self.robot.data.joint_pos)[:, self.arm_joint_ids]
+        current_grip = physx_to_torch(self.robot.data.joint_pos)[:, [self.gripper_joint_id]]
+
+        # 4. Filter using joint-space DAM filter
+        safe_targets = self.dam.filter(
+            raw_arm_target,
+            current_pos,
+            gripper_action=raw_gripper_target,
             gripper_obs=current_grip,
         )
 
