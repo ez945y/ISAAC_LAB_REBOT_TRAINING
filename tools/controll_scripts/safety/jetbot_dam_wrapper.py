@@ -1,7 +1,27 @@
 # Copyright (c) 2024, Robot Control Library
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""DAM SafetyGuard wrapper for Jetbot differential-drive commands."""
+"""DAM SafetyGuard wrapper for Jetbot differential-drive commands.
+
+The full observation/action vector is 5D: ``[x, y, yaw, v, omega]``.
+
+- **pose** ``[x, y, yaw]`` — current planar pose (indices 0-2)
+- **command** ``[v, omega]``  — velocity command (indices 3-4)
+
+The wrapper constructs:
+
+    obs    = [x, y, yaw, 0, 0]              # current pose, zero velocity
+    action = [x, y, yaw, v_cmd, omega_cmd]   # echo pose + requested velocity
+
+On REJECT the SafetyGuard fallback returns ``obs.joint_positions``, which has
+``v=0, omega=0`` — a natural hold-position / full stop for a velocity-controlled
+robot.
+
+The preset (``jetbot_diff_drive``) and solver factory (``ackermann_solver``)
+are defined in the DAM project and referenced by the stackfile.  This wrapper
+only registers application-specific **callbacks** that are not part of DAM
+core.
+"""
 
 from __future__ import annotations
 
@@ -11,18 +31,77 @@ import torch
 
 from .ackermann_solver import AckermannSolver
 
-JETBOT_PRESET = "jetbot_diff_drive"
-JETBOT_BOUNDARY_CALLBACK = "jetbot_rollout_inside_safe_region"
-JETBOT_COMMAND_NAMES = ["v", "omega"]
-_DAM_JETBOT_REGISTERED = False
+_CALLBACKS_REGISTERED = False
+
+
+def _register_jetbot_api(solver: AckermannSolver) -> None:
+    """Register solver factory + boundary callbacks referenced by the stackfile.
+
+    The stackfile references these by name (``type: ackermann_solver``,
+    ``callback: jetbot_rollout_inside_safe_region``).  The actual
+    implementations must be registered via the API before SafetyGuard
+    loads the stackfile.
+    """
+    global _CALLBACKS_REGISTERED
+    if _CALLBACKS_REGISTERED:
+        return
+
+    import dam
+
+    # -- Solver factory (preset references type: ackermann_solver) -----------
+
+    @dam.register_solver_factory("ackermann_solver", capabilities=["base", "rollout"], replace=True)
+    def make_ackermann_solver(params):
+        params = params or {}
+        return AckermannSolver(
+            track_width=float(params.get("track_width", 0.12)),
+            wheel_radius=float(params.get("wheel_radius", 1.0)),
+            default_dt=float(params.get("default_dt", 1.0 / 60.0)),
+            max_v=float(params.get("max_v", 1.2)),
+            max_omega=float(params.get("max_omega", 4.0)),
+        )
+
+    # -- Boundary callback ---------------------------------------------------
+
+    @dam.register_callback(
+        "jetbot_rollout_inside_safe_region",
+        layer="L1",
+        category="execution",
+        description="Rolls out a diff-drive command and checks the predicted state stays in the safe arena.",
+        params={
+            "x_min": "Minimum safe local x",
+            "x_max": "Maximum safe local x",
+            "y_abs_max": "Maximum safe absolute local y",
+            "dt": "Rollout horizon in seconds",
+        },
+    )
+    def jetbot_rollout_inside_safe_region(
+        *,
+        obs,
+        action,
+        x_min=-0.28,
+        x_max=1.20,
+        y_abs_max=0.24,
+        dt=1.0 / 15.0,
+    ):
+        # obs.joint_positions            = [x, y, yaw, 0, 0]
+        # action.target_joint_positions  = [x, y, yaw, v, omega]
+        state = list(obs.joint_positions[:3])               # [x, y, yaw]
+        command = list(action.target_joint_positions[3:5])   # [v, omega]
+        next_state = solver.rollout(state, command, dt=dt)
+        x_next = float(next_state[0])
+        y_next = float(next_state[1])
+        return x_min <= x_next <= x_max and abs(y_next) <= y_abs_max
+
+    _CALLBACKS_REGISTERED = True
 
 
 class JetbotDAMWrapper:
     """Filter Jetbot ``[v, omega]`` commands through DAM.
 
-    The wrapper owns an :class:`AckermannSolver` for rollout and wheel conversion.
-    It does not need a Jetbot URDF: this safety layer only reasons about planar
-    base state and command geometry.
+    The wrapper owns an :class:`AckermannSolver` for rollout and wheel
+    conversion.  It does not need a Jetbot URDF: this safety layer only
+    reasons about planar base state and command geometry.
     """
 
     def __init__(
@@ -33,27 +112,14 @@ class JetbotDAMWrapper:
         task: str = "default",
         solver: AckermannSolver | None = None,
     ) -> None:
-        try:
-            import dam
-        except ImportError as exc:
-            raise ImportError(
-                "JetbotDAMWrapper requires robot-dam (import name: dam). "
-                "Install it before running the Jetbot DAM demo."
-            ) from exc
-        if not hasattr(dam, "SafetyGuard"):
-            raise ImportError(
-                "Imported a 'dam' package, but it does not expose SafetyGuard. "
-                "Install the robot-dam package from https://github.com/ez945y/DAM."
-            )
+        import dam
 
         self.solver = solver or AckermannSolver()
-        _register_jetbot_api(dam, self.solver)
+        _register_jetbot_api(self.solver)
 
         self._guard = dam.SafetyGuard(
             self._resolve_stackfile(stackfile),
             task=task,
-            solvers={"base": self.solver},
-            degrees_mode=False,
         )
         self._device = device
         self._last_decision = "PASS"
@@ -62,7 +128,15 @@ class JetbotDAMWrapper:
         self._intervention_count = 0
 
     def filter(self, command: torch.Tensor, state: torch.Tensor) -> torch.Tensor:
-        """Return the DAM-validated ``[v, omega]`` command."""
+        """Return the DAM-validated ``[v, omega]`` command.
+
+        Args:
+            command: ``(1, 2)`` tensor — ``[v, omega]``.
+            state:   ``(1, >=3)`` tensor — ``[x, y, yaw, ...]``.
+
+        Returns:
+            ``(1, 2)`` tensor — safe ``[v, omega]``.
+        """
         squeeze = command.dim() == 1
         if squeeze:
             command = command.unsqueeze(0)
@@ -70,15 +144,21 @@ class JetbotDAMWrapper:
         self._require_command(command)
         self._require_state(state)
 
-        raw = command[0]
-        obs = state[0]
-        safe = torch.as_tensor(
-            self._guard(raw, obs),
+        raw = command[0]       # [v, omega]
+        pose = state[0, :3]    # [x, y, yaw]
+
+        # Build 5D vectors: obs = [x,y,yaw,0,0], action = [x,y,yaw,v,omega]
+        zeros = torch.zeros(2, dtype=pose.dtype, device=pose.device)
+        obs_5 = torch.cat([pose, zeros])
+        action_5 = torch.cat([pose, raw])
+
+        safe_5 = torch.as_tensor(
+            self._guard(action_5, obs_5),
             dtype=raw.dtype,
             device=raw.device,
         ).reshape(-1)
-        if safe.shape[0] != 2:
-            raise RuntimeError(f"DAM returned {safe.shape[0]} command values; expected 2.")
+
+        safe = safe_5[3:5]     # Extract [v_safe, omega_safe]
 
         self._step_count += 1
         self._last_delta = torch.max(torch.abs(safe - raw)).item()
@@ -132,12 +212,16 @@ class JetbotDAMWrapper:
     @staticmethod
     def _require_command(command: torch.Tensor) -> None:
         if command.dim() != 2 or command.shape != (1, 2):
-            raise ValueError(f"JetbotDAMWrapper expected command shape (1, 2), got {tuple(command.shape)}.")
+            raise ValueError(
+                f"JetbotDAMWrapper expected command shape (1, 2), got {tuple(command.shape)}."
+            )
 
     @staticmethod
     def _require_state(state: torch.Tensor) -> None:
         if state.dim() != 2 or state.shape[0] != 1 or state.shape[1] < 3:
-            raise ValueError(f"JetbotDAMWrapper expected state shape (1, >=3), got {tuple(state.shape)}.")
+            raise ValueError(
+                f"JetbotDAMWrapper expected state shape (1, >=3), got {tuple(state.shape)}."
+            )
 
     def _record_results(self, results, delta: float) -> None:
         decision_names = []
@@ -152,139 +236,3 @@ class JetbotDAMWrapper:
                 self._last_decision = decision
                 return
         self._last_decision = "CLAMP" if delta > 1e-5 else "PASS"
-
-
-def _register_jetbot_api(dam, solver: AckermannSolver) -> None:
-    """Register the Jetbot diff-drive preset, callback, and solver with DAM."""
-    global _DAM_JETBOT_REGISTERED
-    if _DAM_JETBOT_REGISTERED:
-        return
-    missing = [
-        name
-        for name in ("register_preset", "register_callback", "register_solver")
-        if not hasattr(dam, name)
-    ]
-    if missing:
-        raise ImportError(
-            "JetbotDAMWrapper needs the DAM runtime with register_preset/register_callback/register_solver. "
-            f"Missing: {', '.join(missing)}."
-        )
-
-    _register_preset_once(dam)
-    _register_solver_once(dam, solver)
-    _register_solver_factory_once(dam)
-
-    @dam.register_callback(
-        JETBOT_BOUNDARY_CALLBACK,
-        layer="L1",
-        category="execution",
-        description="Rolls out a diff-drive command and checks the next state stays in the safe arena.",
-        params={
-            "x_min": "Minimum safe local x",
-            "x_max": "Maximum safe local x",
-            "y_abs_max": "Maximum safe absolute local y",
-            "dt": "Rollout horizon in seconds",
-        },
-    )
-    def jetbot_rollout_inside_safe_region(
-        *,
-        obs,
-        action,
-        x_min=-0.28,
-        x_max=1.20,
-        y_abs_max=0.24,
-        dt=1.0 / 15.0,
-    ):
-        # obs is an Observation; action is an ActionProposal.
-        # joint_positions holds [x, y, yaw]; target_joint_positions holds [v, omega].
-        state = list(obs.joint_positions)
-        command = list(action.target_joint_positions)
-        next_state = solver.rollout(state, command, dt=dt)
-        x_next = float(next_state[0])
-        y_next = float(next_state[1])
-        return x_min <= x_next <= x_max and abs(y_next) <= y_abs_max
-
-    _DAM_JETBOT_REGISTERED = True
-
-
-def _register_preset_once(dam) -> None:
-    kwargs = {
-        "joint_names": JETBOT_COMMAND_NAMES,
-        "assets": {},
-        "solvers": {
-            "base": {
-                "type": "ackermann_solver",
-                "capabilities": ["base", "rollout"],
-                "params": {
-                    "track_width": 0.12,
-                    "wheel_radius": 1.0,
-                    "default_dt": 1.0 / 60.0,
-                    "max_v": 1.2,
-                    "max_omega": 4.0,
-                },
-            }
-        },
-    }
-    try:
-        dam.register_preset(JETBOT_PRESET, **kwargs)
-    except TypeError:
-        minimal = {
-            "joint_names": JETBOT_COMMAND_NAMES,
-        }
-        try:
-            dam.register_preset(JETBOT_PRESET, **minimal)
-        except ValueError as exc:
-            if "already" not in str(exc).lower() and "exists" not in str(exc).lower():
-                raise
-    except ValueError as exc:
-        if "already" not in str(exc).lower() and "exists" not in str(exc).lower():
-            raise
-
-
-def _register_solver_once(dam, solver: AckermannSolver) -> None:
-    try:
-        dam.register_solver("jetbot_ackermann", solver, capabilities=["base", "rollout"])
-    except ValueError as exc:
-        if "already" not in str(exc).lower() and "exists" not in str(exc).lower():
-            raise
-
-
-def _register_solver_factory_once(dam) -> None:
-    if not hasattr(dam, "register_solver_factory"):
-        return
-
-    def make_ackermann_solver(params):
-        params = params or {}
-        return AckermannSolver(
-            track_width=float(params.get("track_width", 0.12)),
-            wheel_radius=float(params.get("wheel_radius", 1.0)),
-            default_dt=float(params.get("default_dt", 1.0 / 60.0)),
-            max_v=float(params.get("max_v", 1.2)),
-            max_omega=float(params.get("max_omega", 4.0)),
-        )
-
-    try:
-        dam.register_solver_factory(
-            "ackermann_solver",
-            make_ackermann_solver,
-            capabilities=["base", "rollout"],
-        )
-    except ValueError as exc:
-        if "already" not in str(exc).lower() and "exists" not in str(exc).lower():
-            raise
-
-
-def _as_flat(value):
-    if isinstance(value, torch.Tensor):
-        return value.detach().cpu().reshape(-1).tolist()
-    if hasattr(value, "detach") and hasattr(value.detach(), "cpu"):
-        return value.detach().cpu().reshape(-1).tolist()
-    if hasattr(value, "reshape"):
-        return value.reshape(-1).tolist()
-    if isinstance(value, dict):
-        return [value["x"], value["y"], value["yaw"]]
-    if all(hasattr(value, name) for name in ("x", "y", "yaw")):
-        return [value.x, value.y, value.yaw]
-    if isinstance(value, (list, tuple)):
-        return list(value)
-    raise TypeError(f"Cannot interpret DAM value as a flat vector: {type(value)!r}")

@@ -1,18 +1,29 @@
 # jetbot_lane_safety.yaml -- DAM safety config for the Jetbot boundary demo.
 #
-# Action vector: [v, omega]  (declared by the jetbot_diff_drive preset's
-# action_layout keys — see assets/presets.yaml)
-#   v     = forward linear velocity command in m/s
-#   omega = yaw-rate command in rad/s
+# Observation vector (5D):
+#   [x, y, yaw, v, omega]
+#   - pose group  [0:3]: x, y, yaw  — current planar pose in local frame
+#   - command group [3:5]: v, omega  — current velocity (0 in obs)
 #
-# The L1 callback rolls the command forward with a diff-drive/Ackermann solver
-# and rejects commands whose predicted next state enters the red left/right/
-# bottom bands. See examples/isaac_jetbot_lane_demo.py.
+# Action vector (5D):
+#   [x, y, yaw, v_cmd, omega_cmd]
+#   - pose group  [0:3]: echoed from obs (not commanded)
+#   - command group [3:5]: v_cmd, omega_cmd — requested velocity
+#
+# The L1 rollout boundary uses pose [x,y,yaw] from obs + command [v,omega]
+# from action to predict the next state and check it stays in the safe region.
+# On REJECT the fallback returns obs = [x,y,yaw,0,0], so the command
+# naturally becomes [0,0] (hold position / stop).
 
 version: "1"
 
 hardware:
   preset: jetbot_diff_drive
+  action_layout:
+    - name: pose
+      keys: [x, y, yaw]
+    - name: command
+      keys: [v, omega]
 
 safety:
   control_hz: 120
