@@ -127,7 +127,8 @@ def create_scene_cfg() -> type:
         ground = AssetBaseCfg(
             prim_path="/World/Warehouse",
             spawn=sim_utils.UsdFileCfg(
-                usd_path=f"{ISAAC_NUCLEUS_DIR}/Environments/Simple_Warehouse/warehouse.usd"
+                usd_path=f"{ISAAC_NUCLEUS_DIR}/Environments/Simple_Warehouse/warehouse.usd",
+                scale=(0.5, 0.5, 0.5),
             ),
         )
         dome_light = AssetBaseCfg(

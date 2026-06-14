@@ -190,6 +190,9 @@ class DAMSafetyWrapper:
         obs: torch.Tensor,
         gripper_action: float | torch.Tensor | None = None,
         gripper_obs: float | torch.Tensor | None = None,
+        workspace_center: torch.Tensor | None = None,
+        workspace_radius: float | None = None,
+        min_z: float | None = None,
     ) -> torch.Tensor:
         """Filter an Isaac EE pose target and return safe arm joint targets.
 
@@ -199,6 +202,9 @@ class DAMSafetyWrapper:
             gripper_action: Optional gripper target. EE IK preserves it as the
                 gripper joint target while DAM validates the full joint vector.
             gripper_obs: Optional current gripper position.
+            workspace_center: Optional (3,) or (1, 3) tensor for Cartesian workspace center.
+            workspace_radius: Optional float for Cartesian workspace radius.
+            min_z: Optional float for minimum Cartesian height.
         """
         if self._ee_guard is None or self._ee_resolver is None:
             raise RuntimeError("Call attach_isaac_controller() before filter_ee().")
@@ -211,6 +217,23 @@ class DAMSafetyWrapper:
         self._require_width(target_pose, 7, "target_pose")
         self._require_width(obs, self._n_arm, "obs")
 
+        # Apply Cartesian workspace clamping if requested
+        clamped_ee = False
+        target_pose_filtered = target_pose.clone()
+        if workspace_center is not None and workspace_radius is not None:
+            center = torch.as_tensor(workspace_center, dtype=target_pose.dtype, device=target_pose.device).reshape(3)
+            pos = target_pose_filtered[0, :3]
+            diff = pos - center
+            dist = torch.norm(diff)
+            if dist > workspace_radius:
+                target_pose_filtered[0, :3] = center + (diff / dist) * workspace_radius
+                clamped_ee = True
+
+        if min_z is not None:
+            if target_pose_filtered[0, 2] < min_z:
+                target_pose_filtered[0, 2] = min_z
+                clamped_ee = True
+
         g_obs = self._to_scalar(gripper_obs, 0.0, "gripper_obs")
         g_act = self._to_scalar(gripper_action, g_obs, "gripper_action")
         self._ee_resolver.set_gripper_target(g_act)
@@ -220,7 +243,7 @@ class DAMSafetyWrapper:
         ])
 
         dam_target_pose = torch.as_tensor(
-            isaac_wxyz_to_dam_xyzw(target_pose[0]),
+            isaac_wxyz_to_dam_xyzw(target_pose_filtered[0]),
             dtype=target_pose.dtype,
             device=target_pose.device,
         )
@@ -234,6 +257,12 @@ class DAMSafetyWrapper:
 
         self._step_count += 1
         self._record_results(self._ee_guard.last_results)
+
+        if clamped_ee:
+            if not self._last_clamped:
+                self._last_clamped = True
+                self._clamp_count += 1
+            self._last_decision = "CLAMP"
 
         if squeeze:
             safe_arm = safe_arm.squeeze(0)
