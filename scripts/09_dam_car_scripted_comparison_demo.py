@@ -125,7 +125,10 @@ def create_scene_cfg() -> type:
 
     class SceneCfg(InteractiveSceneCfg):
         ground = AssetBaseCfg(
-            prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg()
+            prim_path="/World/Warehouse",
+            spawn=sim_utils.UsdFileCfg(
+                usd_path=f"{ISAAC_NUCLEUS_DIR}/Environments/Simple_Warehouse/warehouse.usd"
+            ),
         )
         dome_light = AssetBaseCfg(
             prim_path="/World/Light",
