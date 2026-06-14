@@ -286,7 +286,7 @@ class TwinLaneDAMDemo:
     def setup(self) -> bool:
         sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
         self.sim = sim_utils.SimulationContext(sim_cfg)
-        self.sim.set_camera_view([2.15, -2.2, 1.75], [0.35, 0.0, 0.02])
+        self.sim.set_camera_view([-0.8, -1.5, 0.5], [1.8, 1.0, 0.1])
         self.sim_dt = self.sim.get_physics_dt()
 
         scene_cfg = create_scene_cfg()(num_envs=1, env_spacing=2.0)

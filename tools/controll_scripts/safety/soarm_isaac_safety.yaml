@@ -13,16 +13,14 @@ hardware:
   preset: so101_follower
 
 safety:
-  control_frequency_hz: 120    # Isaac Sim default physics rate
+  control_hz: 120    # Isaac Sim default physics rate
   enforcement_mode: enforce
   no_task_behavior: hold_position
 
 fallbacks:
   hold_position:
-    type: hold_position
     severity: 80
   slow_down:
-    type: slow_down
     severity: 40
     requires_proposal: true
     params:
