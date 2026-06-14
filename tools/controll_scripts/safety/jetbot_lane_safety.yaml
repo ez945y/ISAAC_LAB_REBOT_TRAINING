@@ -1,29 +1,32 @@
-# jetbot_lane_safety.yaml -- DAM safety config for Jetbot boundary demo.
+# jetbot_lane_safety.yaml -- DAM safety config for the Jetbot boundary demo.
 #
-# Action vector: [x_target, y_target] in world meters.
-# The safe region deliberately excludes the left/right side bands and the bottom
-# band drawn in red in scripts/09_dam_car_scripted_comparison_demo.py.
+# Action vector: [v, omega]  (declared by the jetbot_diff_drive preset's
+# action_layout keys — see assets/presets.yaml)
+#   v     = forward linear velocity command in m/s
+#   omega = yaw-rate command in rad/s
+#
+# The L1 callback rolls the command forward with a diff-drive/Ackermann solver
+# and rejects commands whose predicted next state enters the red left/right/
+# bottom bands. See examples/isaac_jetbot_lane_demo.py.
 
 version: "1"
 
 hardware:
-  preset: jetbot_target_2d
+  preset: jetbot_diff_drive
 
 safety:
-  control_frequency_hz: 120
+  control_hz: 120
   enforcement_mode: enforce
   no_task_behavior: hold_position
 
 fallbacks:
   hold_position:
-    type: hold_position
     severity: 80
-  clamp_to_region:
-    type: slow_down
+  slow_down:
     severity: 40
     requires_proposal: true
     params:
-      scale: 1.0
+      scale: 0.35
 
 guards:
   - L1: boundary
@@ -31,31 +34,19 @@ guards:
     timeout_ms: 10
 
 boundaries:
-  arena_target_inside_safe_region:
+  rollout_inside_safe_region:
     layer: L1
     type: single
     nodes:
-      - callback: jetbot_target_inside_safe_region
+      - callback: jetbot_rollout_inside_safe_region
         params:
           x_min: -0.28
           x_max: 1.20
           y_abs_max: 0.24
-
-  arena_position_limits:
-    layer: L1
-    type: single
-    nodes:
-      - callback: joint_position_limits
-        fallback: clamp_to_region
-        params:
-          # x lower bound keeps the target away from the bottom red band.
-          # y bounds keep the target away from the left/right red bands.
-          lower: [-0.28, -0.24]
-          upper: [1.20, 0.24]
+          dt: 0.12
 
 tasks:
   default:
-    description: "Jetbot 2D target stays inside the green safe region"
+    description: "Jetbot diff-drive command keeps rollout inside the green safe region"
     boundaries:
-      - arena_target_inside_safe_region
-      - arena_position_limits
+      - rollout_inside_safe_region
