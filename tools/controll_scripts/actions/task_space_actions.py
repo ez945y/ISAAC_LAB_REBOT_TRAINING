@@ -218,7 +218,7 @@ class DifferentialInverseKinematicsAction(ActionTerm):
             joint_pos_des = joint_pos.clone()
         
         # set the joint position command
-        self._asset.set_joint_position_target_index(joint_pos_des, self._joint_ids)
+        self._asset.set_joint_position_target_index(joint_pos_des, joint_ids=self._joint_ids)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         self._raw_actions[env_ids] = 0.0

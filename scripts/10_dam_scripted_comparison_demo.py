@@ -124,7 +124,7 @@ def create_scene_cfg(robot_config: SOArm101Config) -> type:
                 radius=0.16,
                 visual_material=sim_utils.PreviewSurfaceCfg(
                     diffuse_color=(0.1, 0.8, 0.2),
-                    opacity=0.25,
+                    opacity=0.05,
                 ),
             ),
             init_state=AssetBaseCfg.InitialStateCfg(pos=(0.32, 0.25, 0.14)),
@@ -135,7 +135,7 @@ def create_scene_cfg(robot_config: SOArm101Config) -> type:
                 radius=0.16,
                 visual_material=sim_utils.PreviewSurfaceCfg(
                     diffuse_color=(0.1, 0.8, 0.2),
-                    opacity=0.25,
+                    opacity=0.05,
                 ),
             ),
             init_state=AssetBaseCfg.InitialStateCfg(pos=(0.32, -0.25, 0.14)),
@@ -463,10 +463,10 @@ class ScriptedComparisonDemo:
         )
 
         # 5. Apply filtered targets back to the robot
-        robot.set_joint_position_target_index(safe_targets, arm_joint_ids)
+        robot.set_joint_position_target_index(safe_targets, joint_ids=arm_joint_ids)
         robot.set_joint_position_target_index(
             torch.tensor([[dam.last_safe_gripper]], device=self.sim.device),
-            gripper_joint_ids,
+            joint_ids=gripper_joint_ids,
         )
         robot.write_data_to_sim()
 
