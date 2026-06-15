@@ -8,7 +8,7 @@ Twin-lane Jetbot DAM boundary demo (Isaac Lab).
 
 Both cars chase the same scripted 2D target stream. The RAW car applies its
 nominal differential-drive command directly. The DAM car sends the same
-``[v, omega]`` command through robot-dam's SafetyGuard first; a diff-drive /
+``[v, omega]`` command through robot-dam's Guardrail first; a diff-drive /
 Ackermann solver rolls the command forward and guards against entering the red
 boundary bands. The ``[v, omega]`` action layout is declared by the
 ``jetbot_diff_drive`` preset (assets/presets.yaml); the stackfile is
@@ -119,8 +119,6 @@ def _cuboid(
 def create_scene_cfg() -> type:
     red = (0.92, 0.04, 0.04)
     green = (0.03, 0.45, 0.16)
-    raw_floor_color = (0.36, 0.07, 0.06)
-    dam_floor_color = (0.04, 0.24, 0.11)
     white = (0.86, 0.86, 0.86)
 
     class SceneCfg(InteractiveSceneCfg):
@@ -130,9 +128,7 @@ def create_scene_cfg() -> type:
                 usd_path=f"{ISAAC_NUCLEUS_DIR}/Environments/Simple_Warehouse/warehouse.usd",
                 scale=(0.25, 0.25, 0.25),
             ),
-            init_state=AssetBaseCfg.InitialStateCfg(
-                rot=(0.0, 0.0, -0.7071, 0.7071)
-            ),
+            init_state=AssetBaseCfg.InitialStateCfg(rot=(0.0, 0.0, -0.7071, 0.7071)),
         )
         dome_light = AssetBaseCfg(
             prim_path="/World/Light",
@@ -244,6 +240,14 @@ def _raw_target(step: int, total_steps: int, lane_y: float, device: str) -> torc
     loop = progress * math.pi * 2.0
     x = 0.42 + args_cli.target_scale * (0.64 * math.sin(loop * 0.86) - 0.35 * math.sin(loop * 1.7))
     local_y = args_cli.target_scale * (0.36 * math.sin(loop * 1.23))
+    # Opening surge: slam the very first left turn diagonally past the red side
+    # band (|y| > SAFE_Y_LIMIT) so the RAW car visibly breaches it while DAM
+    # clamps the same command back inside. A half-sine bump over the first ~24%
+    # of the run gives a sharp "爆衝" onset that decays back into the loop.
+    if progress < 0.24:
+        surge = math.sin(progress / 0.24 * math.pi)  # 0 -> 1 -> 0
+        local_y += args_cli.target_scale * 0.40 * surge
+        x += args_cli.target_scale * 0.34 * surge
     if 0.58 < progress < 0.78:
         x -= args_cli.target_scale * 0.55
     return torch.tensor([[x, lane_y + local_y]], dtype=torch.float32, device=device)
@@ -298,7 +302,9 @@ class TwinLaneDAMDemo:
         self.dam_guard = JetbotDAMWrapper(
             self.stackfile,
             device=self.sim.device,
-            solver=AckermannSolver(track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03, max_v=1.4, max_omega=6.0)
+            solver=AckermannSolver(
+                track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03, max_v=1.4, max_omega=6.0
+            ),
         )
         self._reset_robots()
 
@@ -308,7 +314,7 @@ class TwinLaneDAMDemo:
         print("  Red bands:     forbidden left/right/bottom boundary zones")
         print("  Green region:  allowed target region")
         print("  RAW lane:      applies nominal [v, omega] directly")
-        print("  DAM lane:      applies SafetyGuard-validated [v, omega]")
+        print("  DAM lane:      applies Guardrail-validated [v, omega]")
         print("=" * 78 + "\n")
         return True
 
@@ -333,7 +339,7 @@ class TwinLaneDAMDemo:
             self.sim.step()
             self.scene.update(self.sim_dt)
 
-            self._record_step(dam_raw_command, safe_command)
+            self._record_step()
             if step % args_cli.log_every == 0 or step == args_cli.steps - 1:
                 self._print_step(step, dam_raw_command, safe_command)
 
@@ -408,7 +414,7 @@ class TwinLaneDAMDemo:
         right = (command[:, 0] + command[:, 1] * JETBOT_TRACK_WIDTH / 2.0) / wheel_radius
         return torch.stack([left, right], dim=1).to(dtype=torch.float32)
 
-    def _record_step(self, raw_command: torch.Tensor, safe_command: torch.Tensor) -> None:
+    def _record_step(self) -> None:
         raw_pos = self._position(self.raw_jetbot)
         dam_pos = self._position(self.dam_jetbot)
         raw_margin = self._safe_margin(_to_local_target(raw_pos, RAW_LANE_Y))
@@ -454,7 +460,7 @@ class TwinLaneDAMDemo:
             [
                 "",
                 "TWIN-LANE DAM BOUNDARY SUMMARY",
-                "Same target stream; RAW applies nominal [v, omega], DAM applies SafetyGuard-validated [v, omega].",
+                "Same target stream; RAW applies nominal [v, omega], DAM applies Guardrail-validated [v, omega].",
                 f"Steps: {self.metrics.steps}",
                 f"DAM decisions: {decisions}",
                 f"DAM interventions: {self.metrics.interventions} ({self.dam_guard.intervention_rate:.1%})",
