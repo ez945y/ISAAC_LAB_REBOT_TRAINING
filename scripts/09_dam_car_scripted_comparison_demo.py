@@ -46,6 +46,24 @@ parser.add_argument(
 parser.add_argument("--drive-gain", type=float, default=4.2, help="Target follower drive gain")
 parser.add_argument("--log-every", type=int, default=60)
 parser.add_argument(
+    "--worker",
+    action="store_true",
+    help="Spawn a walking construction worker in each lane; the RAW car drives "
+    "into it during the opening surge while the DAM car is clamped short.",
+)
+parser.add_argument(
+    "--worker-enter-step", type=int, default=40,
+    help="Phase offset (steps) shifting where the worker is in its back-and-forth "
+    "cycle — use it to line the crash up. The worker moves from step 0.",
+)
+parser.add_argument(
+    "--worker-scale", type=float, default=0.2, help="Worker size (1.0 = ~1.8m human; 0.2 ≈ 0.36m)."
+)
+parser.add_argument(
+    "--worker-yaw", type=float, default=90.0,
+    help="Extra yaw (deg) to correct the worker model's facing (try 90/180/-90).",
+)
+parser.add_argument(
     "--stackfile",
     type=str,
     default=None,
@@ -78,6 +96,7 @@ from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 from controll_scripts.safety import JetbotDAMWrapper, AckermannSolver
+from controll_scripts.scene import WORKER_USD, SlidingWorker, WorkerPath
 from controll_scripts.utils import physx_to_torch
 
 
@@ -116,7 +135,33 @@ def _cuboid(
     )
 
 
-def create_scene_cfg() -> type:
+# Worker walk paths (world XY). The worker walks ALONG the outer red forbidden
+# band (constant y = lane ± 0.54, sweeping x), so only the RAW car — which
+# surges up into that band — drives into it. The DAM car is clamped to
+# |local y| <= 0.38 (world y >= -1.10 on the DAM side) and never reaches the
+# y = -1.26 band, so the same worker is safe in the DAM lane. Tune to line up
+# the crash. RED_BAND_Y is the outer side-band center offset from lane center.
+RED_BAND_Y = ARENA_WIDTH / 2.0 - SIDE_BAND_WIDTH / 2.0  # 0.54
+# Both workers sit at the SAME local offset (lane + 0.54) — the band the car
+# surges toward (+local_y). On the DAM side that is the divider-side band at
+# y = -0.18, which the clamped DAM car (|local y| <= 0.38) never reaches, so the
+# DAM worker is safe; the RAW car breaches the y = 1.26 band and hits its worker.
+RAW_WORKER_START = (0.10, RAW_LANE_Y + RED_BAND_Y)
+RAW_WORKER_END = (1.30, RAW_LANE_Y + RED_BAND_Y)
+DAM_WORKER_START = (0.10, DAM_LANE_Y + RED_BAND_Y)
+DAM_WORKER_END = (1.30, DAM_LANE_Y + RED_BAND_Y)
+
+
+def _worker_asset(pos: tuple[float, float]) -> AssetBaseCfg:
+    sc = args_cli.worker_scale
+    return AssetBaseCfg(
+        prim_path="/World/__worker__",  # replaced via .replace() by caller
+        spawn=sim_utils.UsdFileCfg(usd_path=WORKER_USD, scale=(sc, sc, sc)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(pos[0], pos[1], 0.0)),
+    )
+
+
+def create_scene_cfg(with_worker: bool = False) -> type:
     red = (0.92, 0.04, 0.04)
     green = (0.03, 0.45, 0.16)
     white = (0.86, 0.86, 0.86)
@@ -152,14 +197,14 @@ def create_scene_cfg() -> type:
 
         raw_left_forbidden = AssetBaseCfg(
             prim_path="/World/RawArena/LeftForbidden",
-            spawn=_cuboid((ARENA_LENGTH, SIDE_BAND_WIDTH, 0.001), red),
+            spawn=_cuboid((SAFE_X_MAX - SAFE_X_MIN, SIDE_BAND_WIDTH, 0.001), red),
             init_state=AssetBaseCfg.InitialStateCfg(
-                pos=(LANE_CENTER_X, RAW_LANE_Y + ARENA_WIDTH / 2.0 - SIDE_BAND_WIDTH / 2.0, 0.0002)
+                pos=((SAFE_X_MIN + SAFE_X_MAX) / 2.0, RAW_LANE_Y + ARENA_WIDTH / 2.0 - SIDE_BAND_WIDTH / 2.0, 0.0002)
             ),
         )
         raw_right_forbidden = AssetBaseCfg(
             prim_path="/World/RawArena/RightForbidden",
-            spawn=_cuboid((ARENA_LENGTH, SIDE_BAND_WIDTH, 0.001), red),
+            spawn=_cuboid((SAFE_X_MAX - SAFE_X_MIN, SIDE_BAND_WIDTH, 0.001), red),
             init_state=AssetBaseCfg.InitialStateCfg(
                 pos=(LANE_CENTER_X, RAW_LANE_Y - ARENA_WIDTH / 2.0 + SIDE_BAND_WIDTH / 2.0, 0.0002)
             ),
@@ -171,14 +216,14 @@ def create_scene_cfg() -> type:
         )
         dam_left_forbidden = AssetBaseCfg(
             prim_path="/World/DamArena/LeftForbidden",
-            spawn=_cuboid((ARENA_LENGTH, SIDE_BAND_WIDTH, 0.001), red),
+            spawn=_cuboid((SAFE_X_MAX - SAFE_X_MIN, SIDE_BAND_WIDTH, 0.001), red),
             init_state=AssetBaseCfg.InitialStateCfg(
                 pos=(LANE_CENTER_X, DAM_LANE_Y + ARENA_WIDTH / 2.0 - SIDE_BAND_WIDTH / 2.0, 0.0002)
             ),
         )
         dam_right_forbidden = AssetBaseCfg(
             prim_path="/World/DamArena/RightForbidden",
-            spawn=_cuboid((ARENA_LENGTH, SIDE_BAND_WIDTH, 0.001), red),
+            spawn=_cuboid((SAFE_X_MAX - SAFE_X_MIN, SIDE_BAND_WIDTH, 0.001), red),
             init_state=AssetBaseCfg.InitialStateCfg(
                 pos=(LANE_CENTER_X, DAM_LANE_Y - ARENA_WIDTH / 2.0 + SIDE_BAND_WIDTH / 2.0, 0.0002)
             ),
@@ -216,6 +261,15 @@ def create_scene_cfg() -> type:
 
         raw_jetbot = JETBOT_CONFIG.replace(prim_path="/World/RawArena/Jetbot")
         dam_jetbot = JETBOT_CONFIG.replace(prim_path="/World/DamArena/Jetbot")
+
+    if with_worker:
+        # Set on the class before instantiation so the configclass picks them up.
+        SceneCfg.raw_worker = _worker_asset(RAW_WORKER_START).replace(
+            prim_path="/World/RawArena/Worker"
+        )
+        SceneCfg.dam_worker = _worker_asset(DAM_WORKER_START).replace(
+            prim_path="/World/DamArena/Worker"
+        )
 
     return SceneCfg
 
@@ -283,6 +337,7 @@ class TwinLaneDAMDemo:
         self.raw_jetbot = None
         self.dam_jetbot = None
         self.dam_guard: JetbotDAMWrapper | None = None
+        self.workers: list[SlidingWorker] = []
         self.sim_dt = 0.0
         self.metrics = BoundaryMetrics()
         self.stackfile = args_cli.stackfile or "examples/stackfiles/jetbot_lane_safety.yaml"
@@ -290,20 +345,25 @@ class TwinLaneDAMDemo:
     def setup(self) -> bool:
         sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
         self.sim = sim_utils.SimulationContext(sim_cfg)
-        self.sim.set_camera_view([-0.8, -1.5, 0.5], [1.8, 1.0, 0.1])
+        # Eye behind the midpoint of the two start lines (cars start at
+        # x=0.18, y=±0.72 -> midpoint (0.18, 0)), pulled back; look at the RAW
+        # crash danger point (red band y≈1.26, x≈0.7).
+        self.sim.set_camera_view([3.0, -1.5, 1.2], [-1.8, 1.3, 0])
         self.sim_dt = self.sim.get_physics_dt()
 
-        scene_cfg = create_scene_cfg()(num_envs=1, env_spacing=2.0)
+        scene_cfg = create_scene_cfg(with_worker=args_cli.worker)(num_envs=1, env_spacing=2.0)
         self.scene = InteractiveScene(scene_cfg)
         self.sim.reset()
 
         self.raw_jetbot = self.scene["raw_jetbot"]
         self.dam_jetbot = self.scene["dam_jetbot"]
+        if args_cli.worker:
+            self._setup_workers()
         self.dam_guard = JetbotDAMWrapper(
             self.stackfile,
             device=self.sim.device,
             solver=AckermannSolver(
-                track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03, max_v=1.4, max_omega=6.0
+                track_width=JETBOT_TRACK_WIDTH, wheel_radius=0.03, max_v=2.2, max_omega=6.0
             ),
         )
         self._reset_robots()
@@ -318,10 +378,30 @@ class TwinLaneDAMDemo:
         print("=" * 78 + "\n")
         return True
 
+    def _setup_workers(self) -> None:
+        common = dict(
+            enter_step=args_cli.worker_enter_step,
+            walk_steps=max(args_cli.steps // 3, 200),  # slower one-way traverse
+            yaw_offset_deg=args_cli.worker_yaw,
+            loop=True,
+        )
+        specs = [
+            ("/World/RawArena/Worker", RAW_WORKER_START, RAW_WORKER_END),
+            ("/World/DamArena/Worker", DAM_WORKER_START, DAM_WORKER_END),
+        ]
+        for prim_path, start, end in specs:
+            worker = SlidingWorker(prim_path, WorkerPath(start_xy=start, end_xy=end, **common))
+            if worker.build():
+                self.workers.append(worker)
+        print(f"[demo] sliding workers active: {len(self.workers)}")
+
     def run(self) -> None:
         for step in range(args_cli.steps):
             if not simulation_app.is_running():
                 return
+
+            for worker in self.workers:
+                worker.update(step)
 
             raw_target = _raw_target(step, args_cli.steps, RAW_LANE_Y, self.sim.device)
             dam_raw_target = _raw_target(step, args_cli.steps, DAM_LANE_Y, self.sim.device)
@@ -403,7 +483,7 @@ class TwinLaneDAMDemo:
             torch.sin(desired_heading - yaw), torch.cos(desired_heading - yaw)
         )
         distance = torch.linalg.norm(delta, dim=1)
-        forward = torch.clamp(args_cli.drive_gain * distance * torch.cos(heading_error), -1.4, 1.4)
+        forward = torch.clamp(args_cli.drive_gain * distance * torch.cos(heading_error), -2.2, 2.2)
         omega = torch.clamp(5.0 * heading_error, -5.0, 5.0)
         return torch.stack([forward, omega], dim=1).to(dtype=torch.float32)
 
