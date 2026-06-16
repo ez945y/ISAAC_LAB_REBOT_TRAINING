@@ -96,6 +96,48 @@ def _livestream_enabled(args_cli) -> bool:
     return int(os.environ.get("LIVESTREAM", 0)) >= 1
 
 
+def enable_native_livestream(public_ip: str | None = None) -> bool:
+    """Turn on WebRTC livestreaming on a *native* ``isaacsim.SimulationApp``.
+
+    ``apply_livestream_defaults`` only works through Isaac Lab's ``AppLauncher``
+    (it injects ``kit_args``). Scripts that boot the native SimulationApp instead
+    (required by the Go2 RL policy — see ``scripts/13_go2_squad_dispatch.py``) call
+    this *after* the app is up: it applies the same carb settings that the Lab path
+    bakes in and enables ``omni.kit.livestream.webrtc``.
+
+    Best-effort: returns False (and logs) if the extension cannot be enabled, so the
+    caller can continue headless rather than crash. Verifying the actual remote
+    stream still needs a WebRTC client (see [[isaaclab-webrtc-livestream]]).
+    """
+    import carb
+
+    public_ip = public_ip or os.environ.get("LIVESTREAM_PUBLIC_IP") or _primary_ip()
+    settings = carb.settings.get_settings()
+    settings.set_string(f"{_STREAM}/publicIp", public_ip)
+    settings.set_bool("/app/livestream/allowResize", True)
+    settings.set_bool(f"{_STREAM}/allowDynamicResize", True)
+    settings.set_bool(f"{_STREAM}/enableEventTracing", False)
+    settings.set_bool("/app/runLoops/main/rateLimitEnabled", True)
+    settings.set_int("/app/runLoops/main/rateLimitFrequency", 60)
+
+    try:
+        import omni.kit.app
+
+        mgr = omni.kit.app.get_app().get_extension_manager()
+        for ext in ("omni.kit.livestream.webrtc", "omni.kit.livestream.app"):
+            mgr.set_extension_enabled_immediate(ext, True)
+    except Exception as exc:  # noqa: BLE001 -- best-effort, keep running headless
+        print(f"[livestream] could not enable WebRTC extension ({exc}); headless", flush=True)
+        return False
+
+    print(
+        f"[livestream] native WebRTC on -> client connects to {public_ip} "
+        "(signal 49100 / stream 47998), resize on, 60fps cap",
+        flush=True,
+    )
+    return True
+
+
 def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
     """Inject publicIp + allowDynamicResize into ``args_cli.kit_args`` when streaming.
 
