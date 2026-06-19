@@ -3,6 +3,12 @@
 Numbered demo scripts for learning Isaac Lab fundamentals — from basic scene setup
 to robot teleoperation, dataset replay, and DAM safety demos.
 
+> **Heads-up — this machine runs headless (no local window).** You *watch* a demo by
+> connecting the **Isaac Sim WebRTC client** and adding `--livestream 2` — otherwise
+> you'll only see console logs and think nothing happened. The `demoNN_*.sh` launchers
+> turn streaming on (and source the env/ROS) for you. First: `source ~/IsaacLab/env_isaaclab/bin/activate`.
+> See **WebRTC Livestreaming** below for the client IP/ports.
+
 ## Scripts
 
 | # | Script | Description |
