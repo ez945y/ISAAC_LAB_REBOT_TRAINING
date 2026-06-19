@@ -5,14 +5,16 @@
 
 set -e
 
+# Repo root = parent of this script's dir (this launcher lives in scripts/).
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
 # Setup Isaac Lab environment
 echo "[demo10] Setting up Isaac Lab environment..."
 conda deactivate 2>/dev/null || true
-cd ~/IsaacLab
-source env_isaaclab/bin/activate
+source ~/IsaacLab/env_isaaclab/bin/activate
 
 # Navigate to workspace
-cd ~/ISAAC_LAB_REBOT_TRAINING
+cd "$REPO_DIR"
 
 # Setup ROS 2
 echo "[demo10] Sourcing ROS 2..."
@@ -56,5 +58,5 @@ echo ""
 
 # Launch demo with WebRTC livestream (foreground; Ctrl+C stops it and the guard).
 # Extra args are forwarded, e.g. tune the camera:
-#   ./demo10_ros_webrtc.sh --cam-eye "-3,0,2.5" --cam-target "0.7,0,0.1"
+#   scripts/demo10_ros_webrtc.sh --cam-eye "-3,0,2.5" --cam-target "0.7,0,0.1"
 python scripts/10_dam_car_ros_comparison_demo.py --livestream 2 "$@"

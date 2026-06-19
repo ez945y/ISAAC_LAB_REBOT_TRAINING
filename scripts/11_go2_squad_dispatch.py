@@ -25,7 +25,7 @@ PhysxManager breaks the native Go2 policy). Headless by default; pass --livestre
 for the WebRTC stream and drive from the launching terminal.
 
 Run:  python scripts/11_go2_squad_dispatch.py [--livestream 2] [--auto] [--max-seconds N]
-      (or ./demo11_go2_squad_ros.sh — launches the sim + interactive dispatch client)
+      (or scripts/demo11_go2_squad_ros.sh — sim + interactive dispatch client)
 """
 
 import argparse

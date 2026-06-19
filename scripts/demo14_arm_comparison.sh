@@ -5,14 +5,16 @@
 
 set -e
 
+# Repo root = parent of this script's dir (this launcher lives in scripts/).
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
 # Setup Isaac Lab environment
 echo "[demo14] Setting up Isaac Lab environment..."
 conda deactivate 2>/dev/null || true
-cd ~/IsaacLab
-source env_isaaclab/bin/activate
+source ~/IsaacLab/env_isaaclab/bin/activate
 
 # Navigate to workspace
-cd ~/ISAAC_LAB_REBOT_TRAINING
+cd "$REPO_DIR"
 
 echo ""
 echo "=========================================================================="

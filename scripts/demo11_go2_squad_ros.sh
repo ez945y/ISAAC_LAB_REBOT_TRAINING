@@ -12,10 +12,13 @@
 
 set -e
 
+# Repo root = parent of this script's dir (this launcher lives in scripts/).
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
 echo "[demo11] Setting up Isaac Lab + ROS 2..."
 conda deactivate 2>/dev/null || true
 source ~/IsaacLab/env_isaaclab/bin/activate
-cd ~/ISAAC_LAB_REBOT_TRAINING
+cd "$REPO_DIR"
 source /opt/ros/jazzy/setup.bash
 if [[ $(uname -m) == "aarch64" ]]; then
     export LD_PRELOAD="/lib/aarch64-linux-gnu/libgomp.so.1"
