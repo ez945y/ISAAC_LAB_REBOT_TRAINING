@@ -17,7 +17,7 @@ to robot teleoperation, dataset replay, and DAM safety demos.
 | 08 | `08_augmented_replay.py` | Augmented replay with multiple episodes, cube configs & cameras |
 | 09 | `09_dam_car_scripted_comparison_demo.py` | Twin-lane Jetbot RAW vs DAM SafetyGuard comparison |
 | 10 | `10_dam_scripted_comparison_demo.py` | Scripted RAW vs DAM safety comparison for recording |
-| 11 | `11_dam_safety_demo.py` | Keyboard EE control with DAM filtering |
+| 13 | `13_dam_safety_demo.py` | Keyboard EE control with DAM filtering |
 | 12 | `12_dam_teleoperate_demo.py` | Leader-arm teleoperation with DAM filtering |
 ## Progression
 

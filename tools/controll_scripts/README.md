@@ -161,7 +161,7 @@ This device receives end-effector pose data from a socket server (e.g., `lerobot
 
 `DAMSafetyWrapper` filters SO-ARM-101 commands through a local `dam.SafetyGuard`
 before they reach Isaac simulation. It currently supports one Isaac environment
-at a time; `scripts/11_dam_safety_demo.py` rejects `--num_envs` values other than
+at a time; `scripts/13_dam_safety_demo.py` rejects `--num_envs` values other than
 `1` to avoid silently filtering only the first environment.
 
 Install or expose the local DAM package that provides `dam.SafetyGuard`, then

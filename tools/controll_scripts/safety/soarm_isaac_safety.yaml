@@ -4,7 +4,7 @@
 # Joint limits match the USD articulation properties.
 #
 # Usage:
-#   python scripts/11_dam_safety_demo.py
+#   python scripts/13_dam_safety_demo.py
 #   python scripts/12_dam_teleoperate_demo.py
 
 version: "1"

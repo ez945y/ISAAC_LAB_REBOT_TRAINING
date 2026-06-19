@@ -16,10 +16,10 @@ Install:
 
 Usage:
     # Keyboard IK control with DAM safety
-    python scripts/11_dam_safety_demo.py
+    python scripts/13_dam_safety_demo.py
 
     # Show clamping in action — high-speed keyboard input will be smoothed
-    python scripts/11_dam_safety_demo.py --controller ik
+    python scripts/13_dam_safety_demo.py --controller ik
 """
 
 import argparse
