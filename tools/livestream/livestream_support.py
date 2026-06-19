@@ -96,46 +96,62 @@ def _livestream_enabled(args_cli) -> bool:
     return int(os.environ.get("LIVESTREAM", 0)) >= 1
 
 
-def enable_native_livestream(public_ip: str | None = None) -> bool:
-    """Turn on WebRTC livestreaming on a *native* ``isaacsim.SimulationApp``.
+def _stream_kit_args(public_ip: str) -> list[str]:
+    """The proven WebRTC kit settings — the single source of truth shared by the
+    AppLauncher path (:func:`apply_livestream_defaults`) and the native-app path
+    (:func:`native_livestream_argv`). Each line fixed a real failure we hit; see
+    [[isaaclab-webrtc-livestream]]."""
+    return [
+        # Run without an OS window. The streaming app otherwise opens a window at
+        # the desktop resolution (e.g. 1440x900) that differs from the resolution
+        # the client negotiated (1920x1080) -> "Cannot stream video frame" -> black.
+        # The official isaacsim.exp.full.streaming app passes this too.
+        "--no-window",
+        # ICE candidate the remote client must reach (NAT/VPN-friendly).
+        f"--{_STREAM}/publicIp={public_ip}",
+        # Resize must be enabled at BOTH layers, exactly like the stable official
+        # isaacsim.exp.full.streaming.kit. With only primaryStream/allowDynamicResize
+        # (and not app/livestream/allowResize) the resize is half-wired: the client
+        # gets one frame then the stream drops. Both -> stable.
+        "--/app/livestream/allowResize=true",
+        f"--{_STREAM}/allowDynamicResize=true",
+        # Re-enable the main run-loop rate limit (60 Hz), like the official
+        # isaacsim.exp.full / uidoc streaming kits. Isaac Lab's headless experience
+        # sets rateLimitEnabled=false, so the loop runs flat-out -> steps dumped at
+        # once and the stream has no steady cadence. Cap it for real-time playback.
+        "--/app/runLoops/main/rateLimitEnabled=true",
+        "--/app/runLoops/main/rateLimitFrequency=60",
+        # Stop NvStreamer-*.etli trace logs piling up in the working dir.
+        f"--{_STREAM}/enableEventTracing=false",
+        # Select the WebRTC transport explicitly. The official streaming .kit bakes
+        # this in; on the bare base experience (native SimulationApp) the livestream
+        # app won't start the WebRTC signaling server without it -> client can't
+        # connect / hangs. Harmless on the AppLauncher path (already webrtc there).
+        f"--{_STREAM}/streamType=webrtc",
+    ]
 
-    ``apply_livestream_defaults`` only works through Isaac Lab's ``AppLauncher``
-    (it injects ``kit_args``). Scripts that boot the native SimulationApp instead
-    (required by the Go2 RL policy — see ``scripts/13_go2_squad_dispatch.py``) call
-    this *after* the app is up: it applies the same carb settings that the Lab path
-    bakes in and enables ``omni.kit.livestream.webrtc``.
 
-    Best-effort: returns False (and logs) if the extension cannot be enabled, so the
-    caller can continue headless rather than crash. Verifying the actual remote
-    stream still needs a WebRTC client (see [[isaaclab-webrtc-livestream]]).
+def native_livestream_argv(public_ip: str | None = None) -> list[str]:
+    """Kit launch args to WebRTC-stream a *native* ``isaacsim.SimulationApp``.
+
+    The Go2 RL policy needs the native SimulationApp, which cannot use Isaac Lab's
+    ``AppLauncher`` (its PhysxManager breaks the native World — see
+    ``scripts/11_go2_squad_dispatch.py``), so ``apply_livestream_defaults`` does not
+    apply. Inject the returned args into ``sys.argv`` *before* constructing
+    ``SimulationApp`` — SimulationApp forwards unrecognised argv straight to Kit, so
+    they take effect at launch (the no-window/publicIp/resolution settings MUST be
+    set at launch, not after). ``--enable omni.kit.livestream.app`` loads the same
+    streaming extension Isaac Lab's ``--livestream 2`` enables; the rest are the
+    shared proven settings. Verifying the live stream still needs a WebRTC client.
     """
-    import carb
-
     public_ip = public_ip or os.environ.get("LIVESTREAM_PUBLIC_IP") or _primary_ip()
-    settings = carb.settings.get_settings()
-    settings.set_string(f"{_STREAM}/publicIp", public_ip)
-    settings.set_bool("/app/livestream/allowResize", True)
-    settings.set_bool(f"{_STREAM}/allowDynamicResize", True)
-    settings.set_bool(f"{_STREAM}/enableEventTracing", False)
-    settings.set_bool("/app/runLoops/main/rateLimitEnabled", True)
-    settings.set_int("/app/runLoops/main/rateLimitFrequency", 60)
-
-    try:
-        import omni.kit.app
-
-        mgr = omni.kit.app.get_app().get_extension_manager()
-        for ext in ("omni.kit.livestream.webrtc", "omni.kit.livestream.app"):
-            mgr.set_extension_enabled_immediate(ext, True)
-    except Exception as exc:  # noqa: BLE001 -- best-effort, keep running headless
-        print(f"[livestream] could not enable WebRTC extension ({exc}); headless", flush=True)
-        return False
-
+    argv = ["--enable", "omni.kit.livestream.app", *_stream_kit_args(public_ip)]
     print(
-        f"[livestream] native WebRTC on -> client connects to {public_ip} "
-        "(signal 49100 / stream 47998), resize on, 60fps cap",
+        f"[livestream] native WebRTC -> client connects to {public_ip} "
+        "(signal 49100 / stream 47998), no-window, resize on, 60fps cap",
         flush=True,
     )
-    return True
+    return argv
 
 
 def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
@@ -162,32 +178,9 @@ def apply_livestream_defaults(args_cli, public_ip: str | None = None) -> None:
 
     public_ip = public_ip or os.environ.get("LIVESTREAM_PUBLIC_IP") or _primary_ip()
 
-    extra = [
-        # Run without an OS window. The streaming app otherwise opens a window at
-        # the desktop resolution (e.g. 1440x900) that differs from the resolution
-        # the client negotiated (1920x1080) -> "Cannot stream video frame" -> black.
-        # The official isaacsim.exp.full.streaming app passes this too.
-        "--no-window",
-        # ICE candidate the remote client must reach (NAT/VPN-friendly).
-        f"--{_STREAM}/publicIp={public_ip}",
-        # Resize must be enabled at BOTH layers, exactly like the stable official
-        # isaacsim.exp.full.streaming.kit. With only primaryStream/allowDynamicResize
-        # (and not app/livestream/allowResize) the resize is half-wired: the client
-        # gets one frame then the stream drops. Both -> stable.
-        "--/app/livestream/allowResize=true",
-        f"--{_STREAM}/allowDynamicResize=true",
-        # Re-enable the main run-loop rate limit (60 Hz), like the official
-        # isaacsim.exp.full / uidoc streaming kits. Isaac Lab's headless experience
-        # sets rateLimitEnabled=false, so the loop runs flat-out -> steps dumped at
-        # once and the stream has no steady cadence. Cap it for real-time playback.
-        "--/app/runLoops/main/rateLimitEnabled=true",
-        "--/app/runLoops/main/rateLimitFrequency=60",
-        # Stop NvStreamer-*.etli trace logs piling up in the working dir.
-        f"--{_STREAM}/enableEventTracing=false",
-    ]
     # AppLauncher splits kit_args on whitespace, so a space-joined string is fine.
     existing = (getattr(args_cli, "kit_args", "") or "").strip()
-    args_cli.kit_args = (existing + " " + " ".join(extra)).strip()
+    args_cli.kit_args = (existing + " " + " ".join(_stream_kit_args(public_ip))).strip()
 
     print(
         f"[livestream] enabled -> client connects to {public_ip} "

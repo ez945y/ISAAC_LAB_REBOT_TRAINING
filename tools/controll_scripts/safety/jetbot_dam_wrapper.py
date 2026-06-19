@@ -179,9 +179,14 @@ class JetbotDAMWrapper:
         # DAM 0.6.0: hand this guard's own solver to the runtime so the boundary
         # callback receives it through the injected ``solvers`` mapping. Each
         # wrapper instance thus uses its own solver (no shared global closure).
+        # degrees_mode=False: our 5D "joints" are cartesian pose + velocity
+        # ([x, y, yaw, v, omega] in m / rad / m·s⁻¹ / rad·s⁻¹), NOT motor degrees.
+        # DAM defaults degrees_mode=True and would scale every value by π/180,
+        # corrupting the pose/command the rollout boundary sees.
         self._guard = dam.SafetyGuard(
             self._resolve_stackfile(stackfile),
             task=task,
+            degrees_mode=False,
             solvers={_SOLVER_KEY: self.solver},
         )
         self._device = device
