@@ -10,7 +10,7 @@ SimulationContext (which swaps in its own PhysxManager). So this uses the native
 `isaacsim.SimulationApp` + `World`.
 
 Launch -> World -> one Go2 (pretrained policy) -> forward command -> check it
-walks forward.  Run:  python scripts/_go2_smoke.py
+walks forward.  Run:  python scripts/smoke/_go2_smoke.py
 """
 
 import os
@@ -20,7 +20,7 @@ from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": True})
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "tools"))
 
 import omni.kit.app  # noqa: E402
 
