@@ -62,8 +62,6 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("recall")
     sub.add_parser("halt")
-    sub.add_parser("help")
-    sub.add_parser("quit")
     return parser
 
 
@@ -107,6 +105,7 @@ class DispatchClient(Node):
         msg = String()
         msg.data = json.dumps(payload, separators=(",", ":"))
         self._pub.publish(msg)
+        rclpy.spin_once(self, timeout_sec=0.05)  # flush the publication
         self.get_logger().info(f"published: {msg.data}")
 
 
@@ -118,6 +117,8 @@ def main() -> None:
         _interactive_mode(args.topic)
         return
 
+    if args.verb is None:
+        parser.error("give a subcommand (dispatch/regroup/patrol/recall/halt) or --interactive")
     payload = _payload_from_args(args)
 
     _rclpy_init()
@@ -129,8 +130,6 @@ def main() -> None:
                 "Publishing anyway (may be dropped)."
             )
         node.publish(payload)
-        # Spin briefly to flush the publication before shutdown.
-        rclpy.spin_once(node, timeout_sec=0.2)
     finally:
         node.destroy_node()
         if rclpy.ok():
@@ -179,59 +178,48 @@ def _interactive_mode(topic: str) -> None:
             print("Press key (? for help):", end=" ", flush=True)
             ch = _getch()
             print(ch)
+            payload = None
             if ch == "?":
                 _print_help()
-                continue
-            if ch == "q":
+            elif ch == "q":
                 print("quit")
                 break
-            if ch == "d":
+            elif ch == "d":
                 try:
                     x = float(input("target x: "))
                     y = float(input("target y: "))
-                except Exception:
+                except ValueError:
                     print("invalid coordinates")
                     continue
                 group = input("group [ALL]: ") or "ALL"
                 formation = input("formation [wedge/row/column] (enter for none): ") or None
                 spacing_txt = input("spacing (enter for none): ")
-                spacing = float(spacing_txt) if spacing_txt.strip() else None
                 payload = {"verb": "dispatch", "target": {"x": x, "y": y}, "group": group}
                 if formation:
                     payload["formation"] = formation
-                if spacing is not None:
-                    payload["spacing"] = spacing
-                node.publish(payload)
-                rclpy.spin_once(node, timeout_sec=0.05)
-                continue
-            if ch == "r":
+                if spacing_txt.strip():
+                    payload["spacing"] = float(spacing_txt)
+            elif ch == "r":
                 try:
-                    gs = int(input("group_size: "))
-                except Exception:
+                    payload = {"verb": "regroup", "group_size": int(input("group_size: "))}
+                except ValueError:
                     print("invalid group_size")
                     continue
-                payload = {"verb": "regroup", "group_size": gs}
-                node.publish(payload)
-                rclpy.spin_once(node, timeout_sec=0.05)
-                continue
-            if ch == "p":
-                val = input("enabled (true/false): ")
-                enabled = val.strip().lower() in {"1", "true", "yes", "on"}
-                payload = {"verb": "patrol", "enabled": enabled}
-                node.publish(payload)
-                rclpy.spin_once(node, timeout_sec=0.05)
-                continue
-            if ch == "h":
+            elif ch == "p":
+                try:
+                    payload = {"verb": "patrol", "enabled": _parse_bool(input("enabled (true/false): "))}
+                except argparse.ArgumentTypeError:
+                    print("invalid bool")
+                    continue
+            elif ch == "h":
                 payload = {"verb": "halt"}
-                node.publish(payload)
-                rclpy.spin_once(node, timeout_sec=0.05)
-                continue
-            if ch == "c":
+            elif ch == "c":
                 payload = {"verb": "recall"}
+            else:
+                print("unknown key, press ? for help")
+
+            if payload is not None:
                 node.publish(payload)
-                rclpy.spin_once(node, timeout_sec=0.05)
-                continue
-            print("unknown key, press ? for help")
     except KeyboardInterrupt:
         print("\nquit (Ctrl+C)")
     finally:

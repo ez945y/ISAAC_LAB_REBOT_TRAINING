@@ -29,20 +29,8 @@ echo "==========================================================================
 echo "  Demo 11: Go2 Squad Dispatch (ROS 2 control + WebRTC)"
 echo "=========================================================================="
 
-# Hard-clear any prior Isaac livestream (and stale clients) before launch. The
-# native app ignores Ctrl+C, so a previous run can leak the NVENC encoder + port
-# 49100 -> the new stream fails with NVST_R_BUSY. Only one livestream NVENC session
-# exists, so also clear demo 10's sim. SIGKILL + wait for the port/encoder to free.
-echo "  Clearing any previous Isaac livestream / clients..."
-pkill -9 -f "11_go2_squad_dispatch.py"        2>/dev/null || true
-pkill -9 -f "10_dam_car_ros_comparison_demo.py" 2>/dev/null || true
-pkill -9 -f "go2_squad_dispatch_client.py"    2>/dev/null || true
-# Wait until the WebRTC signaling port (49100) is released (or give up after 20s).
-for _ in $(seq 1 20); do
-    ss -tlnp 2>/dev/null | grep -q ":49100 " || break
-    sleep 1
-done
-sleep 2  # let the GPU reclaim the NVENC session
+source tools/ros/free_isaac_stream.sh
+free_isaac_stream
 
 echo "  Launching simulator in background (logs: $SIM_LOG)..."
 echo "  (first boot pulls the Go2 + warehouse assets — can take a few minutes)"

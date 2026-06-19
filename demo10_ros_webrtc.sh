@@ -29,19 +29,8 @@ echo "  Demo 10: Twin-Lane Jetbot DAM Comparison (ROS 2 bridge, WebRTC)"
 echo "=========================================================================="
 echo ""
 
-# Hard-clear any prior Isaac livestream before launch. The native app ignores
-# Ctrl+C, so a previous run can leak the NVENC encoder + port 49100 -> the new
-# stream fails with NVST_R_BUSY. Only one livestream NVENC session exists, so also
-# clear demo 11's sim + stale guard. SIGKILL + wait for the port/encoder to free.
-echo "  Clearing any previous Isaac livestream / nodes..."
-pkill -9 -f "10_dam_car_ros_comparison_demo.py" 2>/dev/null || true
-pkill -9 -f "11_go2_squad_dispatch.py"          2>/dev/null || true
-pkill -9 -f "dam_jetbot_guard_node.py"          2>/dev/null || true
-for _ in $(seq 1 20); do
-    ss -tlnp 2>/dev/null | grep -q ":49100 " || break
-    sleep 1
-done
-sleep 2  # let the GPU reclaim the NVENC session
+source tools/ros/free_isaac_stream.sh
+free_isaac_stream
 
 # Launch the DAM guard node as a BACKGROUND process. This is a headless server —
 # gnome-terminal needs an X display and dies with "Cannot open display", so the
