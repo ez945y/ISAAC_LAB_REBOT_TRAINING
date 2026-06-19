@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .mission import Mission
+from .formation import Formation
+from .mission import FormationMoveToArea, Mission
 from .robot_agent import RobotAgent
 
 
@@ -57,6 +58,29 @@ class Dispatcher:
     def assign(self, group_id: str, mission: Mission) -> None:
         self.missions[group_id] = mission
         mission.on_assigned(self.squad.members(group_id))
+
+    def send(
+        self,
+        group_id: str,
+        area: tuple[float, float],
+        formation: Formation | str = Formation.WEDGE,
+        *,
+        spacing: float = 1.2,
+    ) -> None:
+        """Send one group, in formation, to ``area`` — the one-liner for the common
+        case (wraps :meth:`assign` + :class:`FormationMoveToArea`). ``formation`` takes
+        a :class:`Formation` or its name (``"wedge"``/``"row"``/``"column"``). Call it
+        once per group to give different groups different areas and formations::
+
+            dispatcher.send("G0", (5, 2), "row")
+            dispatcher.send("G1", (-5, 0), "wedge")
+        """
+        self.assign(group_id, FormationMoveToArea(area, shape=Formation(formation), spacing=spacing))
+
+    def status(self) -> dict[str, bool]:
+        """``{group_id: arrived?}`` for the active missions, without advancing time
+        (read-only peek; :meth:`update` is the one that ticks the missions)."""
+        return {gid: m.update(self.squad.members(gid), 0.0) for gid, m in self.missions.items()}
 
     def regroup(self, groups: dict[str, list[str]]) -> None:
         """Re-partition the squad. Clears missions + per-agent targets so the

@@ -109,10 +109,11 @@ class RobotAgent:
 
     # -- driven every physics step by the runtime -----------------------------
 
-    def step(self, dt: float) -> None:
+    def step(self, dt: float) -> tuple[float, float, float]:
         if self.target is None:
-            self.backend.apply(dt, (0.0, 0.0, 0.0))
-            return
+            cmd = (0.0, 0.0, 0.0)
+            self.backend.apply(dt, cmd)
+            return cmd
         cmd, reached = velocity_command(self.backend.get_pose(), self.target, **self.params)
         # Latch arrival: a legged robot orbits/jitters around its slot rather than
         # parking exactly on it, so `reached` flickers. Once a slot is reached, stay
@@ -121,3 +122,4 @@ class RobotAgent:
         if reached:
             self.arrived = True
         self.backend.apply(dt, cmd)
+        return cmd
