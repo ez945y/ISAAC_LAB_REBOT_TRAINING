@@ -104,7 +104,7 @@ if args_cli.livestream >= 1:
     # into the streamed frame — the lean base experience loads none of these. We
     # hand-pick the few we need instead of a full experience to avoid the
     # omni.anim.behavior crash (see the SimulationApp comment above).
-    _boot_exts += ["omni.kit.uiapp", "omni.kit.mainwindow", "omni.kit.window.viewport"]
+    _boot_exts += ["omni.kit.uiapp", "omni.kit.mainwindow"]
 for _ext in _boot_exts:
     try:
         _ext_mgr.set_extension_enabled_immediate(_ext, True)
