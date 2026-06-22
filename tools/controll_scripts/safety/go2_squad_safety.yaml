@@ -1,0 +1,60 @@
+# go2_squad_safety.yaml -- DAM safety config for the Go2 squad inter-dog distance.
+#
+# Observation vector (6D):   [x, y, yaw, vx, vy, omega]
+#   - pose group  [0:3]: x, y, yaw       -- current planar pose (world frame)
+#   - command group [3:6]: vx, vy, omega -- body-frame velocity (0 in obs)
+#
+# Action vector (6D):        [x, y, yaw, vx_cmd, vy_cmd, omega_cmd]
+#   - pose group  [0:3]: echoed from obs (not commanded)
+#   - command group [3:6]: requested holonomic velocity
+#
+# The single L1 boundary keeps each dog's NEAREST-neighbour distance inside the
+# band [min_dist, max_dist]:
+#   - nearest < min_dist  -> too close (collision risk)  -> push apart
+#   - nearest > max_dist  -> drifting out of the squad   -> pull back in
+# The callback rolls the holonomic command out one step and, if the predicted
+# nearest distance leaves the band, solves a small QP to correct [vx, vy, omega]
+# (preferring a sidestep over a spin). Neighbour positions are injected per call.
+
+version: "1"
+
+hardware:
+  preset: go2_holonomic
+  joint_names: [x, y, yaw, vx, vy, omega]
+  degrees_mode: false
+  action_layout:
+    - name: pose
+      keys: [x, y, yaw]
+    - name: command
+      keys: [vx, vy, omega]
+
+safety:
+  control_hz: 50
+  enforcement_mode: enforce
+  no_task_behavior: hold_position
+
+fallbacks:
+  hold_position:
+    severity: 80
+
+guards:
+  - L1: boundary
+    phase: 0
+    timeout_ms: 10
+
+boundaries:
+  inter_dog_distance_band:
+    layer: L1
+    type: single
+    nodes:
+      - callback: go2_min_max_separation
+        params:
+          min_dist: 0.8
+          max_dist: 4.0
+          dt: 0.2
+
+tasks:
+  default:
+    description: "Each Go2 keeps its nearest-neighbour distance within [min_dist, max_dist]."
+    boundaries:
+      - inter_dog_distance_band
