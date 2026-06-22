@@ -54,7 +54,7 @@ class _NeighborHolder:
     __slots__ = ("points", "self_priority")
 
     def __init__(self) -> None:
-        self.points: list[tuple[float, float, float]] = []
+        self.points: list[tuple[float, float, float, float]] = []  # (x, y, priority, same_group)
         self.self_priority: float = 1.0
 
 
@@ -101,7 +101,7 @@ def go2_min_max_separation(
     """
     solver = solvers[_SOLVER_KEY]
     holder = solvers.get(_NEIGHBOR_KEY)
-    neighbors = list(getattr(holder, "points", []) or [])  # each (x, y, priority)
+    neighbors = list(getattr(holder, "points", []) or [])  # each (x, y, priority, same_group)
     if not neighbors:
         return True
     p_self = float(getattr(holder, "self_priority", 1.0))
@@ -126,8 +126,10 @@ def go2_min_max_separation(
     push: list = []
     pull: list = []
 
-    # --- collision: priority-weighted, per near neighbour ---
-    for px, py, p_j in neighbors:
+    # --- collision: priority-weighted, EVERY near neighbour (own group or not) ---
+    # Same-group dogs share a priority -> lambda=0.5 (symmetric); cross-group uses the
+    # priority split so the lower-priority group yields. So collision needs no group test.
+    for px, py, p_j, _sg in neighbors:
         dist_now = math.hypot(cx - px, cy - py)
         if dist_now - min_dist > influence:
             continue
@@ -139,15 +141,18 @@ def go2_min_max_separation(
         lam = max(lam_min, p_j / (p_self + p_j))
         push.append((_grad_to(px, py), lam * required))
 
-    # --- cohesion: nearest neighbour, symmetric (no priority) ---
-    npx, npy = min(((px, py) for px, py, _ in neighbors),
-                   key=lambda p: math.hypot(cx - p[0], cy - p[1]))
-    nd = math.hypot(cx - npx, cy - npy)
-    if nd > max_dist:
-        target = max_dist + (1.0 - gamma) * (nd - max_dist)  # allowed predicted distance
-        d_pred = math.hypot(nx0 - npx, ny0 - npy)
-        if d_pred > target:
-            pull.append((_grad_to(npx, npy), target - d_pred))
+    # --- cohesion: nearest SAME-GROUP neighbour only (don't break formation) ---
+    # Must be group-scoped: pulling toward the nearest *any* dog drags groups together
+    # (and into each other). A lone dog (no groupmate) has nothing to stay near.
+    same_group = [(px, py) for px, py, _p, sg in neighbors if sg]
+    if same_group:
+        npx, npy = min(same_group, key=lambda p: math.hypot(cx - p[0], cy - p[1]))
+        nd = math.hypot(cx - npx, cy - npy)
+        if nd > max_dist:
+            target = max_dist + (1.0 - gamma) * (nd - max_dist)  # allowed predicted distance
+            d_pred = math.hypot(nx0 - npx, ny0 - npy)
+            if d_pred > target:
+                pull.append((_grad_to(npx, npy), target - d_pred))
 
     if not push and not pull:
         return True
@@ -235,8 +240,10 @@ class Go2DAMWrapper:
         Args:
             command:   ``(1, 3)`` tensor — ``[vx, vy, omega]``.
             state:     ``(1, >=3)`` tensor — ``[x, y, yaw, ...]``.
-            neighbors: iterable of ``(x, y)`` OR ``(x, y, priority)`` for the OTHER
-                dogs. Priority defaults to 1.0 (symmetric — everyone shares avoidance).
+            neighbors: iterable of ``(x, y)`` / ``(x, y, priority)`` /
+                ``(x, y, priority, same_group)`` for the OTHER dogs. priority defaults
+                to 1.0 (symmetric); same_group defaults to 1 (cohesion applies). Pass
+                same_group=0 for dogs in OTHER groups so cohesion ignores them.
             self_priority: this dog's priority. Higher -> it yields less (keeps course).
 
         Returns:
@@ -250,7 +257,10 @@ class Go2DAMWrapper:
         self._require_state(state)
 
         self._neighbors.points = [
-            (float(p[0]), float(p[1]), float(p[2]) if len(p) >= 3 else 1.0) for p in neighbors
+            (float(p[0]), float(p[1]),
+             float(p[2]) if len(p) >= 3 else 1.0,
+             float(p[3]) if len(p) >= 4 else 1.0)
+            for p in neighbors
         ]
         self._neighbors.self_priority = float(self_priority)
 

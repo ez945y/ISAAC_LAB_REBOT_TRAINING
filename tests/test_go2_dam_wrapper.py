@@ -100,6 +100,19 @@ def test_high_priority_deviates_less_than_low(guard):
     assert dev_lo > 2 * dev_hi      # and clearly more (it yields)
 
 
+def test_cohesion_ignores_other_group(guard):
+    """A far neighbour in ANOTHER group must NOT pull the dog (else groups merge)."""
+    safe = _filter(guard, [0.0, 0.0, 0.0], [(6.0, 0.0, 1.0, 0.0)])  # same_group=0
+    assert safe == pytest.approx([0.0, 0.0, 0.0], abs=1e-3)
+    assert guard.last_decision == "PASS"
+
+
+def test_cohesion_pulls_toward_own_group(guard):
+    """The same far neighbour, but in the SAME group, does pull the dog back in."""
+    safe = _filter(guard, [0.0, 0.0, 0.0], [(6.0, 0.0, 1.0, 1.0)])  # same_group=1
+    assert safe[0] > 0.4
+
+
 def test_equal_priority_is_symmetric(guard):
     """With equal priority both dogs correct about the same (no one yields)."""
     a = _filter(guard, [1.0, 0.0, 0.0], [(0.9, 0.0, 1.0)], pose=(0.0, 0.0, 0.0), self_priority=1.0)

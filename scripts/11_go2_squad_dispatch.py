@@ -539,7 +539,7 @@ class Go2SquadSafety:
             from controll_scripts.safety import Go2DAMWrapper  # torch/DAM only when used
 
             self._wrap = Go2DAMWrapper(stackfile, device=device)
-        self._pos: dict[str, tuple[float, float, float]] = {}  # aid -> (x, y, priority)
+        self._pos: dict[str, tuple[float, float, float, str | None]] = {}  # aid -> (x,y,priority,group)
         self._rec: dict[str, dict] = {}
         self._device = device
 
@@ -548,8 +548,8 @@ class Go2SquadSafety:
         return float(self._group_priority.get(a.group_id, 1.0)) if a is not None else 1.0
 
     def update(self) -> None:
-        """Snapshot every dog's position + priority once per tick (consistent neighbours)."""
-        self._pos = {aid: (s.x, s.y, self._priority(aid))
+        """Snapshot every dog's position + priority + group once per tick."""
+        self._pos = {aid: (s.x, s.y, self._priority(aid), a.group_id)
                      for aid, a in self._agents.items() if (s := a.get_state())}
 
     def make_filter(self, agent_id: str):
@@ -557,8 +557,11 @@ class Go2SquadSafety:
 
     def _filter(self, aid: str, cmd, pose):
         x, y, yaw = pose
-        neighbors = [v for k, v in self._pos.items() if k != aid]  # (x, y, priority)
-        nearest = min((math.hypot(x - px, y - py) for px, py, _ in neighbors), default=float("inf"))
+        my_group = self._agents[aid].group_id if aid in self._agents else None
+        # (x, y, priority, same_group): same_group=1 only for own-group dogs (cohesion scope).
+        neighbors = [(px, py, prio, 1.0 if g == my_group else 0.0)
+                     for k, (px, py, prio, g) in self._pos.items() if k != aid]
+        nearest = min((math.hypot(x - px, y - py) for px, py, _, _ in neighbors), default=float("inf"))
         if not self.enabled or self._wrap is None or not neighbors:
             self._rec[aid] = {"obs": [x, y, yaw], "nominal": list(cmd), "safe": list(cmd),
                               "decision": "OFF", "nearest": nearest}
