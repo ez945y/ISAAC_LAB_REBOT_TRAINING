@@ -28,6 +28,14 @@ class RosTopics:
     command_topic: str = "/squad/dispatch_cmd"
     status_topic: str = "/squad/status"
     action_topic: str = "/squad/action_cmd"
+    marker_topic: str = "/squad/markers"
+
+
+def _yaw_to_quat(yaw: float) -> tuple[float, float, float, float]:
+    """Yaw (rad about +z) -> (x, y, z, w) quaternion."""
+    import math
+
+    return (0.0, 0.0, math.sin(yaw * 0.5), math.cos(yaw * 0.5))
 
 
 def _expect_number(obj: dict[str, Any], key: str) -> float:
@@ -122,6 +130,20 @@ class SquadRosBridge:
         self._pub_action = self.node.create_publisher(String, topics.action_topic, 50)
         self._sub_cmd = self.node.create_subscription(String, topics.command_topic, self._on_cmd, 50)
 
+        # Optional rviz visualization (visualization_msgs is a desktop dep; degrade
+        # gracefully if it isn't there so the core command/status path still works).
+        self._Marker = None
+        self._MarkerArray = None
+        self._pub_markers = None
+        try:
+            from visualization_msgs.msg import Marker, MarkerArray
+
+            self._Marker = Marker
+            self._MarkerArray = MarkerArray
+            self._pub_markers = self.node.create_publisher(MarkerArray, topics.marker_topic, 10)
+        except Exception as exc:  # noqa: BLE001
+            self.node.get_logger().warning(f"markers disabled (no visualization_msgs): {exc}")
+
     def start(self) -> None:
         if self._spin_thread is not None:
             return
@@ -159,6 +181,48 @@ class SquadRosBridge:
         msg = self._String()
         msg.data = json.dumps(payload, separators=(",", ":"))
         self._pub_action.publish(msg)
+
+    def publish_markers(self, items: list[dict[str, Any]], *, frame: str = "map") -> None:
+        """Publish rviz markers from plain dicts (keeps script ROS-msg-agnostic).
+
+        Each item: ns, id, shape ("arrow"|"cylinder"|"sphere"|"text"), x, y, z, yaw,
+        sx/sy/sz scale, r/g/b/a color, optional text. Coordinates are in ``frame``
+        (the dog world == the /map frame, so they line up on the occupancy grid)."""
+        if self._pub_markers is None:
+            return
+        _SHAPE = {
+            "arrow": self._Marker.ARROW,
+            "cylinder": self._Marker.CYLINDER,
+            "sphere": self._Marker.SPHERE,
+            "text": self._Marker.TEXT_VIEW_FACING,
+        }
+        stamp = self.node.get_clock().now().to_msg()
+        arr = self._MarkerArray()
+        for it in items:
+            m = self._Marker()
+            m.header.frame_id = frame
+            m.header.stamp = stamp
+            m.ns = str(it.get("ns", "squad"))
+            m.id = int(it["id"])
+            m.type = _SHAPE.get(it.get("shape", "sphere"), self._Marker.SPHERE)
+            m.action = self._Marker.ADD
+            m.pose.position.x = float(it.get("x", 0.0))
+            m.pose.position.y = float(it.get("y", 0.0))
+            m.pose.position.z = float(it.get("z", 0.0))
+            qx, qy, qz, qw = _yaw_to_quat(float(it.get("yaw", 0.0)))
+            m.pose.orientation.x, m.pose.orientation.y = qx, qy
+            m.pose.orientation.z, m.pose.orientation.w = qz, qw
+            m.scale.x = float(it.get("sx", 0.3))
+            m.scale.y = float(it.get("sy", 0.3))
+            m.scale.z = float(it.get("sz", 0.3))
+            m.color.r = float(it.get("r", 1.0))
+            m.color.g = float(it.get("g", 1.0))
+            m.color.b = float(it.get("b", 1.0))
+            m.color.a = float(it.get("a", 1.0))
+            if "text" in it:
+                m.text = str(it["text"])
+            arr.markers.append(m)
+        self._pub_markers.publish(arr)
 
     def close(self) -> None:
         self._stop.set()

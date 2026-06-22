@@ -83,6 +83,16 @@ _ext_mgr.add_path(
 )
 for _ext in ("isaacsim.core.api", "isaacsim.robot.policy.examples"):
     _ext_mgr.set_extension_enabled_immediate(_ext, True)
+# In-repo dispatch console extension: UI panel + viewport overlay (shows in the
+# WebRTC stream — no rviz needed). Lives under tools/isaac_ext/.
+_ext_mgr.add_path(
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools", "isaac_ext"),
+    ExtensionPathType.COLLECTION,
+)
+try:
+    _ext_mgr.set_extension_enabled_immediate("devicenexus.squad.dispatch", True)
+except Exception as _exc:  # noqa: BLE001 -- console is cosmetic, never fatal
+    print(f"[demo] dispatch extension not enabled: {_exc}", flush=True)
 simulation_app.update()
 
 # ── Isaac imports after the app is up ───────────────────────────────────────
@@ -119,6 +129,20 @@ ZONES: list[tuple[str, tuple[float, float]]] = [
 SHAPES = [Formation.WEDGE, Formation.ROW, Formation.COLUMN]
 GROUP_SIZES = [6, 3, 2]      # 1x6 -> 2x3 -> 3x2 (group OF size)
 
+# Distinct colors so you can track which group goes where in rviz.
+GROUP_PALETTE = [
+    (0.20, 0.60, 1.00), (1.00, 0.55, 0.10), (0.30, 0.90, 0.40),
+    (0.90, 0.30, 0.90), (0.95, 0.85, 0.15), (0.40, 0.90, 0.90),
+]
+
+
+def _group_color(gid: str | None) -> tuple[float, float, float]:
+    """Stable color for a group id (trailing int -> palette), white if ungrouped."""
+    if not gid:
+        return (0.85, 0.85, 0.85)
+    digits = "".join(c for c in gid if c.isdigit())
+    return GROUP_PALETTE[(int(digits) if digits else 0) % len(GROUP_PALETTE)]
+
 
 def _apply_floor_friction(root_path: str) -> None:
     """Bind a friction=1.0 physics material to the floor (subtree of ``root_path``).
@@ -127,7 +151,13 @@ def _apply_floor_friction(root_path: str) -> None:
     (the shipped isaacsim Go2 example sets exactly this). PhysX's default ~0.5 lets
     the feet slip, so the policy can't stabilise and the dogs collapse into a
     belly-slide ("crawl"). Binding with the *physics* material purpose inherits
-    down the namespace, so one bind on the env root covers every collision mesh."""
+    down the namespace, so one bind on the env root covers every collision mesh.
+
+    Strength MUST be ``strongerThanDescendants``: the Simple_Warehouse asset ships
+    its own material bindings on the floor mesh, and ``weakerThanDescendants`` would
+    let those win — so our friction=1.0 silently reverts to PhysX's slippery ~0.5
+    on the warehouse floor and the dogs crawl. ``strongerThanDescendants`` forces
+    1.0 everywhere; on the bare ground plane (no competing bindings) it is a no-op."""
     import omni.usd
     from pxr import Sdf, UsdPhysics, UsdShade
 
@@ -140,7 +170,7 @@ def _apply_floor_friction(root_path: str) -> None:
     prim = stage.GetPrimAtPath(root_path)
     if prim.IsValid():
         binding = UsdShade.MaterialBindingAPI.Apply(prim)
-        binding.Bind(mat, bindingStrength=UsdShade.Tokens.weakerThanDescendants,
+        binding.Bind(mat, bindingStrength=UsdShade.Tokens.strongerThanDescendants,
                      materialPurpose="physics")
 
 
@@ -301,9 +331,14 @@ class SquadController:
                     self.dispatcher.send(gid, anchor, formation, spacing=spacing)
             return
 
-        gid = group
-        if gid not in self.squad.groups:
-            print(f"[ctrl][WARN] unknown group '{gid}'", flush=True)
+        # Match the group id case-insensitively so 'g1' resolves to 'G1'.
+        gid = next((g for g in self.squad.groups if g.upper() == group.upper()), None)
+        if gid is None:
+            print(
+                f"[ctrl][WARN] unknown group '{group}' "
+                f"(known: {', '.join(self.squad.groups) or 'none'})",
+                flush=True,
+            )
             return
         if formation is None:
             self._send(gid, area)
@@ -407,6 +442,60 @@ class SquadController:
             self.dispatch_all(xy)
 
 
+class DispatchConsoleHandle:
+    """Adapter exposing the live squad to the dispatch extension (runtime.DispatchHandle).
+
+    Translates the extension's verb/snapshot contract onto the existing
+    SquadController — the extension is just another ingress, like the keyboard/ROS
+    paths. Runs on the sim's main thread (the extension's callbacks fire inside
+    world.step), so no locking is needed."""
+
+    def __init__(self, squad: Squad, agents: dict, controller: SquadController) -> None:
+        self._squad = squad
+        self._agents = agents
+        self._ctrl = controller
+
+    def snapshot(self) -> dict:
+        dogs = []
+        for aid, a in self._agents.items():
+            st = a.get_state()
+            dogs.append({
+                "id": aid, "group": a.group_id, "x": st.x, "y": st.y, "yaw": st.yaw,
+                "tx": None if a.target is None else a.target[0],
+                "ty": None if a.target is None else a.target[1],
+                "arrived": a.arrived,
+            })
+        return {
+            "zones": [{"name": n, "x": xy[0], "y": xy[1]} for n, xy in ZONES],
+            "groups": {gid: list(ids) for gid, ids in self._squad.groups.items()},
+            "selected": self._ctrl.selected,
+            "formation": {g: f.value for g, f in self._ctrl.formation.items()},
+            "dogs": dogs,
+        }
+
+    def dispatch_zone(self, index: int) -> None:
+        if 0 <= index < len(ZONES):
+            self._ctrl.apply(Command(verb="zone", arg=index))
+
+    def select_next(self) -> None:
+        self._ctrl.select_next()
+
+    def cycle_formation(self) -> None:
+        self._ctrl.cycle_formation()
+
+    def cycle_regroup(self) -> None:
+        self._ctrl.cycle_regroup()
+
+    def toggle_patrol(self) -> None:
+        self._ctrl.toggle_patrol()
+
+    def recall(self) -> None:
+        self._ctrl.recall()
+
+    def halt(self) -> None:
+        self._ctrl.halt()
+
+
 class Go2SquadDemo:
     def __init__(self) -> None:
         self.world = None
@@ -464,6 +553,15 @@ class Go2SquadDemo:
         self.squad = Squad(self.agents)
         self.dispatcher = Dispatcher(self.squad)
         self.controller = SquadController(self.squad, self.dispatcher)
+
+        # Hand the live squad to the dispatch console extension (if it loaded).
+        try:
+            from devicenexus.squad.dispatch import runtime as _dispatch_runtime
+
+            _dispatch_runtime.set_handle(DispatchConsoleHandle(self.squad, self.agents, self.controller))
+            print("[demo] dispatch console extension connected.", flush=True)
+        except Exception as exc:  # noqa: BLE001 -- console is optional
+            print(f"[demo] dispatch console not connected: {exc}", flush=True)
 
         if args_cli.ros_control:
             topics = RosTopics(
@@ -551,6 +649,35 @@ class Go2SquadDemo:
             self.phase = 3
             print("[auto] PHASE 2 complete — squad at targets.", flush=True)
 
+    def _build_markers(self) -> list[dict]:
+        """rviz markers in the /map frame: each dog (arrow=pose, colored by group +
+        id label), the named zones (disk + label), and each dog's current target."""
+        items: list[dict] = []
+        # Zones: a flat translucent disk + a floating name label.
+        for zi, (name, (zx, zy)) in enumerate(ZONES):
+            items.append({"ns": "zones", "id": zi, "shape": "cylinder", "x": zx, "y": zy,
+                          "z": 0.02, "sx": 1.4, "sy": 1.4, "sz": 0.04,
+                          "r": 0.2, "g": 0.8, "b": 0.9, "a": 0.45})
+            items.append({"ns": "zone_labels", "id": zi, "shape": "text", "x": zx, "y": zy,
+                          "z": 0.6, "sz": 0.5, "r": 0.9, "g": 0.95, "b": 1.0, "a": 0.9,
+                          "text": name})
+        # Dogs: an arrow (position + heading) colored by group, with an id label.
+        for di, (aid, a) in enumerate(self.agents.items()):
+            st = a.get_state()
+            cr, cg, cb = _group_color(a.group_id)
+            items.append({"ns": "dogs", "id": di, "shape": "arrow", "x": st.x, "y": st.y,
+                          "z": 0.25, "yaw": st.yaw, "sx": 0.7, "sy": 0.14, "sz": 0.14,
+                          "r": cr, "g": cg, "b": cb, "a": 1.0})
+            items.append({"ns": "dog_labels", "id": di, "shape": "text", "x": st.x, "y": st.y,
+                          "z": 0.6, "sz": 0.28, "r": 1.0, "g": 1.0, "b": 1.0, "a": 0.9,
+                          "text": f"{aid}/{a.group_id or '-'}"})
+            if a.target is not None:
+                items.append({"ns": "targets", "id": di, "shape": "sphere",
+                              "x": a.target[0], "y": a.target[1], "z": 0.1,
+                              "sx": 0.35, "sy": 0.35, "sz": 0.35,
+                              "r": cr, "g": cg, "b": cb, "a": 0.5})
+        return items
+
     def run(self) -> None:
         substeps = int(args_cli.max_seconds / PHYSICS_DT)
         for i in range(substeps):
@@ -597,6 +724,7 @@ class Go2SquadDemo:
                         "agents": {
                             aid: {
                                 "group": a.group_id,
+                                "pos": {"x": (s := a.get_state()).x, "y": s.y, "yaw": s.yaw},
                                 "target": None if a.target is None else {"x": a.target[0], "y": a.target[1]},
                                 "arrived": a.arrived,
                             }
@@ -604,6 +732,7 @@ class Go2SquadDemo:
                         },
                     }
                 )
+                self.ros_bridge.publish_markers(self._build_markers())
 
             if i % 200 == 0:
                 arrived = sum(a.arrived for a in self.agents.values())
@@ -612,6 +741,12 @@ class Go2SquadDemo:
         print("[demo] budget reached; exiting.", flush=True)
 
     def close(self) -> None:
+        try:
+            from devicenexus.squad.dispatch import runtime as _dispatch_runtime
+
+            _dispatch_runtime.set_handle(None)
+        except Exception:  # noqa: BLE001
+            pass
         self.console.stop()
         if self.ros_bridge is not None:
             self.ros_bridge.close()
