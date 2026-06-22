@@ -5,7 +5,7 @@
 # SIGKILL, then wait for the signaling port to free.
 free_isaac_stream() {
     echo "  Clearing any previous Isaac livestream / nodes..."
-    pkill -9 -f "10_dam_car_ros_comparison_demo.py" 2>/dev/null || true
+    pkill -9 -f "10_dam_car_.*_comparison_demo.*\.py" 2>/dev/null || true
     pkill -9 -f "11_go2_squad_dispatch.py"          2>/dev/null || true
     pkill -9 -f "dam_jetbot_guard_node.py"          2>/dev/null || true
     pkill -9 -f "go2_squad_dispatch_client.py"      2>/dev/null || true

@@ -1,7 +1,7 @@
 # Copyright (c) 2024, Robot Control Library
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""DAM Jetbot guardrail — ROS 2 node (companion to scripts/10_dam_car_ros_comparison_demo.py).
+"""DAM Jetbot guardrail — ROS 2 node (companion to scripts/10_dam_car_ros_comparison_demo_legacy.py).
 
 This is the "brain" of the ROS version of demo 09: it runs OUTSIDE the simulator
 and talks to it only over ROS 2, so the sim never calls ``filter()`` directly.
@@ -20,7 +20,7 @@ Run (ROS 2 sourced; robot-dam on PYTHONPATH via the Isaac env):
     source /opt/ros/jazzy/setup.bash
     python tools/ros/dam_jetbot_guard_node.py
 
-Constants below MIRROR the sim (scripts/10_dam_car_ros_comparison_demo.py) so the
+Constants below MIRROR the sim (scripts/10_dam_car_ros_comparison_demo_legacy.py) so the
 DAM car follows the same target stream as the RAW car.
 """
 

@@ -1,7 +1,10 @@
 #!/bin/bash
 
-# Demo 10: Twin-Lane Jetbot DAM Comparison (ROS 2 bridge, native isaacsim)
-# Launches the DAM guard node (background) + the simulator with WebRTC streaming.
+# Demo 10 [LEGACY]: Twin-Lane Jetbot DAM Comparison (ROS 2 bridge, native isaacsim)
+# Superseded by the direct in-process variant (no guard node):
+#   python scripts/10_dam_car_direct_comparison_demo.py --livestream 2
+# Kept for the ROS-bridge integration story. Launches the DAM guard node
+# (background) + the simulator with WebRTC streaming.
 
 set -e
 
@@ -9,7 +12,7 @@ set -e
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Setup Isaac Lab environment
-echo "[demo10] Setting up Isaac Lab environment..."
+echo "[demo10-legacy] Setting up Isaac Lab environment..."
 conda deactivate 2>/dev/null || true
 source ~/IsaacLab/env_isaaclab/bin/activate
 
@@ -27,7 +30,7 @@ fi
 
 echo ""
 echo "=========================================================================="
-echo "  Demo 10: Twin-Lane Jetbot DAM Comparison (ROS 2 bridge, WebRTC)"
+echo "  Demo 10 [LEGACY]: Twin-Lane Jetbot DAM Comparison (ROS 2 bridge, WebRTC)"
 echo "=========================================================================="
 echo ""
 
@@ -58,5 +61,5 @@ echo ""
 
 # Launch demo with WebRTC livestream (foreground; Ctrl+C stops it and the guard).
 # Extra args are forwarded, e.g. tune the camera:
-#   scripts/demo10_ros_webrtc.sh --cam-eye "-3,0,2.5" --cam-target "0.7,0,0.1"
-python scripts/10_dam_car_ros_comparison_demo.py --livestream 2 "$@"
+#   scripts/demo10_legacy_ros_webrtc.sh --cam-eye "-3,0,2.5" --cam-target "0.7,0,0.1"
+python scripts/10_dam_car_ros_comparison_demo_legacy.py --livestream 2 "$@"

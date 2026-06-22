@@ -3,7 +3,12 @@
 # ruff: noqa: I001  -- Isaac modules imported only after SimulationApp starts.
 
 """
-Twin-lane Jetbot DAM boundary demo — ROS 2 bridge edition (NATIVE isaacsim).
+[LEGACY] Twin-lane Jetbot DAM boundary demo — ROS 2 bridge edition (NATIVE isaacsim).
+
+LEGACY: superseded by ``10_dam_car_direct_comparison_demo.py``, which drives the
+DAM car in-process (like demo 09) instead of over the ROS 2 OmniGraph bridge +
+external guard node. Kept runnable for reference / the ROS-bridge integration
+story. Launch via ``scripts/demo10_legacy_ros_webrtc.sh``.
 
 ROS version of ``09_dam_car_scripted_comparison_demo.py``. Same twin-lane story
 (RAW vs DAM), but the DAM car is driven over ROS 2 through Isaac's OmniGraph ROS 2
@@ -31,7 +36,7 @@ Run (two terminals, both ROS 2 sourced):
     source ~/IsaacLab/env_isaaclab/bin/activate
     source /opt/ros/jazzy/setup.bash
     export LD_PRELOAD="/lib/aarch64-linux-gnu/libgomp.so.1"
-    python scripts/10_dam_car_ros_comparison_demo.py --livestream 2
+    python scripts/10_dam_car_ros_comparison_demo_legacy.py --livestream 2
 
     # terminal 2 — DAM guardrail node
     source ~/IsaacLab/env_isaaclab/bin/activate

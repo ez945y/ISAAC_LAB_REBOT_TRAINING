@@ -192,8 +192,14 @@ def _interactive_mode(topic: str) -> None:
                     print("invalid coordinates")
                     continue
                 group = input("group [ALL]: ") or "ALL"
-                formation = input("formation [wedge/row/column] (enter for none): ") or None
-                spacing_txt = input("spacing (enter for none): ")
+                # Number/name picker: 1=wedge 2=row 3=column (enter = keep current).
+                _FORMATIONS = {"1": "wedge", "2": "row", "3": "column",
+                               "wedge": "wedge", "row": "row", "column": "column"}
+                f_in = input("formation [1=wedge 2=row 3=column] (enter for none): ").strip().lower()
+                formation = _FORMATIONS.get(f_in)
+                if f_in and formation is None:
+                    print(f"unknown formation '{f_in}', keeping current")
+                spacing_txt = input("spacing m [enter=default 1.2]: ")
                 payload = {"verb": "dispatch", "target": {"x": x, "y": y}, "group": group}
                 if formation:
                     payload["formation"] = formation
