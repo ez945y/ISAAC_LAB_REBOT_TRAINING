@@ -17,6 +17,7 @@ without a simulator.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
@@ -89,6 +90,12 @@ class RobotAgent:
     arrived: bool = False
     # tuning forwarded to velocity_command
     params: dict = field(default_factory=dict)
+    # Optional safety filter applied to the command each step BEFORE it reaches the
+    # backend: ``(cmd, pose) -> cmd`` where cmd is ``(vx, vy, wz)`` and pose is
+    # ``(x, y, yaw)``. Stays a plain callable so the ABI carries no Isaac/DAM import
+    # (e.g. the Go2 squad injects the inter-dog DAM guard here).
+    safety: Callable[[tuple[float, float, float], tuple[float, float, float]],
+                     tuple[float, float, float]] | None = None
 
     # -- commands the scheduler / missions use --------------------------------
 
@@ -112,6 +119,8 @@ class RobotAgent:
     def step(self, dt: float) -> tuple[float, float, float]:
         if self.target is None:
             cmd = (0.0, 0.0, 0.0)
+            if self.safety is not None:
+                cmd = tuple(self.safety(cmd, self.backend.get_pose()))
             self.backend.apply(dt, cmd)
             return cmd
         cmd, reached = velocity_command(self.backend.get_pose(), self.target, **self.params)
@@ -121,5 +130,8 @@ class RobotAgent:
         # in a single tick. The command still nudges the dog back toward the slot.
         if reached:
             self.arrived = True
+        # Safety filter (e.g. inter-dog DAM) gets the LAST word before the backend.
+        if self.safety is not None:
+            cmd = tuple(self.safety(cmd, self.backend.get_pose()))
         self.backend.apply(dt, cmd)
         return cmd
