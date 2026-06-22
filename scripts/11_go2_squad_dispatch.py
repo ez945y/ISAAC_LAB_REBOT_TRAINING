@@ -57,16 +57,24 @@ args_cli = parser.parse_args()
 # AppLauncher-based apply_livestream_defaults does not apply. Instead inject the
 # SAME proven streaming kit args into argv BEFORE SimulationApp — it forwards them
 # to Kit at launch (no-window/publicIp/resize must be set at launch, not after).
+_launch_config: dict = {"headless": True}
 if args_cli.livestream >= 1:
     from livestream.livestream_support import native_livestream_argv  # noqa: E402
 
     sys.argv += native_livestream_argv()
+    # Keep the UI visible under headless so the dispatch console panel composites
+    # into the WebRTC stream (the documented SimulationApp `hide_ui` override "when
+    # live streaming"). We then enable a MINIMAL set of editor-UI extensions on the
+    # lean base experience below — NOT the FULL streaming experience, which on this
+    # aarch64/GB10 box drags in omni.anim.behavior.core and crashes (bad_variant_access)
+    # during boot. Native app + native World throughout, so the Go2 policy is unaffected.
+    _launch_config["hide_ui"] = False
 
 # The Go2 RL policy is a NATIVE-isaacsim component and does NOT run under Isaac
 # Lab's AppLauncher (it installs its own PhysxManager as SimulationManager, whose
 # missing set_backend even breaks native World construction). Boot the native
 # SimulationApp directly — same harness as scripts/smoke/_go2_smoke.py.
-simulation_app = SimulationApp({"headless": True})
+simulation_app = SimulationApp(_launch_config)
 
 # ── Enable the native extensions the base app does not auto-load ──
 # `isaacsim.core.api` World lives in extsDeprecated; the policy needs
@@ -77,22 +85,31 @@ from omni.ext import ExtensionPathType  # noqa: E402
 import isaacsim  # noqa: E402
 
 _ext_mgr = omni.kit.app.get_app().get_extension_manager()
+# Register BOTH collection paths up front — the in-repo dispatch console path must
+# be known before any enable/solve, else enabling other exts first leaves the
+# registry unaware of it ("No versions ... satisfies").
 _ext_mgr.add_path(
     os.path.join(os.path.dirname(isaacsim.__file__), "extsDeprecated"),
     ExtensionPathType.COLLECTION,
 )
-for _ext in ("isaacsim.core.api", "isaacsim.robot.policy.examples"):
-    _ext_mgr.set_extension_enabled_immediate(_ext, True)
-# In-repo dispatch console extension: UI panel + viewport overlay (shows in the
-# WebRTC stream — no rviz needed). Lives under tools/isaac_ext/.
 _ext_mgr.add_path(
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools", "isaac_ext"),
     ExtensionPathType.COLLECTION,
 )
-try:
-    _ext_mgr.set_extension_enabled_immediate("devicenexus.squad.dispatch", True)
-except Exception as _exc:  # noqa: BLE001 -- console is cosmetic, never fatal
-    print(f"[demo] dispatch extension not enabled: {_exc}", flush=True)
+# In-repo dispatch console extension: UI panel + viewport overlay (shows in the
+# WebRTC stream — no rviz needed). Lives under tools/isaac_ext/.
+_boot_exts = ["isaacsim.core.api", "isaacsim.robot.policy.examples", "devicenexus.squad.dispatch"]
+if args_cli.livestream >= 1:
+    # Minimal editor UI so omni.ui windows (the dispatch console panel) composite
+    # into the streamed frame — the lean base experience loads none of these. We
+    # hand-pick the few we need instead of a full experience to avoid the
+    # omni.anim.behavior crash (see the SimulationApp comment above).
+    _boot_exts += ["omni.kit.uiapp", "omni.kit.mainwindow", "omni.kit.window.viewport"]
+for _ext in _boot_exts:
+    try:
+        _ext_mgr.set_extension_enabled_immediate(_ext, True)
+    except Exception as _exc:  # noqa: BLE001 -- console is cosmetic, never fatal
+        print(f"[demo] could not enable {_ext}: {_exc}", flush=True)
 simulation_app.update()
 
 # ── Isaac imports after the app is up ───────────────────────────────────────
