@@ -48,6 +48,7 @@ parser.add_argument("--capture-secs", default="", help="Comma sim-times to snaps
 parser.add_argument("--ground", action="store_true", help="Use the default ground plane instead of the warehouse (gait A/B test).")
 parser.add_argument("--dam", action="store_true", help="Enable the inter-dog DAM safety guard (keeps nearest-neighbour distance in band).")
 parser.add_argument("--dam-stack", type=str, default="go2_squad_safety.yaml", help="DAM stackfile (bundled name or path).")
+parser.add_argument("--dam-priority", type=str, default="", help="Per-group avoidance priority, e.g. 'G0:3,G1:1'. Higher = yields less; emergent yielding. Empty = symmetric.")
 parser.add_argument("--record-obs", type=str, default="", help="Write per-step observations (obs/nominal/safe/decision) to this JSONL file for training data.")
 parser.add_argument("--ros-control", action="store_true", help="Enable ROS command/status/action interface.")
 parser.add_argument("--ros-node-name", type=str, default="go2_squad_demo", help="ROS node name for squad interface.")
@@ -528,29 +529,36 @@ class Go2SquadSafety:
     the runtime can log training observations (works with the guard disabled too —
     then it just passes the command through and records nominal == safe)."""
 
-    def __init__(self, agents: dict, *, stackfile: str, enabled: bool, device: str = "cpu") -> None:
+    def __init__(self, agents: dict, *, stackfile: str, enabled: bool,
+                 group_priority: dict[str, float] | None = None, device: str = "cpu") -> None:
         self.enabled = enabled
         self._agents = agents
+        self._group_priority = group_priority or {}
         self._wrap = None
         if enabled:
             from controll_scripts.safety import Go2DAMWrapper  # torch/DAM only when used
 
             self._wrap = Go2DAMWrapper(stackfile, device=device)
-        self._pos: dict[str, tuple[float, float]] = {}
+        self._pos: dict[str, tuple[float, float, float]] = {}  # aid -> (x, y, priority)
         self._rec: dict[str, dict] = {}
         self._device = device
 
+    def _priority(self, aid: str) -> float:
+        a = self._agents.get(aid)
+        return float(self._group_priority.get(a.group_id, 1.0)) if a is not None else 1.0
+
     def update(self) -> None:
-        """Snapshot all dog positions once per tick (consistent neighbours)."""
-        self._pos = {aid: (s.x, s.y) for aid, a in self._agents.items() if (s := a.get_state())}
+        """Snapshot every dog's position + priority once per tick (consistent neighbours)."""
+        self._pos = {aid: (s.x, s.y, self._priority(aid))
+                     for aid, a in self._agents.items() if (s := a.get_state())}
 
     def make_filter(self, agent_id: str):
         return lambda cmd, pose: self._filter(agent_id, cmd, pose)
 
     def _filter(self, aid: str, cmd, pose):
         x, y, yaw = pose
-        neighbors = [p for k, p in self._pos.items() if k != aid]
-        nearest = min((math.hypot(x - px, y - py) for px, py in neighbors), default=float("inf"))
+        neighbors = [v for k, v in self._pos.items() if k != aid]  # (x, y, priority)
+        nearest = min((math.hypot(x - px, y - py) for px, py, _ in neighbors), default=float("inf"))
         if not self.enabled or self._wrap is None or not neighbors:
             self._rec[aid] = {"obs": [x, y, yaw], "nominal": list(cmd), "safe": list(cmd),
                               "decision": "OFF", "nearest": nearest}
@@ -559,7 +567,7 @@ class Go2SquadSafety:
 
         c = torch.tensor([[cmd[0], cmd[1], cmd[2]]], dtype=torch.float32)
         s = torch.tensor([[x, y, yaw]], dtype=torch.float32)
-        safe = self._wrap.filter(c, s, neighbors)[0].tolist()
+        safe = self._wrap.filter(c, s, neighbors, self_priority=self._priority(aid))[0].tolist()
         self._rec[aid] = {"obs": [x, y, yaw], "nominal": list(cmd), "safe": safe,
                           "decision": self._wrap.last_decision, "nearest": nearest}
         return (safe[0], safe[1], safe[2])
@@ -640,10 +648,17 @@ class Go2SquadDemo:
         # (--dam) or observation logging (--record-obs) is requested; attaching the
         # per-agent filter records nominal/safe/decision even when the guard is off.
         if args_cli.dam or args_cli.record_obs:
-            self.safety = Go2SquadSafety(self.agents, stackfile=args_cli.dam_stack, enabled=args_cli.dam)
+            group_priority = {}
+            for tok in args_cli.dam_priority.split(","):
+                if ":" in tok:
+                    g, p = tok.split(":", 1)
+                    group_priority[g.strip()] = float(p)
+            self.safety = Go2SquadSafety(self.agents, stackfile=args_cli.dam_stack,
+                                         enabled=args_cli.dam, group_priority=group_priority)
             for aid, agent in self.agents.items():
                 agent.safety = self.safety.make_filter(aid)
             print(f"[demo] safety: DAM guard {'ON' if args_cli.dam else 'off'}"
+                  f"{f', priority {group_priority}' if group_priority else ''}"
                   f"{', recording obs' if args_cli.record_obs else ''}.", flush=True)
         if args_cli.record_obs:
             self._obs_file = open(args_cli.record_obs, "w")  # noqa: SIM115 -- closed in close()

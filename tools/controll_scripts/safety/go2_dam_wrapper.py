@@ -46,24 +46,32 @@ _NEIGHBOR_KEY = "neighbors"
 
 
 class _NeighborHolder:
-    """Mutable carrier so per-call neighbour positions reach the boundary callback
-    through the guard's ``solvers`` injection (the solver itself is frozen)."""
+    """Mutable carrier so per-call neighbour positions + priorities reach the
+    boundary callback through the guard's ``solvers`` injection (the solver is
+    frozen). ``points`` is a list of ``(x, y, priority)``; ``self_priority`` is the
+    acting dog's priority — together they set the responsibility split."""
 
-    __slots__ = ("points",)
+    __slots__ = ("points", "self_priority")
 
     def __init__(self) -> None:
-        self.points: list[tuple[float, float]] = []
+        self.points: list[tuple[float, float, float]] = []
+        self.self_priority: float = 1.0
 
 
 @dam.register_callback(
     "go2_min_max_separation",
     layer="L1",
     category="execution",
-    description="Keep a dog's nearest-neighbour distance inside [min_dist, max_dist].",
+    description="Priority-weighted inter-dog distance band: each dog keeps every "
+    "neighbour >= min_dist (collision, share scaled by priority) and its nearest "
+    "<= max_dist (cohesion). Yielding emerges from the responsibility split.",
     params={
-        "min_dist": "Minimum allowed nearest-neighbour distance (m) — collision floor.",
-        "max_dist": "Maximum allowed nearest-neighbour distance (m) — cohesion ceiling.",
+        "min_dist": "Collision floor (m): predicted distance to any neighbour stays above this.",
+        "max_dist": "Cohesion ceiling (m): the nearest neighbour stays within this.",
         "dt": "Rollout horizon in seconds.",
+        "gamma": "Discrete CBF rate in (0,1] — fraction of the margin a dog may close per step.",
+        "influence": "Only neighbours within min_dist+influence (m) raise a collision constraint.",
+        "lam_min": "Minimum avoidance responsibility a dog keeps even at top priority (safety floor).",
     },
 )
 def go2_min_max_separation(
@@ -74,64 +82,105 @@ def go2_min_max_separation(
     min_dist: float = 0.8,
     max_dist: float = 4.0,
     dt: float = 0.2,
+    gamma: float = 0.5,
+    influence: float = 2.0,
+    lam_min: float = 0.1,
     **_kwargs,
 ):
-    """L1 boundary: predicted nearest-neighbour distance must stay in the band."""
+    """L1 boundary with priority-weighted responsibility (emergent yielding).
+
+    For each near neighbour the discrete CBF asks the dog to keep its predicted
+    distance from closing faster than ``gamma`` allows; the *amount* it must
+    correct is scaled by its responsibility ``lambda = p_j / (p_self + p_j)``
+    (floored at ``lam_min``). A high-priority dog gets ``lambda -> 0`` so its QP
+    barely deviates (keeps course), while the low-priority dog gets ``lambda -> 1``
+    and does the avoiding — so it *looks* like it yields, with no yield() logic.
+    Cohesion (nearest > max_dist) is symmetric (no priority). One slack per
+    constraint keeps the QP always feasible; yaw is penalised so it prefers a
+    strafe.
+    """
     solver = solvers[_SOLVER_KEY]
     holder = solvers.get(_NEIGHBOR_KEY)
-    neighbors = list(getattr(holder, "points", []) or [])
+    neighbors = list(getattr(holder, "points", []) or [])  # each (x, y, priority)
     if not neighbors:
-        return True  # a lone dog has no separation to enforce
+        return True
+    p_self = float(getattr(holder, "self_priority", 1.0))
 
-    # obs.joint_positions           = [x, y, yaw, 0, 0, 0]
-    # action.target_joint_positions = [x, y, yaw, vx, vy, omega]
-    state = list(obs.joint_positions[:3])
-    command = list(action.target_joint_positions[3:6])
+    state = list(obs.joint_positions[:3])              # [x, y, yaw]
+    command = list(action.target_joint_positions[3:6])  # [vx, vy, omega]
+    vx, vy, om = command
+    cx, cy = state[0], state[1]
 
-    nxt = solver.rollout(state, command, dt=dt)
-    nx, ny = float(nxt[0]), float(nxt[1])
-    dists = [math.hypot(nx - px, ny - py) for px, py in neighbors]
-    j = min(range(len(dists)), key=lambda k: dists[k])
-    nearest = dists[j]
-    if min_dist <= nearest <= max_dist:
-        return True  # already in band — pass the command through unchanged
-
-    # --- correction: linearise distance to the offending neighbour, then QP ---
-    px, py = neighbors[j]
+    nxt0 = solver.rollout(state, command, dt=dt)
+    nx0, ny0 = float(nxt0[0]), float(nxt0[1])
     state_t = torch.tensor(state, dtype=torch.float32)
     cmd_t = torch.tensor(command, dtype=torch.float32, requires_grad=True)
-    nxt_t = solver.rollout(state_t, cmd_t, dt=dt)
-    dist_t = torch.sqrt((nxt_t[0] - px) ** 2 + (nxt_t[1] - py) ** 2 + 1e-9)
-    d_val = float(dist_t.item())
-    dist_t.backward()
-    grad = cmd_t.grad.detach().numpy()  # d(dist)/d[vx, vy, omega]
+    nxt_t = solver.rollout(state_t, cmd_t, dt=dt)  # one graph, reused per neighbour
 
-    vx, vy, om = command
-    # Soft (CBF-style) constraint with a slack variable so the QP is ALWAYS feasible:
-    # reaching the band in one dt is usually impossible (a dog only moves ~v*dt), so a
-    # hard constraint would be infeasible and leave the command uncorrected. The slack
-    # absorbs the unreachable part and, being heavily penalised, drives the command to
-    # the actuator limit in the band-improving direction (max sidestep/approach).
-    # Variables: [du_vx, du_vy, du_omega, slack].
+    def _grad_to(px: float, py: float):
+        dist_t = torch.sqrt((nxt_t[0] - px) ** 2 + (nxt_t[1] - py) ** 2 + 1e-9)
+        return torch.autograd.grad(dist_t, cmd_t, retain_graph=True)[0].detach().numpy()
+
+    # Each entry: (grad(3,), rhs, sign)  with constraint  grad.du + sign*slack {>= or <=} rhs.
+    # sign=+1 / lower-bound rhs => "push apart"; sign=-1 / upper-bound rhs => "pull in".
+    push: list = []
+    pull: list = []
+
+    # --- collision: priority-weighted, per near neighbour ---
+    for px, py, p_j in neighbors:
+        dist_now = math.hypot(cx - px, cy - py)
+        if dist_now - min_dist > influence:
+            continue
+        d_pred = math.hypot(nx0 - px, ny0 - py)
+        # discrete CBF: dist(next) >= dist_now - gamma*(dist_now - min_dist)
+        required = (dist_now - gamma * (dist_now - min_dist)) - d_pred
+        if required <= 1e-4:
+            continue  # not closing faster than allowed -> no action needed
+        lam = max(lam_min, p_j / (p_self + p_j))
+        push.append((_grad_to(px, py), lam * required))
+
+    # --- cohesion: nearest neighbour, symmetric (no priority) ---
+    npx, npy = min(((px, py) for px, py, _ in neighbors),
+                   key=lambda p: math.hypot(cx - p[0], cy - p[1]))
+    nd = math.hypot(cx - npx, cy - npy)
+    if nd > max_dist:
+        target = max_dist + (1.0 - gamma) * (nd - max_dist)  # allowed predicted distance
+        d_pred = math.hypot(nx0 - npx, ny0 - npy)
+        if d_pred > target:
+            pull.append((_grad_to(npx, npy), target - d_pred))
+
+    if not push and not pull:
+        return True
+
+    # --- assemble the slack QP: vars = [du_vx, du_vy, du_omega, s_0 ... s_{m-1}] ---
+    m = len(push) + len(pull)
+    n = 3 + m
     slack_w = 1.0e3
-    A_rows = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],
-              [0.0, 0.0, 0.0, 1.0]]  # slack >= 0
-    lo = [-solver.max_v - vx, -solver.max_v - vy, -solver.max_omega - om, 0.0]
-    hi = [solver.max_v - vx, solver.max_v - vy, solver.max_omega - om, np.inf]
-    if nearest < min_dist:
-        # push apart: grad.du + slack >= min_dist - d_val  (distance must GROW)
-        A_rows.append([grad[0], grad[1], grad[2], 1.0])
-        lo.append(min_dist - d_val)
-        hi.append(np.inf)
-    else:
-        # pull in: grad.du - slack <= max_dist - d_val  (distance must SHRINK)
-        A_rows.append([grad[0], grad[1], grad[2], -1.0])
-        lo.append(-np.inf)
-        hi.append(max_dist - d_val)
+    rows, lo, hi = [], [], []
 
-    P = sparse.csc_matrix(np.diag([1.0, 1.0, 3.0, slack_w]))  # penalise yaw -> prefer sidestep
-    q = np.zeros(4)
-    A = sparse.csc_matrix(np.array(A_rows, dtype=float))
+    def _row(vals):
+        r = [0.0] * n
+        for idx, v in vals:
+            r[idx] = v
+        return r
+
+    rows += [_row([(0, 1.0)]), _row([(1, 1.0)]), _row([(2, 1.0)])]  # actuator deltas
+    lo += [-solver.max_v - vx, -solver.max_v - vy, -solver.max_omega - om]
+    hi += [solver.max_v - vx, solver.max_v - vy, solver.max_omega - om]
+    for k in range(m):                                              # slacks >= 0
+        rows.append(_row([(3 + k, 1.0)])); lo.append(0.0); hi.append(np.inf)
+
+    k = 0
+    for grad, rhs in push:   # grad.du + s >= rhs
+        rows.append(_row([(0, grad[0]), (1, grad[1]), (2, grad[2]), (3 + k, 1.0)]))
+        lo.append(rhs); hi.append(np.inf); k += 1
+    for grad, rhs in pull:   # grad.du - s <= rhs
+        rows.append(_row([(0, grad[0]), (1, grad[1]), (2, grad[2]), (3 + k, -1.0)]))
+        lo.append(-np.inf); hi.append(rhs); k += 1
+
+    P = sparse.csc_matrix(np.diag([1.0, 1.0, 3.0] + [slack_w] * m))  # penalise yaw -> sidestep
+    q = np.zeros(n)
+    A = sparse.csc_matrix(np.array(rows, dtype=float))
     prob = osqp.OSQP()
     prob.setup(P, q, A, np.array(lo), np.array(hi), verbose=False, eps_abs=1e-5, eps_rel=1e-5)
     res = prob.solve()
@@ -140,8 +189,8 @@ def go2_min_max_separation(
         action.target_joint_positions[3] = float(vx + res.x[0])
         action.target_joint_positions[4] = float(vy + res.x[1])
         action.target_joint_positions[5] = float(om + res.x[2])
-    elif nearest < min_dist:
-        # Degenerate solver failure on the collision case must fail safe: stop.
+    elif push:
+        # Degenerate solver failure with a collision constraint must fail safe: stop.
         action.target_joint_positions[3] = 0.0
         action.target_joint_positions[4] = 0.0
         action.target_joint_positions[5] = 0.0
@@ -178,13 +227,17 @@ class Go2DAMWrapper:
         command: torch.Tensor,
         state: torch.Tensor,
         neighbors,
+        *,
+        self_priority: float = 1.0,
     ) -> torch.Tensor:
         """Return the DAM-validated ``[vx, vy, omega]`` command.
 
         Args:
             command:   ``(1, 3)`` tensor — ``[vx, vy, omega]``.
             state:     ``(1, >=3)`` tensor — ``[x, y, yaw, ...]``.
-            neighbors: iterable of ``(x, y)`` positions of the OTHER dogs.
+            neighbors: iterable of ``(x, y)`` OR ``(x, y, priority)`` for the OTHER
+                dogs. Priority defaults to 1.0 (symmetric — everyone shares avoidance).
+            self_priority: this dog's priority. Higher -> it yields less (keeps course).
 
         Returns:
             ``(1, 3)`` tensor — safe ``[vx, vy, omega]``.
@@ -196,7 +249,10 @@ class Go2DAMWrapper:
         self._require_command(command)
         self._require_state(state)
 
-        self._neighbors.points = [(float(p[0]), float(p[1])) for p in neighbors]
+        self._neighbors.points = [
+            (float(p[0]), float(p[1]), float(p[2]) if len(p) >= 3 else 1.0) for p in neighbors
+        ]
+        self._neighbors.self_priority = float(self_priority)
 
         raw = command[0]       # [vx, vy, omega]
         pose = state[0, :3]    # [x, y, yaw]
