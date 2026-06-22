@@ -113,6 +113,16 @@ def test_cohesion_pulls_toward_own_group(guard):
     assert safe[0] > 0.4
 
 
+def test_velocity_aware_reacts_to_closing_neighbour(guard):
+    """A neighbour heading straight at the dog provokes a correction that a static
+    one at the same spot does not (velocity-obstacle / TTC behaviour)."""
+    static = _filter(guard, [1.0, 0.0, 0.0], [(2.0, 0.0, 1.0, 0.0)])               # vx,vy=0
+    closing = _filter(guard, [1.0, 0.0, 0.0], [(2.0, 0.0, 1.0, 0.0, -1.5, 0.0)])   # moving -x
+    dev_static = abs(static[0] - 1.0) + abs(static[1])
+    dev_closing = abs(closing[0] - 1.0) + abs(closing[1])
+    assert dev_closing > dev_static
+
+
 def test_equal_priority_is_symmetric(guard):
     """With equal priority both dogs correct about the same (no one yields)."""
     a = _filter(guard, [1.0, 0.0, 0.0], [(0.9, 0.0, 1.0)], pose=(0.0, 0.0, 0.0), self_priority=1.0)

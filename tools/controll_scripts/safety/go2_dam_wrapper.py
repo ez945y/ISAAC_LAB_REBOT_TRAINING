@@ -54,7 +54,7 @@ class _NeighborHolder:
     __slots__ = ("points", "self_priority")
 
     def __init__(self) -> None:
-        self.points: list[tuple[float, float, float, float]] = []  # (x, y, priority, same_group)
+        self.points: list[tuple] = []  # (x, y, priority, same_group, vx, vy)
         self.self_priority: float = 1.0
 
 
@@ -101,7 +101,7 @@ def go2_min_max_separation(
     """
     solver = solvers[_SOLVER_KEY]
     holder = solvers.get(_NEIGHBOR_KEY)
-    neighbors = list(getattr(holder, "points", []) or [])  # each (x, y, priority, same_group)
+    neighbors = list(getattr(holder, "points", []) or [])  # (x, y, priority, same_group, vx, vy)
     if not neighbors:
         return True
     p_self = float(getattr(holder, "self_priority", 1.0))
@@ -129,22 +129,26 @@ def go2_min_max_separation(
     # --- collision: priority-weighted, EVERY near neighbour (own group or not) ---
     # Same-group dogs share a priority -> lambda=0.5 (symmetric); cross-group uses the
     # priority split so the lower-priority group yields. So collision needs no group test.
-    for px, py, p_j, _sg in neighbors:
+    # VELOCITY-AWARE: predict the neighbour forward by its own velocity over dt, so a
+    # head-on pair sees the true closing speed (static neighbours halve it -> react too
+    # late and touch). This is the velocity-obstacle / TTC behaviour.
+    for px, py, p_j, _sg, vpx, vpy in neighbors:
         dist_now = math.hypot(cx - px, cy - py)
         if dist_now - min_dist > influence:
             continue
-        d_pred = math.hypot(nx0 - px, ny0 - py)
+        pfx, pfy = px + vpx * dt, py + vpy * dt   # predicted neighbour position
+        d_pred = math.hypot(nx0 - pfx, ny0 - pfy)
         # discrete CBF: dist(next) >= dist_now - gamma*(dist_now - min_dist)
         required = (dist_now - gamma * (dist_now - min_dist)) - d_pred
         if required <= 1e-4:
             continue  # not closing faster than allowed -> no action needed
         lam = max(lam_min, p_j / (p_self + p_j))
-        push.append((_grad_to(px, py), lam * required))
+        push.append((_grad_to(pfx, pfy), lam * required))
 
     # --- cohesion: nearest SAME-GROUP neighbour only (don't break formation) ---
     # Must be group-scoped: pulling toward the nearest *any* dog drags groups together
     # (and into each other). A lone dog (no groupmate) has nothing to stay near.
-    same_group = [(px, py) for px, py, _p, sg in neighbors if sg]
+    same_group = [(px, py) for px, py, _p, sg, _vx, _vy in neighbors if sg]
     if same_group:
         npx, npy = min(same_group, key=lambda p: math.hypot(cx - p[0], cy - p[1]))
         nd = math.hypot(cx - npx, cy - npy)
@@ -240,10 +244,10 @@ class Go2DAMWrapper:
         Args:
             command:   ``(1, 3)`` tensor — ``[vx, vy, omega]``.
             state:     ``(1, >=3)`` tensor — ``[x, y, yaw, ...]``.
-            neighbors: iterable of ``(x, y)`` / ``(x, y, priority)`` /
-                ``(x, y, priority, same_group)`` for the OTHER dogs. priority defaults
-                to 1.0 (symmetric); same_group defaults to 1 (cohesion applies). Pass
-                same_group=0 for dogs in OTHER groups so cohesion ignores them.
+            neighbors: iterable of ``(x, y[, priority[, same_group[, vx, vy]]])`` for the
+                OTHER dogs. priority defaults to 1.0 (symmetric); same_group defaults to
+                1 (cohesion applies — pass 0 for other groups); world velocity (vx, vy)
+                defaults to 0 (static). Velocity makes the guard velocity-aware (TTC).
             self_priority: this dog's priority. Higher -> it yields less (keeps course).
 
         Returns:
@@ -259,7 +263,9 @@ class Go2DAMWrapper:
         self._neighbors.points = [
             (float(p[0]), float(p[1]),
              float(p[2]) if len(p) >= 3 else 1.0,
-             float(p[3]) if len(p) >= 4 else 1.0)
+             float(p[3]) if len(p) >= 4 else 1.0,
+             float(p[4]) if len(p) >= 6 else 0.0,
+             float(p[5]) if len(p) >= 6 else 0.0)
             for p in neighbors
         ]
         self._neighbors.self_priority = float(self_priority)

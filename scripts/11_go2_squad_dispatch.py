@@ -138,6 +138,13 @@ START_XY = [
     (-1.5, 1.2), (-1.5, 0.0), (-1.5, -1.2),
     (-3.0, 1.2), (-3.0, 0.0), (-3.0, -1.2),
 ]
+# --auto crossing demo: G0 (d0-2) on the LEFT, G1 (d3-5) on the RIGHT, same y-lanes,
+# so when they swap sides they meet head-on per lane -> emergent yielding is visible.
+AUTO_START_XY = [
+    (-3.5, 1.2), (-3.5, 0.0), (-3.5, -1.2),
+    (3.5, 1.2), (3.5, 0.0), (3.5, -1.2),
+]
+AUTO_PRIORITY = {"G0": 5.0, "G1": 1.0}  # G0 keeps its line; G1 yields (unless overridden)
 HOME = (0.0, 0.0)
 # Named warehouse zones the operator dispatches to (kept inside the open lanes;
 # the dogs have no obstacle avoidance, so keep targets off the shelving).
@@ -539,7 +546,8 @@ class Go2SquadSafety:
             from controll_scripts.safety import Go2DAMWrapper  # torch/DAM only when used
 
             self._wrap = Go2DAMWrapper(stackfile, device=device)
-        self._pos: dict[str, tuple[float, float, float, str | None]] = {}  # aid -> (x,y,priority,group)
+        self._pos: dict[str, tuple] = {}   # aid -> (x, y, priority, group, wvx, wvy)
+        self._vel: dict[str, tuple[float, float]] = {}  # aid -> last world velocity
         self._rec: dict[str, dict] = {}
         self._device = device
 
@@ -547,9 +555,16 @@ class Go2SquadSafety:
         a = self._agents.get(aid)
         return float(self._group_priority.get(a.group_id, 1.0)) if a is not None else 1.0
 
+    @staticmethod
+    def _world_vel(cmd, yaw: float) -> tuple[float, float]:
+        """Body-frame (vx, vy) -> world velocity (for neighbour motion prediction)."""
+        vx, vy = cmd[0], cmd[1]
+        return (vx * math.cos(yaw) - vy * math.sin(yaw),
+                vx * math.sin(yaw) + vy * math.cos(yaw))
+
     def update(self) -> None:
-        """Snapshot every dog's position + priority + group once per tick."""
-        self._pos = {aid: (s.x, s.y, self._priority(aid), a.group_id)
+        """Snapshot every dog's position + priority + group + last velocity per tick."""
+        self._pos = {aid: (s.x, s.y, self._priority(aid), a.group_id, *self._vel.get(aid, (0.0, 0.0)))
                      for aid, a in self._agents.items() if (s := a.get_state())}
 
     def make_filter(self, agent_id: str):
@@ -558,11 +573,12 @@ class Go2SquadSafety:
     def _filter(self, aid: str, cmd, pose):
         x, y, yaw = pose
         my_group = self._agents[aid].group_id if aid in self._agents else None
-        # (x, y, priority, same_group): same_group=1 only for own-group dogs (cohesion scope).
-        neighbors = [(px, py, prio, 1.0 if g == my_group else 0.0)
-                     for k, (px, py, prio, g) in self._pos.items() if k != aid]
-        nearest = min((math.hypot(x - px, y - py) for px, py, _, _ in neighbors), default=float("inf"))
+        # (x, y, priority, same_group, vx, vy): same_group=1 only for own-group dogs.
+        neighbors = [(px, py, prio, 1.0 if g == my_group else 0.0, vx, vy)
+                     for k, (px, py, prio, g, vx, vy) in self._pos.items() if k != aid]
+        nearest = min((math.hypot(x - px, y - py) for px, py, *_ in neighbors), default=float("inf"))
         if not self.enabled or self._wrap is None or not neighbors:
+            self._vel[aid] = self._world_vel(cmd, yaw)
             self._rec[aid] = {"obs": [x, y, yaw], "nominal": list(cmd), "safe": list(cmd),
                               "decision": "OFF", "nearest": nearest}
             return cmd
@@ -571,6 +587,7 @@ class Go2SquadSafety:
         c = torch.tensor([[cmd[0], cmd[1], cmd[2]]], dtype=torch.float32)
         s = torch.tensor([[x, y, yaw]], dtype=torch.float32)
         safe = self._wrap.filter(c, s, neighbors, self_priority=self._priority(aid))[0].tolist()
+        self._vel[aid] = self._world_vel(safe, yaw)
         self._rec[aid] = {"obs": [x, y, yaw], "nominal": list(cmd), "safe": safe,
                           "decision": self._wrap.last_decision, "nearest": nearest}
         return (safe[0], safe[1], safe[2])
@@ -598,9 +615,10 @@ class Go2SquadDemo:
         self.ros_bridge: SquadRosBridge | None = None
         self.safety: Go2SquadSafety | None = None
         self._obs_file = None
-        # --auto scripted-run state (unchanged behaviour)
+        # --auto scripted-run state
         self.phase = 1
         self._regrouped = False
+        self._phase_t = 0.0
 
     def setup(self) -> bool:
         self.world = World(
@@ -627,8 +645,14 @@ class Go2SquadDemo:
         _add_lighting()
 
         # Spawn 6 Go2 + wrap each in the ABI agent.
-        for i, (x, y) in enumerate(START_XY):
-            backend = Go2Locomotion(prim_path=f"/World/Go2_{i}", position=[x, y, STAND_Z])
+        start_xy = AUTO_START_XY if args_cli.auto else START_XY
+        for i, (x, y) in enumerate(start_xy):
+            # Auto crossing demo: G1 (right, d3-5) starts facing -x so it walks straight
+            # at G0 instead of needing a 180 deg U-turn (which the Go2 gait does poorly).
+            orient = None
+            if args_cli.auto:
+                orient = [0.0, 0.0, 0.0, 1.0] if i >= 3 else [1.0, 0.0, 0.0, 0.0]  # wxyz: yaw pi / 0
+            backend = Go2Locomotion(prim_path=f"/World/Go2_{i}", position=[x, y, STAND_Z], orientation=orient)
             agent = RobotAgent(f"d{i}", backend, params={"arrive_tol": args_cli.arrive_tol})
             self.agents[f"d{i}"] = agent
 
@@ -656,6 +680,8 @@ class Go2SquadDemo:
                 if ":" in tok:
                     g, p = tok.split(":", 1)
                     group_priority[g.strip()] = float(p)
+            if not group_priority and args_cli.auto:
+                group_priority = dict(AUTO_PRIORITY)  # bake the crossing-demo priority
             self.safety = Go2SquadSafety(self.agents, stackfile=args_cli.dam_stack,
                                          enabled=args_cli.dam, group_priority=group_priority)
             for aid, agent in self.agents.items():
@@ -735,31 +761,39 @@ class Go2SquadDemo:
             t_done = t
             snap("" if t == 0.0 else f"{int(t)}")
 
+    # Per-phase time caps (s) so a yielding straggler can't stall the choreography.
+    _PHASE1_CAP = 11.0
+    _PHASE2_CAP = 8.0
+
     def _setup_auto(self) -> None:
-        """Original scripted 2x3 -> staging -> regroup -> 3x2 run."""
-        self.squad.set_groups(split_evenly(self.squad.agent_ids, 3))
-        for gid, area in {"G0": (6.0, 2.0), "G1": (6.0, -2.0)}.items():
-            self.dispatcher.send(gid, area, "wedge", spacing=1.4)
+        """Crossing yield demo: the two groups swap sides head-on along the same
+        y-lanes — with DAM + priority, G0 keeps its line and G1 yields — then they
+        regroup 3x2 and reform. G0=d0-2 start left, G1=d3-5 start right."""
+        self.squad.set_groups(split_evenly(self.squad.agent_ids, 3))  # G0 left, G1 right
+        self.dispatcher.send("G0", (2.5, 0.0), "row", spacing=1.2)    # left  -> right
+        self.dispatcher.send("G1", (-2.5, 0.0), "row", spacing=1.2)   # right -> left
+        self._phase_t = 0.0
         print("\n" + "=" * 70)
-        print("  Go2 Squad Dispatch (AUTO) — 2x3 -> regroup -> 3x2")
+        print("  Go2 AUTO — CROSS (G0 keeps line / G1 yields) -> REGROUP 3x2 -> REFORM")
         print("=" * 70 + "\n", flush=True)
 
     def _tick_auto(self) -> None:
-        targets = {"G0": (12.0, -3.0), "G1": (12.0, 0.0), "G2": (12.0, 3.0)}
         status = self.dispatcher.update(PHYSICS_DT)
-        if self.phase == 1 and status and all(status.values()) and not self._regrouped:
-            self._regrouped = True
+        self._phase_t += PHYSICS_DT
+        done = bool(status) and all(status.values())
+        if self.phase == 1 and (done or self._phase_t > self._PHASE1_CAP):
             self.phase = 2
+            self._phase_t = 0.0
             ids_by_y = sorted(self.squad.agent_ids, key=lambda a: self.agents[a].get_state().y)
-            groups = {f"G{i}": ids_by_y[2 * i:2 * i + 2] for i in range(len(targets))}
+            groups = {f"G{i}": ids_by_y[2 * i:2 * i + 2] for i in range(3)}
             self.dispatcher.regroup(groups)
-            targets_by_y = sorted(targets.values(), key=lambda t: t[1])
-            for gid, area in zip(groups.keys(), targets_by_y):
-                self.dispatcher.send(gid, area, "row", spacing=1.4)
-            print(f"[auto] PHASE 1 complete -> REGROUP 3x2: {self.squad.groups}", flush=True)
-        elif self.phase == 2 and status and all(status.values()):
+            for gid, area in zip(groups, [(0.0, 2.4), (0.0, 0.0), (0.0, -2.4)]):
+                self.dispatcher.send(gid, area, "wedge", spacing=1.2)
+            print(f"[auto] CROSS done ({self._phase_t:.1f}s) -> REGROUP 3x2 + REFORM: "
+                  f"{self.squad.groups}", flush=True)
+        elif self.phase == 2 and (done or self._phase_t > self._PHASE2_CAP):
             self.phase = 3
-            print("[auto] PHASE 2 complete — squad at targets.", flush=True)
+            print("[auto] REFORM done — squad in position.", flush=True)
 
     def _build_markers(self) -> list[dict]:
         """rviz markers in the /map frame: each dog (arrow=pose, colored by group +
