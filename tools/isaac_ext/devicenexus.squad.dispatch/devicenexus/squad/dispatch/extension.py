@@ -163,13 +163,13 @@ class SquadDispatchExtension(omni.ext.IExt):
             ui.Separator()
 
             # The three "cycle" controls — current value is shown IN the button.
-            self._row("Steering", f"{sel} ▶", "who commands affect (cycle ALL→G0→G1…)",
+            self._row("Steering", f"{sel} >", "who commands affect (cycle ALL>G0>G1...)",
                       lambda h: h.select_next(),
                       "Pick which group your commands control. ALL = the whole squad.")
-            self._row("Grouping", f"{len(groups)}×{size} ▶", "split the squad (1×6 → 2×3 → 3×2)",
+            self._row("Grouping", f"{len(groups)}x{size} >", "split the squad (1x6 -> 2x3 -> 3x2)",
                       lambda h: h.cycle_regroup(),
                       "Re-partition the 6 dogs into N groups of M.")
-            self._row("Formation", f"{shape.upper()} ▶", "line shape (wedge → row → column)",
+            self._row("Formation", f"{shape.upper()} >", "line shape (wedge -> row -> column)",
                       lambda h: h.cycle_formation(),
                       "Change how the steered group lines up when it moves.")
 
@@ -188,7 +188,7 @@ class SquadDispatchExtension(omni.ext.IExt):
             with ui.HStack(spacing=4, height=0):
                 pb = ui.Button(f"Patrol: {'ON' if patrol_on else 'OFF'}",
                                clicked_fn=lambda: self._do(lambda h: h.toggle_patrol()))
-                rb = ui.Button("Recall → HOME", clicked_fn=lambda: self._do(lambda h: h.recall()))
+                rb = ui.Button("Recall -> HOME", clicked_fn=lambda: self._do(lambda h: h.recall()))
                 hb = ui.Button("Halt all", clicked_fn=lambda: self._do(lambda h: h.halt()))
             for b, t in ((pb, "Toggle auto-patrol: the squad loops through every zone."),
                          (rb, "Send the whole squad back to HOME (0, 0)."),
@@ -199,14 +199,14 @@ class SquadDispatchExtension(omni.ext.IExt):
                     pass
 
             ui.Separator()
-            ui.Label("Dogs   (id · group · position · → target · ✓arrived):",
+            ui.Label("Dogs   (id | group | position | -> target | *=arrived):",
                      style={"color": 0xFFAAAAAA, "font_size": 12})
             for d in snap.get("dogs", []):
-                tgt = "—" if d.get("tx") is None else f"({d['tx']:+.1f},{d['ty']:+.1f})"
-                mark = "✓" if d.get("arrived") else " "
+                tgt = "-" if d.get("tx") is None else f"({d['tx']:+.1f},{d['ty']:+.1f})"
+                mark = "*" if d.get("arrived") else " "
                 ui.Label(
                     f"  {d['id']}  {d.get('group') or '-':>3}  "
-                    f"({d['x']:+5.1f},{d['y']:+5.1f})  → {tgt}  {mark}",
+                    f"({d['x']:+5.1f},{d['y']:+5.1f})  -> {tgt}  {mark}",
                     style={"font_size": 14},
                 )
 
