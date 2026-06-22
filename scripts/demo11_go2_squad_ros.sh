@@ -26,6 +26,8 @@ fi
 
 CMD_TOPIC=/squad/dispatch_cmd
 SIM_LOG=/tmp/go2_squad_sim.log
+MAP_LOG=/tmp/go2_squad_map.log
+MAP_YAML="$REPO_DIR/tools/ros/maps/warehouse.yaml"
 
 echo ""
 echo "=========================================================================="
@@ -35,14 +37,24 @@ echo "==========================================================================
 source tools/ros/free_isaac_stream.sh
 free_isaac_stream
 
+# Static shared map: publish the baked warehouse occupancy grid on /map (latched),
+# so rviz (and every dog) sees the same environment. Bake it first if missing.
+if [[ ! -f "$MAP_YAML" ]]; then
+    echo "  No baked map at $MAP_YAML — generating it (one-off, ~30s)..."
+    python scripts/_warehouse_occupancy.py
+fi
+echo "  Publishing /map from $MAP_YAML (logs: $MAP_LOG)..."
+python tools/ros/warehouse_map_server.py --map "$MAP_YAML" > "$MAP_LOG" 2>&1 &
+MAP_PID=$!
+
 echo "  Launching simulator in background (logs: $SIM_LOG)..."
 echo "  (first boot pulls the Go2 + warehouse assets — can take a few minutes)"
 nohup python scripts/11_go2_squad_dispatch.py \
     --ros-control --ros-node-name go2_squad_demo --livestream 2 "$@" \
     > "$SIM_LOG" 2>&1 &
 SIM_PID=$!
-# Kill the sim when this script exits (Ctrl+C in the client).
-trap 'kill "$SIM_PID" 2>/dev/null || true' EXIT
+# Kill the sim + map server when this script exits (Ctrl+C in the client).
+trap 'kill "$SIM_PID" "$MAP_PID" 2>/dev/null || true' EXIT
 
 # Wait until the sim's ROS control interface is listening (or it died).
 echo -n "  Waiting for the squad ROS interface to come up"
@@ -63,6 +75,8 @@ done
 
 echo ""
 echo "  Connect the WebRTC client to 192.168.90.162 (signal 49100 / stream 47998)."
+echo "  Top-down map view (the dogs + zones on the warehouse /map):"
+echo "      rviz2 -d $REPO_DIR/tools/ros/squad.rviz"
 echo "  Now driving the squad — type dispatch commands below (Ctrl+C to quit both)."
 echo ""
 
