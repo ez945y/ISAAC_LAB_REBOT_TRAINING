@@ -26,7 +26,6 @@ _PALETTE = [
     (0.20, 0.60, 1.00), (1.00, 0.55, 0.10), (0.30, 0.90, 0.40),
     (0.90, 0.30, 0.90), (0.95, 0.85, 0.15), (0.40, 0.90, 0.90),
 ]
-_ZONE_COLOR = (0.20, 0.80, 0.90, 1.0)
 _PANEL_HZ = 4.0  # rebuild the panel at most this often (the overlay redraws every frame)
 
 
@@ -103,11 +102,6 @@ class SquadDispatchExtension(omni.ext.IExt):
         cols: list[tuple[float, float, float, float]] = []
         sizes: list[float] = []
         ls, le, lc, lw = [], [], [], []
-
-        for z in snap.get("zones", []):
-            pts.append((z["x"], z["y"], 0.08))
-            cols.append(_ZONE_COLOR)
-            sizes.append(26)
 
         for d in snap.get("dogs", []):
             r, g, b = _group_rgb(d.get("group"))
