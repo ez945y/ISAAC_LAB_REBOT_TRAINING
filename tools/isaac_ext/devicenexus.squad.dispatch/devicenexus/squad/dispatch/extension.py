@@ -127,6 +127,17 @@ class SquadDispatchExtension(omni.ext.IExt):
 
     # -- panel ----------------------------------------------------------------
 
+    def _row(self, label: str, btn_text: str, hint: str, on_click, tooltip: str) -> None:
+        """One control row: 'what it is' | [button showing current value] | 'what it does'."""
+        with ui.HStack(spacing=6, height=0):
+            ui.Label(label, width=86, style={"font_size": 14})
+            b = ui.Button(btn_text, width=130, clicked_fn=lambda: self._do(on_click))
+            try:
+                b.set_tooltip(tooltip)
+            except Exception:  # noqa: BLE001 -- tooltip is a nicety, never fatal
+                pass
+            ui.Label(hint, style={"color": 0xFF888888, "font_size": 12})
+
     def _build_ui(self) -> None:
         handle = get_handle()
         snap = handle.snapshot() if handle is not None else None
@@ -138,26 +149,58 @@ class SquadDispatchExtension(omni.ext.IExt):
 
             sel = snap.get("selected") or "ALL"
             groups = snap.get("groups", {})
-            ui.Label(f"Steering: {sel}    Groups: {len(groups)}",
-                     style={"font_size": 18})
+            size = max((len(v) for v in groups.values()), default=0)
+            formations = snap.get("formation", {})
+            if sel != "ALL":
+                shape = formations.get(sel, "wedge")
+            else:
+                shape = next(iter(formations.values()), "wedge")
+            patrol_on = bool(snap.get("patrol"))
 
-            # Dispatch targets (named zones) -> steered group.
-            ui.Label("Dispatch to zone:", style={"color": 0xFFAAAAAA})
-            with ui.HStack(spacing=4, height=0):
-                for i, z in enumerate(snap.get("zones", [])):
-                    ui.Button(z["name"], clicked_fn=lambda i=i: self._do(lambda h: h.dispatch_zone(i)))
+            ui.Label("SQUAD DISPATCH", style={"font_size": 18})
+            ui.Label("Click a control to change it. Most commands act on the STEERED group.",
+                     style={"color": 0xFF9999AA, "font_size": 12}, word_wrap=True)
+            ui.Separator()
 
-            with ui.HStack(spacing=4, height=0):
-                ui.Button("Select ▶", clicked_fn=lambda: self._do(lambda h: h.select_next()))
-                ui.Button("Formation", clicked_fn=lambda: self._do(lambda h: h.cycle_formation()))
-                ui.Button("Regroup", clicked_fn=lambda: self._do(lambda h: h.cycle_regroup()))
-            with ui.HStack(spacing=4, height=0):
-                ui.Button("Patrol", clicked_fn=lambda: self._do(lambda h: h.toggle_patrol()))
-                ui.Button("Recall", clicked_fn=lambda: self._do(lambda h: h.recall()))
-                ui.Button("Halt", clicked_fn=lambda: self._do(lambda h: h.halt()))
+            # The three "cycle" controls — current value is shown IN the button.
+            self._row("Steering", f"{sel} ▶", "who commands affect (cycle ALL→G0→G1…)",
+                      lambda h: h.select_next(),
+                      "Pick which group your commands control. ALL = the whole squad.")
+            self._row("Grouping", f"{len(groups)}×{size} ▶", "split the squad (1×6 → 2×3 → 3×2)",
+                      lambda h: h.cycle_regroup(),
+                      "Re-partition the 6 dogs into N groups of M.")
+            self._row("Formation", f"{shape.upper()} ▶", "line shape (wedge → row → column)",
+                      lambda h: h.cycle_formation(),
+                      "Change how the steered group lines up when it moves.")
 
             ui.Separator()
-            ui.Label("Dogs:", style={"color": 0xFFAAAAAA})
+            ui.Label("Send the steered group to a zone:", style={"color": 0xFFAAAAAA})
+            with ui.HStack(spacing=4, height=0):
+                for i, z in enumerate(snap.get("zones", [])):
+                    zb = ui.Button(z["name"], clicked_fn=lambda i=i: self._do(lambda h: h.dispatch_zone(i)))
+                    try:
+                        zb.set_tooltip(f"March the steered group to {z['name']} "
+                                       f"({z['x']:+.1f}, {z['y']:+.1f}).")
+                    except Exception:  # noqa: BLE001
+                        pass
+
+            ui.Separator()
+            with ui.HStack(spacing=4, height=0):
+                pb = ui.Button(f"Patrol: {'ON' if patrol_on else 'OFF'}",
+                               clicked_fn=lambda: self._do(lambda h: h.toggle_patrol()))
+                rb = ui.Button("Recall → HOME", clicked_fn=lambda: self._do(lambda h: h.recall()))
+                hb = ui.Button("Halt all", clicked_fn=lambda: self._do(lambda h: h.halt()))
+            for b, t in ((pb, "Toggle auto-patrol: the squad loops through every zone."),
+                         (rb, "Send the whole squad back to HOME (0, 0)."),
+                         (hb, "Stop every dog where it stands.")):
+                try:
+                    b.set_tooltip(t)
+                except Exception:  # noqa: BLE001
+                    pass
+
+            ui.Separator()
+            ui.Label("Dogs   (id · group · position · → target · ✓arrived):",
+                     style={"color": 0xFFAAAAAA, "font_size": 12})
             for d in snap.get("dogs", []):
                 tgt = "—" if d.get("tx") is None else f"({d['tx']:+.1f},{d['ty']:+.1f})"
                 mark = "✓" if d.get("arrived") else " "

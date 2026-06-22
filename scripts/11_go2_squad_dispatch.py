@@ -487,6 +487,7 @@ class DispatchConsoleHandle:
             "groups": {gid: list(ids) for gid, ids in self._squad.groups.items()},
             "selected": self._ctrl.selected,
             "formation": {g: f.value for g, f in self._ctrl.formation.items()},
+            "patrol": self._ctrl.patrol,
             "dogs": dogs,
         }
 
