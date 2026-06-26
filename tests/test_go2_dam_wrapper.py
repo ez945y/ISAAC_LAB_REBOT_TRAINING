@@ -50,8 +50,8 @@ def _filter(guard, cmd, neighbors, pose=(0.0, 0.0, 0.0), self_priority=1.0):
 
 
 def test_in_band_passes_through(guard):
-    # neighbour 2 m away, closing slowly -> within what the CBF allows -> unchanged
-    safe = _filter(guard, [1.0, 0.0, 0.0], [(2.0, 0.0)])
+    # neighbour beyond the influence radius (and the comfort zone) -> command unchanged
+    safe = _filter(guard, [1.0, 0.0, 0.0], [(3.8, 0.0)])
     assert safe == pytest.approx([1.0, 0.0, 0.0], abs=1e-3)
     assert guard.last_decision == "PASS"
 
@@ -121,6 +121,17 @@ def test_velocity_aware_reacts_to_closing_neighbour(guard):
     dev_static = abs(static[0] - 1.0) + abs(static[1])
     dev_closing = abs(closing[0] - 1.0) + abs(closing[1])
     assert dev_closing > dev_static
+
+
+def test_high_priority_still_moves_at_the_hard_floor(guard):
+    """The fluid property: a high-priority dog barely reacts to a low-priority
+    neighbour in the COMFORT zone (it flows through), but at the HARD floor the
+    symmetric hard constraint forces it to move too -- so nobody is pushed past it."""
+    comfort = _filter(guard, [1.0, 0.0, 0.0], [(1.6, 0.0, 1.0)], self_priority=5.0)
+    hard = _filter(guard, [1.0, 0.0, 0.0], [(1.0, 0.0, 1.0, 0.0, -0.5, 0.0)], self_priority=5.0)
+    dev_comfort = abs(comfort[0] - 1.0) + abs(comfort[1])
+    dev_hard = abs(hard[0] - 1.0) + abs(hard[1])
+    assert dev_hard > dev_comfort + 0.05
 
 
 def test_equal_priority_is_symmetric(guard):

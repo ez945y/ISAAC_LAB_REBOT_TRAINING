@@ -66,12 +66,15 @@ class _NeighborHolder:
     "neighbour >= min_dist (collision, share scaled by priority) and its nearest "
     "<= max_dist (cohesion). Yielding emerges from the responsibility split.",
     params={
-        "min_dist": "Collision floor (m): predicted distance to any neighbour stays above this.",
-        "max_dist": "Cohesion ceiling (m): the nearest neighbour stays within this.",
+        "min_dist": "HARD collision floor (m): absolute, symmetric — never crossed by anyone.",
+        "comfort_dist": "SOFT comfort distance (m): preferred spacing; lower-priority gives it up.",
+        "max_dist": "Cohesion ceiling (m): the nearest groupmate stays within this.",
         "dt": "Rollout horizon in seconds.",
         "gamma": "Discrete CBF rate in (0,1] — fraction of the margin a dog may close per step.",
-        "influence": "Only neighbours within min_dist+influence (m) raise a collision constraint.",
-        "lam_min": "Minimum avoidance responsibility a dog keeps even at top priority (safety floor).",
+        "influence": "Only neighbours within min_dist+influence (m) raise a constraint.",
+        "lam_min": "Minimum comfort-yield share a dog keeps even at top priority.",
+        "w_hard": "Slack penalty on the hard floor (near-inviolable).",
+        "w_soft": "Slack penalty on the soft comfort/cohesion (gives way under pressure).",
     },
 )
 def go2_min_max_separation(
@@ -79,12 +82,15 @@ def go2_min_max_separation(
     obs,
     action,
     solvers,
-    min_dist: float = 0.8,
+    min_dist: float = 1.0,
+    comfort_dist: float = 2.0,
     max_dist: float = 4.0,
     dt: float = 0.2,
-    gamma: float = 0.5,
-    influence: float = 2.0,
-    lam_min: float = 0.1,
+    gamma: float = 0.4,
+    influence: float = 2.5,
+    lam_min: float = 0.15,
+    w_hard: float = 1.0e4,
+    w_soft: float = 50.0,
     **_kwargs,
 ):
     """L1 boundary with priority-weighted responsibility (emergent yielding).
@@ -121,42 +127,48 @@ def go2_min_max_separation(
         dist_t = torch.sqrt((nxt_t[0] - px) ** 2 + (nxt_t[1] - py) ** 2 + 1e-9)
         return torch.autograd.grad(dist_t, cmd_t, retain_graph=True)[0].detach().numpy()
 
-    # Each entry: (grad(3,), rhs, sign)  with constraint  grad.du + sign*slack {>= or <=} rhs.
-    # sign=+1 / lower-bound rhs => "push apart"; sign=-1 / upper-bound rhs => "pull in".
+    # Each entry: (grad(3,), rhs, slack_weight). push => grad.du + s >= rhs (apart);
+    # pull => grad.du - s <= rhs (together). The per-constraint slack weight is what
+    # makes a boundary HARD (near-infinite penalty -> inviolable) or SOFT (moderate
+    # penalty -> gives way when holding it would cost more motion).
     push: list = []
     pull: list = []
+    hard_active = False
 
-    # --- collision: priority-weighted, EVERY near neighbour (own group or not) ---
-    # Same-group dogs share a priority -> lambda=0.5 (symmetric); cross-group uses the
-    # priority split so the lower-priority group yields. So collision needs no group test.
-    # VELOCITY-AWARE: predict the neighbour forward by its own velocity over dt, so a
-    # head-on pair sees the true closing speed (static neighbours halve it -> react too
-    # late and touch). This is the velocity-obstacle / TTC behaviour.
+    # --- collision: TWO boundaries per near neighbour (velocity-aware / TTC) ---
+    # Predict the neighbour forward by its own velocity so a head-on pair sees the real
+    # closing speed (static neighbours halve it -> react too late).
+    #   HARD floor (min_dist): SYMMETRIC (lambda=0.5) + huge weight -> absolute, EVERY
+    #     dog (even top priority) shares it, so under pressure they all slow/shift and
+    #     no one is pushed past it or stuck retreating -- the "fluid" behaviour.
+    #   SOFT comfort (comfort_dist): PRIORITY-weighted -> the lower-priority dog gives
+    #     up the comfort zone first (yields), the higher-priority one flows through.
     for px, py, p_j, _sg, vpx, vpy in neighbors:
         dist_now = math.hypot(cx - px, cy - py)
         if dist_now - min_dist > influence:
             continue
-        pfx, pfy = px + vpx * dt, py + vpy * dt   # predicted neighbour position
+        pfx, pfy = px + vpx * dt, py + vpy * dt
         d_pred = math.hypot(nx0 - pfx, ny0 - pfy)
-        # discrete CBF: dist(next) >= dist_now - gamma*(dist_now - min_dist)
-        required = (dist_now - gamma * (dist_now - min_dist)) - d_pred
-        if required <= 1e-4:
-            continue  # not closing faster than allowed -> no action needed
-        lam = max(lam_min, p_j / (p_self + p_j))
-        push.append((_grad_to(pfx, pfy), lam * required))
+        grad = _grad_to(pfx, pfy)
+        req_hard = (dist_now - gamma * (dist_now - min_dist)) - d_pred
+        if req_hard > 1e-4:
+            push.append((grad, 0.5 * req_hard, w_hard))   # symmetric share
+            hard_active = True
+        req_soft = (dist_now - gamma * (dist_now - comfort_dist)) - d_pred
+        if req_soft > 1e-4:
+            lam = max(lam_min, p_j / (p_self + p_j))
+            push.append((grad, lam * req_soft, w_soft))    # priority share
 
     # --- cohesion: nearest SAME-GROUP neighbour only (don't break formation) ---
-    # Must be group-scoped: pulling toward the nearest *any* dog drags groups together
-    # (and into each other). A lone dog (no groupmate) has nothing to stay near.
     same_group = [(px, py) for px, py, _p, sg, _vx, _vy in neighbors if sg]
     if same_group:
         npx, npy = min(same_group, key=lambda p: math.hypot(cx - p[0], cy - p[1]))
         nd = math.hypot(cx - npx, cy - npy)
         if nd > max_dist:
-            target = max_dist + (1.0 - gamma) * (nd - max_dist)  # allowed predicted distance
+            target = max_dist + (1.0 - gamma) * (nd - max_dist)
             d_pred = math.hypot(nx0 - npx, ny0 - npy)
             if d_pred > target:
-                pull.append((_grad_to(npx, npy), target - d_pred))
+                pull.append((_grad_to(npx, npy), target - d_pred, w_soft))
 
     if not push and not pull:
         return True
@@ -164,8 +176,7 @@ def go2_min_max_separation(
     # --- assemble the slack QP: vars = [du_vx, du_vy, du_omega, s_0 ... s_{m-1}] ---
     m = len(push) + len(pull)
     n = 3 + m
-    slack_w = 1.0e3
-    rows, lo, hi = [], [], []
+    rows, lo, hi, slack_w = [], [], [], []
 
     def _row(vals):
         r = [0.0] * n
@@ -180,14 +191,14 @@ def go2_min_max_separation(
         rows.append(_row([(3 + k, 1.0)])); lo.append(0.0); hi.append(np.inf)
 
     k = 0
-    for grad, rhs in push:   # grad.du + s >= rhs
+    for grad, rhs, w in push:   # grad.du + s >= rhs
         rows.append(_row([(0, grad[0]), (1, grad[1]), (2, grad[2]), (3 + k, 1.0)]))
-        lo.append(rhs); hi.append(np.inf); k += 1
-    for grad, rhs in pull:   # grad.du - s <= rhs
+        lo.append(rhs); hi.append(np.inf); slack_w.append(w); k += 1
+    for grad, rhs, w in pull:   # grad.du - s <= rhs
         rows.append(_row([(0, grad[0]), (1, grad[1]), (2, grad[2]), (3 + k, -1.0)]))
-        lo.append(-np.inf); hi.append(rhs); k += 1
+        lo.append(-np.inf); hi.append(rhs); slack_w.append(w); k += 1
 
-    P = sparse.csc_matrix(np.diag([1.0, 1.0, 3.0] + [slack_w] * m))  # penalise yaw -> sidestep
+    P = sparse.csc_matrix(np.diag([1.0, 1.0, 3.0] + slack_w))  # penalise yaw -> sidestep
     q = np.zeros(n)
     A = sparse.csc_matrix(np.array(rows, dtype=float))
     prob = osqp.OSQP()
@@ -198,8 +209,8 @@ def go2_min_max_separation(
         action.target_joint_positions[3] = float(vx + res.x[0])
         action.target_joint_positions[4] = float(vy + res.x[1])
         action.target_joint_positions[5] = float(om + res.x[2])
-    elif push:
-        # Degenerate solver failure with a collision constraint must fail safe: stop.
+    elif hard_active:
+        # Degenerate solver failure with the HARD floor active must fail safe: stop.
         action.target_joint_positions[3] = 0.0
         action.target_joint_positions[4] = 0.0
         action.target_joint_positions[5] = 0.0
