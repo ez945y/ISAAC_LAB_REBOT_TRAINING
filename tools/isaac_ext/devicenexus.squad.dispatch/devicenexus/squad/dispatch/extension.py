@@ -133,10 +133,11 @@ class SquadDispatchExtension(omni.ext.IExt):
         safety = snap.get("safety")
         dogs = snap.get("dogs", [])
         if safety and dogs:
-            half = safety.get("capsule_half", 0.25)
-            r = safety.get("hard_r", 0.35)
+            # Draw the actual Go2 BODY capsule (~0.65 x 0.30 m), not the safety bubble.
+            body_half, body_r = 0.18, 0.15
             for d in dogs:
-                self._stadium(d["x"], d["y"], d.get("yaw", 0.0), half, r, (1.0, 0.3, 0.3, 0.9))
+                self._stadium(d["x"], d["y"], d.get("yaw", 0.0), body_half, body_r,
+                              (1.0, 0.3, 0.3, 0.9), z=0.05)
             pos = {d["id"]: (d["x"], d["y"]) for d in dogs}
             for gid, members in snap.get("groups", {}).items():
                 mp = [pos[m] for m in members if m in pos]
@@ -144,11 +145,11 @@ class SquadDispatchExtension(omni.ext.IExt):
                     continue
                 gx = sum(p[0] for p in mp) / len(mp)
                 gy = sum(p[1] for p in mp) / len(mp)
-                rad = max((math.hypot(p[0] - gx, p[1] - gy) for p in mp), default=0.0) + r
+                rad = max((math.hypot(p[0] - gx, p[1] - gy) for p in mp), default=0.0) + body_r
                 gr, gg, gb = _group_rgb(gid)
-                self._circle(gx, gy, rad, (gr, gg, gb, 0.7), z=0.06, width=2)
+                self._circle(gx, gy, rad, (gr, gg, gb, 0.7), z=0.04, width=2)
 
-    def _circle(self, cx: float, cy: float, radius: float, color, z: float = 0.12,
+    def _circle(self, cx: float, cy: float, radius: float, color, z: float = 0.05,
                 n: int = 20, width: int = 2) -> None:
         """Draw a flat ring on the floor as a closed spline (DebugDraw has no circle)."""
         if self._draw is None or radius <= 0.0:
@@ -158,10 +159,9 @@ class SquadDispatchExtension(omni.ext.IExt):
         self._draw.draw_lines_spline(pts, color, width, True)
 
     def _stadium(self, cx: float, cy: float, yaw: float, half: float, radius: float,
-                 color, z: float = 0.14, width: int = 1, nc: int = 7) -> None:
-        """Draw the dog's body CAPSULE outline (a stadium: a segment of half-length
-        ``half`` along ``yaw`` swept by ``radius``) — the honest hard-boundary shape,
-        raised a little off the floor so the dog mesh doesn't slice gaps in it."""
+                 color, z: float = 0.05, width: int = 1, nc: int = 7) -> None:
+        """Draw a capsule outline (a stadium: a segment of half-length ``half`` along
+        ``yaw`` swept by ``radius``), flat on the floor."""
         if self._draw is None or radius <= 0.0:
             return
         local = []
