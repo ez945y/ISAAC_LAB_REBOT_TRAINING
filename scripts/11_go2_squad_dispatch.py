@@ -558,7 +558,14 @@ class Go2SquadSafety:
 
     def _priority(self, aid: str) -> float:
         a = self._agents.get(aid)
-        return float(self._group_priority.get(a.group_id, 1.0)) if a is not None else 1.0
+        if a is None:
+            return 1.0
+        base = float(self._group_priority.get(a.group_id, 1.0))
+        # Unique per-dog tiebreaker (epsilon * dog index): same-group dogs would
+        # otherwise share a priority and could deadlock in a symmetric standoff (both
+        # yield the same way forever). A tiny offset always picks who gives way.
+        digits = "".join(c for c in aid if c.isdigit())
+        return base + 0.02 * (int(digits) if digits else 0)
 
     @staticmethod
     def _world_vel(cmd, yaw: float) -> tuple[float, float]:
@@ -568,8 +575,8 @@ class Go2SquadSafety:
                 vx * math.sin(yaw) + vy * math.cos(yaw))
 
     def update(self) -> None:
-        """Snapshot every dog's position + priority + group + last velocity per tick."""
-        self._pos = {aid: (s.x, s.y, self._priority(aid), a.group_id, *self._vel.get(aid, (0.0, 0.0)))
+        """Snapshot every dog's position + priority + group + last velocity + yaw per tick."""
+        self._pos = {aid: (s.x, s.y, self._priority(aid), a.group_id, *self._vel.get(aid, (0.0, 0.0)), s.yaw)
                      for aid, a in self._agents.items() if (s := a.get_state())}
 
     def make_filter(self, agent_id: str):
@@ -578,9 +585,9 @@ class Go2SquadSafety:
     def _filter(self, aid: str, cmd, pose):
         x, y, yaw = pose
         my_group = self._agents[aid].group_id if aid in self._agents else None
-        # (x, y, priority, same_group, vx, vy): same_group=1 only for own-group dogs.
-        neighbors = [(px, py, prio, 1.0 if g == my_group else 0.0, vx, vy)
-                     for k, (px, py, prio, g, vx, vy) in self._pos.items() if k != aid]
+        # (x, y, priority, same_group, vx, vy, yaw): same_group=1 only for own-group dogs.
+        neighbors = [(px, py, prio, 1.0 if g == my_group else 0.0, vx, vy, nyaw)
+                     for k, (px, py, prio, g, vx, vy, nyaw) in self._pos.items() if k != aid]
         nearest = min((math.hypot(x - px, y - py) for px, py, *_ in neighbors), default=float("inf"))
         if not self.enabled or self._wrap is None or not neighbors:
             self._vel[aid] = self._world_vel(cmd, yaw)
@@ -766,8 +773,9 @@ class Go2SquadDemo:
             t_done = t
             snap("" if t == 0.0 else f"{int(t)}")
 
-    # Per-phase time caps (s) so a yielding straggler can't stall the choreography.
-    _PHASE1_CAP = 11.0
+    # Per-phase time caps (s) — just a backstop; we advance as soon as MOST dogs
+    # arrive so one stuck/yielding dog can't stall the whole demo.
+    _PHASE1_CAP = 8.0
     _PHASE2_CAP = 8.0
 
     def _setup_auto(self) -> None:
@@ -785,20 +793,20 @@ class Go2SquadDemo:
     def _tick_auto(self) -> None:
         status = self.dispatcher.update(PHYSICS_DT)
         self._phase_t += PHYSICS_DT
-        done = bool(status) and all(status.values())
+        # Advance as soon as all-but-one have arrived (don't wait on a stuck dog).
+        n_arrived = sum(a.arrived for a in self.agents.values())
+        done = n_arrived >= len(self.agents) - 1
         if self.phase == 1 and (done or self._phase_t > self._PHASE1_CAP):
             self.phase = 2
             self._phase_t = 0.0
-            ids_by_y = sorted(self.squad.agent_ids, key=lambda a: self.agents[a].get_state().y)
-            groups = {f"G{i}": ids_by_y[2 * i:2 * i + 2] for i in range(3)}
-            self.dispatcher.regroup(groups)
-            for gid, area in zip(groups, [(0.0, 2.4), (0.0, 0.0), (0.0, -2.4)]):
-                self.dispatcher.send(gid, area, "wedge", spacing=1.2)
-            print(f"[auto] CROSS done ({self._phase_t:.1f}s) -> REGROUP 3x2 + REFORM: "
-                  f"{self.squad.groups}", flush=True)
+            # CROSS BACK to the original sides: shows the yield a second time and
+            # returns home. No regroup/convergence -> no deadlock, priority stays put.
+            self.dispatcher.send("G0", (-3.0, 0.0), "row", spacing=1.2)  # right -> left
+            self.dispatcher.send("G1", (3.0, 0.0), "row", spacing=1.2)   # left  -> right
+            print(f"[auto] CROSS done ({self._phase_t:.1f}s) -> CROSS BACK", flush=True)
         elif self.phase == 2 and (done or self._phase_t > self._PHASE2_CAP):
             self.phase = 3
-            print("[auto] REFORM done — squad in position.", flush=True)
+            print("[auto] CROSS BACK done — squad home.", flush=True)
 
     def _build_markers(self) -> list[dict]:
         """rviz markers in the /map frame: each dog (arrow=pose, colored by group +

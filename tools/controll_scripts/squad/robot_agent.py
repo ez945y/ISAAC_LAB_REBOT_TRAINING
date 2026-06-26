@@ -49,9 +49,9 @@ def velocity_command(
     target: tuple[float, float],
     *,
     arrive_tol: float = 0.25,
-    max_v: float = 1.2,
-    max_w: float = 1.5,
-    k_v: float = 1.5,
+    max_v: float = 1.5,
+    max_w: float = 2.0,
+    k_v: float = 2.2,
     k_w: float = 2.5,
     turn_creep: float = 0.25,
 ) -> tuple[tuple[float, float, float], bool]:

@@ -92,8 +92,8 @@ def test_high_priority_deviates_less_than_low(guard):
     Both dogs drive FORWARD (vx=+1) at each other; the one facing -x (yaw=pi) thereby
     moves toward the origin. Deviation is measured against the same nominal."""
     nominal = [1.0, 0.0, 0.0]
-    hi = _filter(guard, nominal, [(0.9, 0.0, 1.0)], pose=(0.0, 0.0, 0.0), self_priority=5.0)
-    lo = _filter(guard, nominal, [(0.0, 0.0, 5.0)], pose=(0.9, 0.0, math.pi), self_priority=1.0)
+    hi = _filter(guard, nominal, [(1.6, 0.0, 1.0)], pose=(0.0, 0.0, 0.0), self_priority=5.0)
+    lo = _filter(guard, nominal, [(0.0, 0.0, 5.0)], pose=(1.6, 0.0, math.pi), self_priority=1.0)
     dev_hi = max(abs(hi[0] - 1.0), abs(hi[1]), abs(hi[2]))
     dev_lo = max(abs(lo[0] - 1.0), abs(lo[1]), abs(lo[2]))
     assert dev_lo > dev_hi          # the low-priority dog does the avoiding

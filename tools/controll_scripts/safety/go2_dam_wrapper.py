@@ -54,7 +54,7 @@ class _NeighborHolder:
     __slots__ = ("points", "self_priority")
 
     def __init__(self) -> None:
-        self.points: list[tuple] = []  # (x, y, priority, same_group, vx, vy)
+        self.points: list[tuple] = []  # (x, y, priority, same_group, vx, vy, yaw)
         self.self_priority: float = 1.0
 
 
@@ -75,6 +75,7 @@ class _NeighborHolder:
         "lam_min": "Minimum comfort-yield share a dog keeps even at top priority.",
         "w_hard": "Slack penalty on the hard floor (near-inviolable).",
         "w_soft": "Slack penalty on the soft comfort/cohesion (gives way under pressure).",
+        "capsule_half": "Half-length (m) of each dog's body capsule (0 = point/disc model).",
     },
 )
 def go2_min_max_separation(
@@ -89,8 +90,9 @@ def go2_min_max_separation(
     gamma: float = 0.4,
     influence: float = 2.5,
     lam_min: float = 0.15,
-    w_hard: float = 1.0e4,
-    w_soft: float = 50.0,
+    w_hard: float = 1.0e3,
+    w_soft: float = 30.0,
+    capsule_half: float = 0.0,
     **_kwargs,
 ):
     """L1 boundary with priority-weighted responsibility (emergent yielding).
@@ -107,7 +109,7 @@ def go2_min_max_separation(
     """
     solver = solvers[_SOLVER_KEY]
     holder = solvers.get(_NEIGHBOR_KEY)
-    neighbors = list(getattr(holder, "points", []) or [])  # (x, y, priority, same_group, vx, vy)
+    neighbors = list(getattr(holder, "points", []) or [])  # (x,y,prio,same_group,vx,vy,yaw)
     if not neighbors:
         return True
     p_self = float(getattr(holder, "self_priority", 1.0))
@@ -118,14 +120,57 @@ def go2_min_max_separation(
     cx, cy = state[0], state[1]
 
     nxt0 = solver.rollout(state, command, dt=dt)
-    nx0, ny0 = float(nxt0[0]), float(nxt0[1])
-    state_t = torch.tensor(state, dtype=torch.float32)
-    cmd_t = torch.tensor(command, dtype=torch.float32, requires_grad=True)
-    nxt_t = solver.rollout(state_t, cmd_t, dt=dt)  # one graph, reused per neighbour
+    nx0, ny0, nyaw0 = float(nxt0[0]), float(nxt0[1]), float(nxt0[2])
+    syaw = state[2]
+    cs, sn = math.cos(syaw), math.sin(syaw)     # current heading
+    cp, sp = math.cos(nyaw0), math.sin(nyaw0)   # predicted heading
 
-    def _grad_to(px: float, py: float):
-        dist_t = torch.sqrt((nxt_t[0] - px) ** 2 + (nxt_t[1] - py) ** 2 + 1e-9)
-        return torch.autograd.grad(dist_t, cmd_t, retain_graph=True)[0].detach().numpy()
+    def _grad_pt(nrx: float, nry: float, o: float) -> np.ndarray:
+        """ANALYTIC d(projection on normal (nrx,nry))/d[vx,vy,omega] for a body point at
+        offset ``o`` along the heading. Closed-form from the holonomic rollout -- no
+        autograd, so nothing is retained between calls (retain_graph across reused
+        guard calls was corrupting the QP into a spurious full stop)."""
+        return np.array([
+            (nrx * cs + nry * sn) * dt,                    # d/d vx
+            (-nrx * sn + nry * cs) * dt,                   # d/d vy
+            o * dt * (-nrx * sp + nry * cp),               # d/d omega (rotates the offset)
+        ])
+
+    # CAPSULE body model: approximate each dog's elongated body by spheres along its
+    # heading at offsets {-h, 0, h} (h = capsule_half; h=0 -> the old point/disc). The
+    # inter-dog distance is the closest spine-point pair, so head-on a pair reacts on
+    # nose-to-nose distance (keeps centres further apart) while side-by-side dogs can
+    # pack to body width -- exactly why capsules beat a circle for a long body.
+    offs = (-capsule_half, 0.0, capsule_half) if capsule_half > 1e-6 else (0.0,)
+    self_now = [(cx + o * cs, cy + o * sn) for o in offs]
+    self_pred = [(nx0 + o * cp, ny0 + o * sp) for o in offs]
+
+    def _capsule(px, py, vpx, vpy, nyaw):
+        """(current_dist, predicted_separation, grad) between the two body capsules.
+
+        The gradient is along the CURRENT closest-pair separation direction (not through
+        the predicted point): a fast step can overshoot/pass through a very near
+        neighbour, and a raw distance gradient would then flip sign (tell the dog to
+        speed up *through* it). Projecting on the current normal is overshoot-safe.
+        """
+        ndx, ndy = math.cos(nyaw), math.sin(nyaw)
+        nb_now = [(px + o * ndx, py + o * ndy) for o in offs]
+        best, bi, bj = math.inf, 0, 0
+        for i, a in enumerate(self_now):
+            for j, b in enumerate(nb_now):
+                dd = math.hypot(a[0] - b[0], a[1] - b[1])
+                if dd < best:
+                    best, bi, bj = dd, i, j
+        dist_now = best
+        ax0, ay0 = self_now[bi]
+        bx0, by0 = nb_now[bj]
+        sep = max(best, 1e-6)
+        nrx, nry = (ax0 - bx0) / sep, (ay0 - by0) / sep   # unit normal, neighbour -> self
+        nbx = px + vpx * dt + offs[bj] * ndx               # neighbour's matching point, predicted
+        nby = py + vpy * dt + offs[bj] * ndy
+        sxf, syf = self_pred[bi]
+        d_pred = nrx * (sxf - nbx) + nry * (syf - nby)      # predicted separation along the normal
+        return dist_now, d_pred, _grad_pt(nrx, nry, offs[bi])
 
     # Each entry: (grad(3,), rhs, slack_weight). push => grad.du + s >= rhs (apart);
     # pull => grad.du - s <= rhs (together). The per-constraint slack weight is what
@@ -143,13 +188,11 @@ def go2_min_max_separation(
     #     no one is pushed past it or stuck retreating -- the "fluid" behaviour.
     #   SOFT comfort (comfort_dist): PRIORITY-weighted -> the lower-priority dog gives
     #     up the comfort zone first (yields), the higher-priority one flows through.
-    for px, py, p_j, _sg, vpx, vpy in neighbors:
-        dist_now = math.hypot(cx - px, cy - py)
-        if dist_now - min_dist > influence:
-            continue
-        pfx, pfy = px + vpx * dt, py + vpy * dt
-        d_pred = math.hypot(nx0 - pfx, ny0 - pfy)
-        grad = _grad_to(pfx, pfy)
+    reach = influence + 2.0 * capsule_half
+    for px, py, p_j, _sg, vpx, vpy, nyaw in neighbors:
+        if math.hypot(cx - px, cy - py) - min_dist > reach:
+            continue  # cheap centre pre-cull before the full capsule test
+        dist_now, d_pred, grad = _capsule(px, py, vpx, vpy, nyaw)
         req_hard = (dist_now - gamma * (dist_now - min_dist)) - d_pred
         if req_hard > 1e-4:
             push.append((grad, 0.5 * req_hard, w_hard))   # symmetric share
@@ -160,7 +203,7 @@ def go2_min_max_separation(
             push.append((grad, lam * req_soft, w_soft))    # priority share
 
     # --- cohesion: nearest SAME-GROUP neighbour only (don't break formation) ---
-    same_group = [(px, py) for px, py, _p, sg, _vx, _vy in neighbors if sg]
+    same_group = [(px, py) for px, py, _p, sg, _vx, _vy, _yaw in neighbors if sg]
     if same_group:
         npx, npy = min(same_group, key=lambda p: math.hypot(cx - p[0], cy - p[1]))
         nd = math.hypot(cx - npx, cy - npy)
@@ -168,7 +211,8 @@ def go2_min_max_separation(
             target = max_dist + (1.0 - gamma) * (nd - max_dist)
             d_pred = math.hypot(nx0 - npx, ny0 - npy)
             if d_pred > target:
-                pull.append((_grad_to(npx, npy), target - d_pred, w_soft))
+                u = ((nx0 - npx) / d_pred, (ny0 - npy) / d_pred)  # centre -> groupmate dir
+                pull.append((_grad_pt(u[0], u[1], 0.0), target - d_pred, w_soft))
 
     if not push and not pull:
         return True
@@ -205,7 +249,7 @@ def go2_min_max_separation(
     prob.setup(P, q, A, np.array(lo), np.array(hi), verbose=False, eps_abs=1e-5, eps_rel=1e-5)
     res = prob.solve()
 
-    if res.info.status == "solved":
+    if res.x is not None and np.all(np.isfinite(res.x)) and "solved" in str(res.info.status):
         action.target_joint_positions[3] = float(vx + res.x[0])
         action.target_joint_positions[4] = float(vy + res.x[1])
         action.target_joint_positions[5] = float(om + res.x[2])
@@ -255,10 +299,11 @@ class Go2DAMWrapper:
         Args:
             command:   ``(1, 3)`` tensor — ``[vx, vy, omega]``.
             state:     ``(1, >=3)`` tensor — ``[x, y, yaw, ...]``.
-            neighbors: iterable of ``(x, y[, priority[, same_group[, vx, vy]]])`` for the
-                OTHER dogs. priority defaults to 1.0 (symmetric); same_group defaults to
-                1 (cohesion applies — pass 0 for other groups); world velocity (vx, vy)
-                defaults to 0 (static). Velocity makes the guard velocity-aware (TTC).
+            neighbors: iterable of ``(x, y[, priority[, same_group[, vx, vy[, yaw]]]])``
+                for the OTHER dogs. priority defaults to 1.0 (symmetric); same_group
+                defaults to 1 (pass 0 for other groups); world velocity (vx, vy) defaults
+                to 0 (static, makes the guard velocity-aware/TTC); yaw defaults to 0 (the
+                neighbour's heading, for the body-capsule distance).
             self_priority: this dog's priority. Higher -> it yields less (keeps course).
 
         Returns:
@@ -276,7 +321,8 @@ class Go2DAMWrapper:
              float(p[2]) if len(p) >= 3 else 1.0,
              float(p[3]) if len(p) >= 4 else 1.0,
              float(p[4]) if len(p) >= 6 else 0.0,
-             float(p[5]) if len(p) >= 6 else 0.0)
+             float(p[5]) if len(p) >= 6 else 0.0,
+             float(p[6]) if len(p) >= 7 else 0.0)
             for p in neighbors
         ]
         self._neighbors.self_priority = float(self_priority)

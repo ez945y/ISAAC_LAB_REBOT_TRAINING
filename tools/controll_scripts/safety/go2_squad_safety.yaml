@@ -49,15 +49,16 @@ boundaries:
     nodes:
       - callback: go2_min_max_separation
         params:
-          min_dist: 1.0       # HARD floor (m): absolute, symmetric -- never crossed
-          comfort_dist: 2.0   # SOFT comfort (m): lower-priority gives this up first
-          max_dist: 4.0       # cohesion ceiling (m)
+          min_dist: 0.7       # HARD floor (m), closest body-capsule points: never crossed
+          comfort_dist: 1.5   # SOFT comfort (m): lower-priority gives this up first
+          max_dist: 4.0       # cohesion ceiling (m, centre distance)
           dt: 0.2             # rollout horizon (s)
           gamma: 0.4          # CBF rate: fraction of the margin a dog may close per step
           influence: 2.5      # only neighbours within min_dist+influence raise a constraint
           lam_min: 0.15       # min comfort-yield share even at top priority
-          w_hard: 10000.0     # hard-floor slack penalty (near-inviolable)
-          w_soft: 50.0        # comfort/cohesion slack penalty (gives way under pressure)
+          w_hard: 1000.0      # hard-floor slack penalty (near-inviolable; kept modest for QP conditioning)
+          w_soft: 30.0        # comfort/cohesion slack penalty (gives way under pressure)
+          capsule_half: 0.25  # body half-length (m); spine-point distance -> capsule model
 
 tasks:
   default:
