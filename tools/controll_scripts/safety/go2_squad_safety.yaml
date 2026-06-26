@@ -59,7 +59,7 @@ boundaries:
           w_hard: 1000.0      # hard-floor slack penalty (near-inviolable; kept modest for QP conditioning)
           w_soft: 30.0        # comfort/cohesion slack penalty (gives way under pressure)
           capsule_half: 0.25  # body half-length (m); spine-point distance -> capsule model
-          swirl: 0.8          # tangential circulation near a neighbour -> SIDESTEP around instead of stopping
+          swirl: 0.6          # tangential circulation near a neighbour -> SIDESTEP around instead of stopping
 
 tasks:
   default:

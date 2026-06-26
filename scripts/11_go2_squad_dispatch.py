@@ -501,21 +501,25 @@ class DispatchConsoleHandle:
     world.step), so no locking is needed."""
 
     def __init__(self, squad: Squad, agents: dict, controller: SquadController,
-                 safety_geom: dict | None = None) -> None:
+                 safety_geom: dict | None = None, safety=None) -> None:
         self._squad = squad
         self._agents = agents
         self._ctrl = controller
         self._geom = safety_geom or {"min_dist": 0.7, "comfort_dist": 1.5, "capsule_half": 0.25}
+        self._safety = safety
 
     def snapshot(self) -> dict:
         dogs = []
         for aid, a in self._agents.items():
             st = a.get_state()
+            rec = self._safety.record(aid) if self._safety is not None else None
             dogs.append({
                 "id": aid, "group": a.group_id, "x": st.x, "y": st.y, "yaw": st.yaw,
                 "tx": None if a.target is None else a.target[0],
                 "ty": None if a.target is None else a.target[1],
                 "arrived": a.arrived,
+                "decision": rec["decision"] if rec else "OFF",   # PASS / CLAMP / ... -> viz reacts
+                "nearest": rec["nearest"] if rec else float("inf"),
             })
         return {
             "zones": [{"name": n, "x": xy[0], "y": xy[1]} for n, xy in ZONES],
@@ -734,7 +738,8 @@ class Go2SquadDemo:
             from devicenexus.squad.dispatch import runtime as _dispatch_runtime
 
             _dispatch_runtime.set_handle(DispatchConsoleHandle(
-                self.squad, self.agents, self.controller, _read_stackfile_params(args_cli.dam_stack)))
+                self.squad, self.agents, self.controller,
+                _read_stackfile_params(args_cli.dam_stack), self.safety))
             print("[demo] dispatch console extension connected.", flush=True)
         except Exception as exc:  # noqa: BLE001 -- console is optional
             print(f"[demo] dispatch console not connected: {exc}", flush=True)
@@ -842,9 +847,10 @@ class Go2SquadDemo:
             ids_by_y = sorted(self.squad.agent_ids, key=lambda a: self.agents[a].get_state().y)
             groups = {f"G{i}": ids_by_y[2 * i:2 * i + 2] for i in range(3)}
             self.dispatcher.regroup(groups)
-            # Slots spaced >= comfort_dist so the soft constraint doesn't fight the dogs
-            # settling into the formation (tighter slots chatter at the comfort edge).
-            for gid, area in zip(groups, [(0.0, 2.8), (0.0, 0.0), (0.0, -2.8)]):
+            # Reform into a forward ARROWHEAD (tip + two wings): all slots are spaced
+            # >= comfort_dist (so the soft constraint doesn't fight them settling) and
+            # every group has a real distance to travel -- and it reads as a formation.
+            for gid, area in zip(groups, [(3.5, 0.0), (1.0, 2.8), (1.0, -2.8)]):
                 self.dispatcher.send(gid, area, "wedge", spacing=1.6)
             print(f"[auto] CROSS done ({dur:.1f}s, {reason}, dist2tgt={dists}) -> REFORM", flush=True)
         elif self.phase == 2 and (done or self._phase_t > self._PHASE2_CAP):

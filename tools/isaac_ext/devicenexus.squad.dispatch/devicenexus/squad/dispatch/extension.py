@@ -128,16 +128,34 @@ class SquadDispatchExtension(omni.ext.IExt):
         if ls:
             self._draw.draw_lines(ls, le, lc, lw)
 
-        # ONLY the per-dog body capsule (real Go2 size ~0.65 x 0.30 m). No group ring,
-        # no comfort ring -- just each robot's footprint. The min_dist=0.7 safety
-        # distance is the GAP kept between these bodies (not drawn as a bubble).
+        # Per-dog body capsule (real Go2 size). It FLASHES amber + thick the instant the
+        # DAM guard intervenes (decision CLAMP) -- you literally see where/when safety
+        # acts. Plus live "tension" lines between any two dogs inside the comfort zone,
+        # brightening + thickening as they close. All from existing data -- no new params.
         safety = snap.get("safety")
         dogs = snap.get("dogs", [])
         if safety and dogs:
             body_half, body_r = 0.22, 0.17
             for d in dogs:
+                acting = d.get("decision") in ("CLAMP", "REJECT", "FAULT")
+                col = (1.0, 0.85, 0.1, 1.0) if acting else (1.0, 0.3, 0.3, 0.85)
                 self._stadium(d["x"], d["y"], d.get("yaw", 0.0), body_half, body_r,
-                              (1.0, 0.3, 0.3, 0.9), z=0.05)
+                              col, z=0.05, width=(3 if acting else 1))
+            comfort = 2.0 * float(safety.get("soft_r", 0.75))
+            floor = 2.0 * float(safety.get("hard_r", 0.35))
+            cls, cle, clc, clw = [], [], [], []
+            for i in range(len(dogs)):
+                for j in range(i + 1, len(dogs)):
+                    a, b = dogs[i], dogs[j]
+                    dd = math.hypot(a["x"] - b["x"], a["y"] - b["y"])
+                    if dd < comfort:
+                        t = max(0.0, min(1.0, (comfort - dd) / max(comfort - floor, 1e-6)))
+                        cls.append((a["x"], a["y"], 0.1))
+                        cle.append((b["x"], b["y"], 0.1))
+                        clc.append((1.0, 1.0 - 0.8 * t, 0.1, 0.25 + 0.6 * t))
+                        clw.append(1.0 + 3.0 * t)
+            if cls:
+                self._draw.draw_lines(cls, cle, clc, clw)
 
     def _circle(self, cx: float, cy: float, radius: float, color, z: float = 0.05,
                 n: int = 20, width: int = 2) -> None:
