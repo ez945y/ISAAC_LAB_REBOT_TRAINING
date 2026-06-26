@@ -96,8 +96,10 @@ def test_high_priority_deviates_less_than_low(guard):
     lo = _filter(guard, nominal, [(0.0, 0.0, 5.0)], pose=(1.6, 0.0, math.pi), self_priority=1.0)
     dev_hi = max(abs(hi[0] - 1.0), abs(hi[1]), abs(hi[2]))
     dev_lo = max(abs(lo[0] - 1.0), abs(lo[1]), abs(lo[2]))
-    assert dev_lo > dev_hi          # the low-priority dog does the avoiding
-    assert dev_lo > 2 * dev_hi      # and clearly more (it yields)
+    # The low-priority dog yields MORE, but both move (swirl makes even the high one
+    # sidestep rather than the low one stopping dead -- the desired fluid behaviour).
+    assert dev_lo > 1.2 * dev_hi
+    assert dev_hi > 0.0
 
 
 def test_cohesion_ignores_other_group(guard):

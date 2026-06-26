@@ -809,8 +809,10 @@ class Go2SquadDemo:
         y-lanes — with DAM + priority, G0 keeps its line and G1 yields — then they
         regroup 3x2 and reform. G0=d0-2 start left, G1=d3-5 start right."""
         self.squad.set_groups(split_evenly(self.squad.agent_ids, 3))  # G0 left, G1 right
-        self.dispatcher.send("G0", (2.5, 0.0), "row", spacing=1.2)    # left  -> right
-        self.dispatcher.send("G1", (-2.5, 0.0), "row", spacing=1.2)   # right -> left
+        # Cross with a small lateral OFFSET (not a perfect head-on) so the swirl picks a
+        # side and the dogs slide PAST each other instead of meeting nose-to-nose.
+        self.dispatcher.send("G0", (2.5, 0.5), "row", spacing=1.2)    # left  -> right (upper)
+        self.dispatcher.send("G1", (-2.5, -0.5), "row", spacing=1.2)  # right -> left (lower)
         self._phase_t = 0.0
         print("\n" + "=" * 70)
         print("  Go2 AUTO — CROSS (G0 keeps line / G1 yields) -> REGROUP 3x2 -> REFORM")

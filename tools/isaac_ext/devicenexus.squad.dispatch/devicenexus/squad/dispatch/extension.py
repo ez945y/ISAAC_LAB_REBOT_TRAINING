@@ -126,32 +126,16 @@ class SquadDispatchExtension(omni.ext.IExt):
         if ls:
             self._draw.draw_lines(ls, le, lc, lw)
 
-        # Two kinds of safety boundary, matching the CBF geometry:
-        #   per-DOG: the HARD personal CAPSULE (red stadium = body half-length +
-        #            min_dist/2 radius); two dogs touch exactly when their capsules do.
-        #   per-GROUP: a ring enclosing the group, colored by group (cohesion footprint).
+        # ONLY the per-dog body capsule (real Go2 size ~0.65 x 0.30 m). No group ring,
+        # no comfort ring -- just each robot's footprint. The min_dist=0.7 safety
+        # distance is the GAP kept between these bodies (not drawn as a bubble).
         safety = snap.get("safety")
         dogs = snap.get("dogs", [])
         if safety and dogs:
-            # The per-dog body CAPSULE at the real Go2 size (~0.65 x 0.30 m) -- small and
-            # clearly elongated. The min_dist=0.7 SAFETY distance is the gap kept between
-            # these bodies, not drawn as a bubble (at 0.7 it would be a big round blob).
-            body_half, body_r = 0.18, 0.15
-            r = float(safety.get("hard_r", 0.35))  # min_dist/2, for the group footprint
+            body_half, body_r = 0.22, 0.17
             for d in dogs:
                 self._stadium(d["x"], d["y"], d.get("yaw", 0.0), body_half, body_r,
                               (1.0, 0.3, 0.3, 0.9), z=0.05)
-            # group ring: centroid -> farthest member (the cohesion footprint, faint).
-            pos = {d["id"]: (d["x"], d["y"]) for d in dogs}
-            for gid, members in snap.get("groups", {}).items():
-                mp = [pos[m] for m in members if m in pos]
-                if len(mp) < 2:
-                    continue
-                gx = sum(p[0] for p in mp) / len(mp)
-                gy = sum(p[1] for p in mp) / len(mp)
-                rad = max(math.hypot(p[0] - gx, p[1] - gy) for p in mp) + r
-                gr, gg, gb = _group_rgb(gid)
-                self._circle(gx, gy, rad, (gr, gg, gb, 0.4), z=0.04, width=1)
 
     def _circle(self, cx: float, cy: float, radius: float, color, z: float = 0.05,
                 n: int = 20, width: int = 2) -> None:
@@ -165,7 +149,8 @@ class SquadDispatchExtension(omni.ext.IExt):
     def _stadium(self, cx: float, cy: float, yaw: float, half: float, radius: float,
                  color, z: float = 0.05, width: int = 1, nc: int = 7) -> None:
         """Draw a capsule outline (a stadium: a segment of half-length ``half`` along
-        ``yaw`` swept by ``radius``), flat on the floor."""
+        ``yaw`` swept by ``radius``) as exact straight segments -- a spline bows the
+        straight sides inward and reads as two rings."""
         if self._draw is None or radius <= 0.0:
             return
         local = []
@@ -177,7 +162,8 @@ class SquadDispatchExtension(omni.ext.IExt):
             local.append((-half + radius * math.cos(a), radius * math.sin(a)))
         cyaw, syaw = math.cos(yaw), math.sin(yaw)
         pts = [(cx + lx * cyaw - ly * syaw, cy + lx * syaw + ly * cyaw, z) for lx, ly in local]
-        self._draw.draw_lines_spline(pts, color, width, True)
+        starts, ends = pts, pts[1:] + pts[:1]       # closed polyline
+        self._draw.draw_lines(starts, ends, [color] * len(pts), [float(width)] * len(pts))
 
     # -- panel ----------------------------------------------------------------
 

@@ -192,13 +192,13 @@ def go2_min_max_separation(
     #   SOFT comfort (comfort_dist): PRIORITY-weighted -> the lower-priority dog gives
     #     up the comfort zone first (yields), the higher-priority one flows through.
     reach = influence + 2.0 * capsule_half
-    nearest_d, nearest_n = math.inf, None
+    nearest_d, nearest_n, nearest_pj = math.inf, None, 1.0
     for px, py, p_j, _sg, vpx, vpy, nyaw in neighbors:
         if math.hypot(cx - px, cy - py) - min_dist > reach:
             continue  # cheap centre pre-cull before the full capsule test
         dist_now, d_pred, grad, nrm = _capsule(px, py, vpx, vpy, nyaw)
         if dist_now < nearest_d:
-            nearest_d, nearest_n = dist_now, nrm
+            nearest_d, nearest_n, nearest_pj = dist_now, nrm, p_j
         req_hard = (dist_now - gamma * (dist_now - min_dist)) - d_pred
         if req_hard > 1e-4:
             push.append((grad, 0.5 * req_hard, w_hard))   # symmetric share
@@ -248,14 +248,21 @@ def go2_min_max_separation(
         rows.append(_row([(0, grad[0]), (1, grad[1]), (2, grad[2]), (3 + k, -1.0)]))
         lo.append(-np.inf); hi.append(rhs); slack_w.append(w); k += 1
 
-    P = sparse.csc_matrix(np.diag([1.0, 1.0, 3.0] + slack_w))  # penalise yaw -> sidestep
+    # Cost weights on [du_vx, du_vy, du_omega]: braking (du_vx) is EXPENSIVE and a
+    # lateral sidestep (du_vy) is CHEAP, so the QP slides around a neighbour instead
+    # of stopping dead in its path; yaw is dearest (prefer strafe over re-heading).
+    P = sparse.csc_matrix(np.diag([2.0, 0.5, 3.0] + slack_w))
     q = np.zeros(n)
     # SWIRL (liveness): a gentle tangential bias around the nearest neighbour makes
     # conflicting dogs circulate the SAME way instead of standing off head-on or
     # settling in a local minimum. It only nudges the objective -- the hard/soft
     # safety constraints are untouched -- so it adds liveness without risking safety.
     if swirl > 0.0 and nearest_n is not None and nearest_d < comfort_dist:
-        scale = swirl * max(0.0, 1.0 - (nearest_d - min_dist) / max(comfort_dist - min_dist, 1e-6))
+        prox = max(0.0, 1.0 - (nearest_d - min_dist) / max(comfort_dist - min_dist, 1e-6))
+        # Priority-weighted: the lower-priority dog circulates MORE (its yield share),
+        # the higher-priority less but not zero -> both sidestep, the low one more.
+        share = max(lam_min, nearest_pj / (p_self + nearest_pj))
+        scale = swirl * prox * share
         q[0] = -scale * (-nearest_n[1])   # 90deg CCW tangent of the separation normal
         q[1] = -scale * (nearest_n[0])
     A = sparse.csc_matrix(np.array(rows, dtype=float))
