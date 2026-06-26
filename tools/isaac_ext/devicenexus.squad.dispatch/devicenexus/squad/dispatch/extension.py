@@ -133,21 +133,25 @@ class SquadDispatchExtension(omni.ext.IExt):
         safety = snap.get("safety")
         dogs = snap.get("dogs", [])
         if safety and dogs:
-            # Draw the actual Go2 BODY capsule (~0.65 x 0.30 m), not the safety bubble.
+            # The per-dog body CAPSULE at the real Go2 size (~0.65 x 0.30 m) -- small and
+            # clearly elongated. The min_dist=0.7 SAFETY distance is the gap kept between
+            # these bodies, not drawn as a bubble (at 0.7 it would be a big round blob).
             body_half, body_r = 0.18, 0.15
+            r = float(safety.get("hard_r", 0.35))  # min_dist/2, for the group footprint
             for d in dogs:
                 self._stadium(d["x"], d["y"], d.get("yaw", 0.0), body_half, body_r,
                               (1.0, 0.3, 0.3, 0.9), z=0.05)
+            # group ring: centroid -> farthest member (the cohesion footprint, faint).
             pos = {d["id"]: (d["x"], d["y"]) for d in dogs}
             for gid, members in snap.get("groups", {}).items():
                 mp = [pos[m] for m in members if m in pos]
-                if not mp:
+                if len(mp) < 2:
                     continue
                 gx = sum(p[0] for p in mp) / len(mp)
                 gy = sum(p[1] for p in mp) / len(mp)
-                rad = max((math.hypot(p[0] - gx, p[1] - gy) for p in mp), default=0.0) + body_r
+                rad = max(math.hypot(p[0] - gx, p[1] - gy) for p in mp) + r
                 gr, gg, gb = _group_rgb(gid)
-                self._circle(gx, gy, rad, (gr, gg, gb, 0.7), z=0.04, width=2)
+                self._circle(gx, gy, rad, (gr, gg, gb, 0.4), z=0.04, width=1)
 
     def _circle(self, cx: float, cy: float, radius: float, color, z: float = 0.05,
                 n: int = 20, width: int = 2) -> None:

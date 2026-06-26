@@ -157,11 +157,11 @@ def _read_stackfile_params(path: str) -> dict:
     if not os.path.isabs(p) and not os.path.exists(p):
         p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                          "tools", "controll_scripts", "safety", os.path.basename(path))
-    vals = {"min_dist": 0.7, "comfort_dist": 1.5, "capsule_half": 0.25}
+    vals = {"min_dist": 0.7, "comfort_dist": 1.5, "max_dist": 4.0, "capsule_half": 0.25}
     try:
         with open(p) as f:
             for line in f:
-                m = re.match(r"\s*(min_dist|comfort_dist|capsule_half)\s*:\s*([0-9.]+)", line)
+                m = re.match(r"\s*(min_dist|comfort_dist|max_dist|capsule_half)\s*:\s*([0-9.]+)", line)
                 if m:
                     vals[m.group(1)] = float(m.group(2))
     except Exception:  # noqa: BLE001 -- overlay geometry is cosmetic
@@ -527,6 +527,7 @@ class DispatchConsoleHandle:
             # capsule_half + radius min_dist/2 (its hard personal boundary).
             "safety": {"hard_r": self._geom["min_dist"] / 2.0,
                        "soft_r": self._geom["comfort_dist"] / 2.0,
+                       "max_r": self._geom["max_dist"],
                        "capsule_half": self._geom["capsule_half"]},
             "dogs": dogs,
         }
@@ -588,7 +589,8 @@ class Go2SquadSafety:
         # otherwise share a priority and could deadlock in a symmetric standoff (both
         # yield the same way forever). A tiny offset always picks who gives way.
         digits = "".join(c for c in aid if c.isdigit())
-        return base + 0.02 * (int(digits) if digits else 0)
+        tie = 0.02 * (int(digits) if digits else 0)
+        return base + tie
 
     @staticmethod
     def _world_vel(cmd, yaw: float) -> tuple[float, float]:
