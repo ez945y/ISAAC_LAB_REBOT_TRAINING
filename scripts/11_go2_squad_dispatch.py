@@ -145,6 +145,10 @@ AUTO_START_XY = [
     (3.5, 1.2), (3.5, 0.0), (3.5, -1.2),
 ]
 AUTO_PRIORITY = {"G0": 5.0, "G1": 1.0}  # G0 keeps its line; G1 yields (unless overridden)
+# Safety-circle radii for the viewport overlay (mirror go2_squad_safety.yaml). Two dogs
+# collide when their centres are within min_dist, so each dog owns a circle of half that.
+SAFETY_HARD_R = 1.0 / 2.0       # min_dist / 2  -> absolute personal bubble
+SAFETY_SOFT_R = 2.0 / 2.0       # comfort_dist / 2 -> preferred spacing
 HOME = (0.0, 0.0)
 # Named warehouse zones the operator dispatches to (kept inside the open lanes;
 # the dogs have no obstacle avoidance, so keep targets off the shelving).
@@ -500,6 +504,7 @@ class DispatchConsoleHandle:
             "selected": self._ctrl.selected,
             "formation": {g: f.value for g, f in self._ctrl.formation.items()},
             "patrol": self._ctrl.patrol,
+            "safety": {"hard": SAFETY_HARD_R, "soft": SAFETY_SOFT_R},
             "dogs": dogs,
         }
 

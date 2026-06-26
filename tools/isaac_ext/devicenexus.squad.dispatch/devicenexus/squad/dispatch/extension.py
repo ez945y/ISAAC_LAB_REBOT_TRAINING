@@ -12,6 +12,7 @@ rviz, no second window.
 
 from __future__ import annotations
 
+import math
 import time
 
 import carb
@@ -124,6 +125,34 @@ class SquadDispatchExtension(omni.ext.IExt):
             self._draw.draw_points(pts, cols, sizes)
         if ls:
             self._draw.draw_lines(ls, le, lc, lw)
+
+        # Two kinds of safety circle:
+        #   per-DOG: the HARD personal bubble (red) — two dogs touch when these touch;
+        #   per-GROUP: a ring enclosing the group, colored by group (cohesion footprint).
+        safety = snap.get("safety")
+        dogs = snap.get("dogs", [])
+        if safety and dogs:
+            for d in dogs:
+                self._circle(d["x"], d["y"], safety["hard"], (1.0, 0.3, 0.3, 0.8), width=1)  # hard: red
+            pos = {d["id"]: (d["x"], d["y"]) for d in dogs}
+            for gid, members in snap.get("groups", {}).items():
+                mp = [pos[m] for m in members if m in pos]
+                if not mp:
+                    continue
+                gx = sum(p[0] for p in mp) / len(mp)
+                gy = sum(p[1] for p in mp) / len(mp)
+                rad = max((math.hypot(p[0] - gx, p[1] - gy) for p in mp), default=0.0) + safety["hard"]
+                r, g, b = _group_rgb(gid)
+                self._circle(gx, gy, rad, (r, g, b, 0.7), z=0.05, width=2)
+
+    def _circle(self, cx: float, cy: float, radius: float, color, z: float = 0.07,
+                n: int = 20, width: int = 2) -> None:
+        """Draw a flat ring on the floor as a closed spline (DebugDraw has no circle)."""
+        if self._draw is None or radius <= 0.0:
+            return
+        pts = [(cx + radius * math.cos(2 * math.pi * k / n),
+                cy + radius * math.sin(2 * math.pi * k / n), z) for k in range(n)]
+        self._draw.draw_lines_spline(pts, color, width, True)
 
     # -- panel ----------------------------------------------------------------
 
