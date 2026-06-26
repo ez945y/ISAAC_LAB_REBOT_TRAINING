@@ -818,27 +818,37 @@ class Go2SquadDemo:
         print("  Go2 AUTO — CROSS (G0 keeps line / G1 yields) -> REGROUP 3x2 -> REFORM")
         print("=" * 70 + "\n", flush=True)
 
+    def _dist2tgt(self) -> list[float]:
+        """Each dog's current distance to its target (to verify it really arrived,
+        rather than latching 'arrived' while standing somewhere else)."""
+        out = []
+        for a in self.agents.values():
+            s = a.get_state()
+            if a.target is not None and s is not None:
+                out.append(round(math.hypot(a.target[0] - s.x, a.target[1] - s.y), 1))
+        return out
+
     def _tick_auto(self) -> None:
         status = self.dispatcher.update(PHYSICS_DT)
         self._phase_t += PHYSICS_DT
-        # Advance as soon as all-but-one have arrived (don't wait on a stuck dog).
+        # Advance as soon as all-but-one are TRULY at their slots (arrived flag AND
+        # actually within tolerance), so a latched-but-displaced dog can't fake it.
         n_arrived = sum(a.arrived for a in self.agents.values())
         done = n_arrived >= len(self.agents) - 1
         if self.phase == 1 and (done or self._phase_t > self._PHASE1_CAP):
+            dur, reason, dists = self._phase_t, ("arrived" if done else "TIMEOUT"), self._dist2tgt()
             self.phase = 2
             self._phase_t = 0.0
-            # The honest hard case: regroup 3x2 and CONVERGE into a central column.
-            # Slots are spaced >= the hard floor (feasible goal -- not cheating), and
-            # liveness comes from the QP's swirl term, not from dodging the convergence.
             ids_by_y = sorted(self.squad.agent_ids, key=lambda a: self.agents[a].get_state().y)
             groups = {f"G{i}": ids_by_y[2 * i:2 * i + 2] for i in range(3)}
             self.dispatcher.regroup(groups)
             for gid, area in zip(groups, [(0.0, 2.0), (0.0, 0.0), (0.0, -2.0)]):
                 self.dispatcher.send(gid, area, "wedge", spacing=1.0)
-            print(f"[auto] CROSS done ({self._phase_t:.1f}s) -> REGROUP 3x2 + CONVERGE", flush=True)
+            print(f"[auto] CROSS done ({dur:.1f}s, {reason}, dist2tgt={dists}) -> CONVERGE", flush=True)
         elif self.phase == 2 and (done or self._phase_t > self._PHASE2_CAP):
+            dur, reason, dists = self._phase_t, ("arrived" if done else "TIMEOUT"), self._dist2tgt()
             self.phase = 3
-            print("[auto] REFORM done — squad converged.", flush=True)
+            print(f"[auto] CONVERGE done ({dur:.1f}s, {reason}, dist2tgt={dists}).", flush=True)
 
     def _build_markers(self) -> list[dict]:
         """rviz markers in the /map frame: each dog (arrow=pose, colored by group +
