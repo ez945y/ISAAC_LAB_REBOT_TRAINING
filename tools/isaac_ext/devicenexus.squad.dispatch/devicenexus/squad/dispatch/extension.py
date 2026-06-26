@@ -57,7 +57,9 @@ class SquadDispatchExtension(omni.ext.IExt):
         # it isn't there (pure headless), skip the panel — the viewport overlay still
         # works on its own.
         try:
-            self._window = ui.Window("Squad Dispatch", width=360, height=460)
+            # Open on the RIGHT of the streamed viewport (not centred over the dogs).
+            self._window = ui.Window("Squad Dispatch", width=360, height=460,
+                                     position_x=1060.0, position_y=60.0)
             with self._window.frame:
                 self._root = ui.Frame()
             self._root.set_build_fn(self._build_ui)

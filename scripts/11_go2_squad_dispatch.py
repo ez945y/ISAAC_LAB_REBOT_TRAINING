@@ -815,7 +815,7 @@ class Go2SquadDemo:
         self.dispatcher.send("G1", (-2.5, -0.5), "row", spacing=1.2)  # right -> left (lower)
         self._phase_t = 0.0
         print("\n" + "=" * 70)
-        print("  Go2 AUTO — CROSS (G0 keeps line / G1 yields) -> REGROUP 3x2 -> REFORM")
+        print("  Go2 AUTO — CROSS (G0 keeps its line / G1 yields) -> REFORM (3 groups)")
         print("=" * 70 + "\n", flush=True)
 
     def _dist2tgt(self) -> list[float]:
@@ -842,13 +842,19 @@ class Go2SquadDemo:
             ids_by_y = sorted(self.squad.agent_ids, key=lambda a: self.agents[a].get_state().y)
             groups = {f"G{i}": ids_by_y[2 * i:2 * i + 2] for i in range(3)}
             self.dispatcher.regroup(groups)
-            for gid, area in zip(groups, [(0.0, 2.0), (0.0, 0.0), (0.0, -2.0)]):
-                self.dispatcher.send(gid, area, "wedge", spacing=1.0)
-            print(f"[auto] CROSS done ({dur:.1f}s, {reason}, dist2tgt={dists}) -> CONVERGE", flush=True)
+            # Slots spaced >= comfort_dist so the soft constraint doesn't fight the dogs
+            # settling into the formation (tighter slots chatter at the comfort edge).
+            for gid, area in zip(groups, [(0.0, 2.8), (0.0, 0.0), (0.0, -2.8)]):
+                self.dispatcher.send(gid, area, "wedge", spacing=1.6)
+            print(f"[auto] CROSS done ({dur:.1f}s, {reason}, dist2tgt={dists}) -> REFORM", flush=True)
         elif self.phase == 2 and (done or self._phase_t > self._PHASE2_CAP):
             dur, reason, dists = self._phase_t, ("arrived" if done else "TIMEOUT"), self._dist2tgt()
             self.phase = 3
-            print(f"[auto] CONVERGE done ({dur:.1f}s, {reason}, dist2tgt={dists}).", flush=True)
+            print(f"[auto] REFORM done ({dur:.1f}s, {reason}, dist2tgt={dists}).", flush=True)
+
+    def _stage(self) -> str:
+        """Two user-facing stages only (the internal 'done' phase 3 reads as REFORM)."""
+        return "CROSS" if self.phase == 1 else "REFORM"
 
     def _build_markers(self) -> list[dict]:
         """rviz markers in the /map frame: each dog (arrow=pose, colored by group +
@@ -956,7 +962,7 @@ class Go2SquadDemo:
 
             if i % 200 == 0:
                 arrived = sum(a.arrived for a in self.agents.values())
-                mode = f"phase={self.phase}" if args_cli.auto else f"groups={len(self.squad.groups)}"
+                mode = self._stage() if args_cli.auto else f"groups={len(self.squad.groups)}"
                 print(f"[t={i*PHYSICS_DT:5.1f}s] {mode} arrived={arrived}/6", flush=True)
         print("[demo] budget reached; exiting.", flush=True)
 
