@@ -55,10 +55,11 @@ boundaries:
           dt: 0.2             # rollout horizon (s)
           gamma: 0.4          # CBF rate: fraction of the margin a dog may close per step
           influence: 2.5      # only neighbours within min_dist+influence raise a constraint
-          lam_min: 0.15       # min comfort-yield share even at top priority
+          lam_min: 0.3        # min comfort-yield share even at top priority (never fully frozen -> breaks cyclic deadlock)
           w_hard: 1000.0      # hard-floor slack penalty (near-inviolable; kept modest for QP conditioning)
           w_soft: 30.0        # comfort/cohesion slack penalty (gives way under pressure)
           capsule_half: 0.25  # body half-length (m); spine-point distance -> capsule model
+          swirl: 0.4          # tangential circulation near a neighbour -> liveness (escape standoff)
 
 tasks:
   default:

@@ -76,6 +76,8 @@ class _NeighborHolder:
         "w_hard": "Slack penalty on the hard floor (near-inviolable).",
         "w_soft": "Slack penalty on the soft comfort/cohesion (gives way under pressure).",
         "capsule_half": "Half-length (m) of each dog's body capsule (0 = point/disc model).",
+        "swirl": "Tangential circulation bias near a neighbour (escapes head-on standoff "
+                 "/ local minima -> liveness, all in the QP).",
     },
 )
 def go2_min_max_separation(
@@ -93,6 +95,7 @@ def go2_min_max_separation(
     w_hard: float = 1.0e3,
     w_soft: float = 30.0,
     capsule_half: float = 0.0,
+    swirl: float = 0.0,
     **_kwargs,
 ):
     """L1 boundary with priority-weighted responsibility (emergent yielding).
@@ -170,7 +173,7 @@ def go2_min_max_separation(
         nby = py + vpy * dt + offs[bj] * ndy
         sxf, syf = self_pred[bi]
         d_pred = nrx * (sxf - nbx) + nry * (syf - nby)      # predicted separation along the normal
-        return dist_now, d_pred, _grad_pt(nrx, nry, offs[bi])
+        return dist_now, d_pred, _grad_pt(nrx, nry, offs[bi]), (nrx, nry)
 
     # Each entry: (grad(3,), rhs, slack_weight). push => grad.du + s >= rhs (apart);
     # pull => grad.du - s <= rhs (together). The per-constraint slack weight is what
@@ -189,10 +192,13 @@ def go2_min_max_separation(
     #   SOFT comfort (comfort_dist): PRIORITY-weighted -> the lower-priority dog gives
     #     up the comfort zone first (yields), the higher-priority one flows through.
     reach = influence + 2.0 * capsule_half
+    nearest_d, nearest_n = math.inf, None
     for px, py, p_j, _sg, vpx, vpy, nyaw in neighbors:
         if math.hypot(cx - px, cy - py) - min_dist > reach:
             continue  # cheap centre pre-cull before the full capsule test
-        dist_now, d_pred, grad = _capsule(px, py, vpx, vpy, nyaw)
+        dist_now, d_pred, grad, nrm = _capsule(px, py, vpx, vpy, nyaw)
+        if dist_now < nearest_d:
+            nearest_d, nearest_n = dist_now, nrm
         req_hard = (dist_now - gamma * (dist_now - min_dist)) - d_pred
         if req_hard > 1e-4:
             push.append((grad, 0.5 * req_hard, w_hard))   # symmetric share
@@ -244,6 +250,14 @@ def go2_min_max_separation(
 
     P = sparse.csc_matrix(np.diag([1.0, 1.0, 3.0] + slack_w))  # penalise yaw -> sidestep
     q = np.zeros(n)
+    # SWIRL (liveness): a gentle tangential bias around the nearest neighbour makes
+    # conflicting dogs circulate the SAME way instead of standing off head-on or
+    # settling in a local minimum. It only nudges the objective -- the hard/soft
+    # safety constraints are untouched -- so it adds liveness without risking safety.
+    if swirl > 0.0 and nearest_n is not None and nearest_d < comfort_dist:
+        scale = swirl * max(0.0, 1.0 - (nearest_d - min_dist) / max(comfort_dist - min_dist, 1e-6))
+        q[0] = -scale * (-nearest_n[1])   # 90deg CCW tangent of the separation normal
+        q[1] = -scale * (nearest_n[0])
     A = sparse.csc_matrix(np.array(rows, dtype=float))
     prob = osqp.OSQP()
     prob.setup(P, q, A, np.array(lo), np.array(hi), verbose=False, eps_abs=1e-5, eps_rel=1e-5)

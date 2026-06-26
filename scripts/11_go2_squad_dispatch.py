@@ -145,11 +145,28 @@ AUTO_START_XY = [
     (3.5, 1.2), (3.5, 0.0), (3.5, -1.2),
 ]
 AUTO_PRIORITY = {"G0": 5.0, "G1": 1.0}  # G0 keeps its line; G1 yields (unless overridden)
-# Safety-circle radii for the viewport overlay (mirror go2_squad_safety.yaml). Two dogs
-# collide when their centres are within min_dist, so each dog owns a circle of half that.
-SAFETY_HARD_R = 1.0 / 2.0       # min_dist / 2  -> absolute personal bubble
-SAFETY_SOFT_R = 2.0 / 2.0       # comfort_dist / 2 -> preferred spacing
 HOME = (0.0, 0.0)
+
+
+def _read_stackfile_params(path: str) -> dict:
+    """Pull min_dist / comfort_dist / capsule_half from the DAM stackfile so the
+    viewport safety-capsule overlay always matches the actual guard geometry."""
+    import re
+
+    p = path
+    if not os.path.isabs(p) and not os.path.exists(p):
+        p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "tools", "controll_scripts", "safety", os.path.basename(path))
+    vals = {"min_dist": 0.7, "comfort_dist": 1.5, "capsule_half": 0.25}
+    try:
+        with open(p) as f:
+            for line in f:
+                m = re.match(r"\s*(min_dist|comfort_dist|capsule_half)\s*:\s*([0-9.]+)", line)
+                if m:
+                    vals[m.group(1)] = float(m.group(2))
+    except Exception:  # noqa: BLE001 -- overlay geometry is cosmetic
+        pass
+    return vals
 # Named warehouse zones the operator dispatches to (kept inside the open lanes;
 # the dogs have no obstacle avoidance, so keep targets off the shelving).
 ZONES: list[tuple[str, tuple[float, float]]] = [
@@ -483,10 +500,12 @@ class DispatchConsoleHandle:
     paths. Runs on the sim's main thread (the extension's callbacks fire inside
     world.step), so no locking is needed."""
 
-    def __init__(self, squad: Squad, agents: dict, controller: SquadController) -> None:
+    def __init__(self, squad: Squad, agents: dict, controller: SquadController,
+                 safety_geom: dict | None = None) -> None:
         self._squad = squad
         self._agents = agents
         self._ctrl = controller
+        self._geom = safety_geom or {"min_dist": 0.7, "comfort_dist": 1.5, "capsule_half": 0.25}
 
     def snapshot(self) -> dict:
         dogs = []
@@ -504,7 +523,11 @@ class DispatchConsoleHandle:
             "selected": self._ctrl.selected,
             "formation": {g: f.value for g, f in self._ctrl.formation.items()},
             "patrol": self._ctrl.patrol,
-            "safety": {"hard": SAFETY_HARD_R, "soft": SAFETY_SOFT_R},
+            # Capsule geometry for the overlay: each dog is a stadium of half-length
+            # capsule_half + radius min_dist/2 (its hard personal boundary).
+            "safety": {"hard_r": self._geom["min_dist"] / 2.0,
+                       "soft_r": self._geom["comfort_dist"] / 2.0,
+                       "capsule_half": self._geom["capsule_half"]},
             "dogs": dogs,
         }
 
@@ -708,7 +731,8 @@ class Go2SquadDemo:
         try:
             from devicenexus.squad.dispatch import runtime as _dispatch_runtime
 
-            _dispatch_runtime.set_handle(DispatchConsoleHandle(self.squad, self.agents, self.controller))
+            _dispatch_runtime.set_handle(DispatchConsoleHandle(
+                self.squad, self.agents, self.controller, _read_stackfile_params(args_cli.dam_stack)))
             print("[demo] dispatch console extension connected.", flush=True)
         except Exception as exc:  # noqa: BLE001 -- console is optional
             print(f"[demo] dispatch console not connected: {exc}", flush=True)
@@ -799,14 +823,18 @@ class Go2SquadDemo:
         if self.phase == 1 and (done or self._phase_t > self._PHASE1_CAP):
             self.phase = 2
             self._phase_t = 0.0
-            # CROSS BACK to the original sides: shows the yield a second time and
-            # returns home. No regroup/convergence -> no deadlock, priority stays put.
-            self.dispatcher.send("G0", (-3.0, 0.0), "row", spacing=1.2)  # right -> left
-            self.dispatcher.send("G1", (3.0, 0.0), "row", spacing=1.2)   # left  -> right
-            print(f"[auto] CROSS done ({self._phase_t:.1f}s) -> CROSS BACK", flush=True)
+            # The honest hard case: regroup 3x2 and CONVERGE into a central column.
+            # Slots are spaced >= the hard floor (feasible goal -- not cheating), and
+            # liveness comes from the QP's swirl term, not from dodging the convergence.
+            ids_by_y = sorted(self.squad.agent_ids, key=lambda a: self.agents[a].get_state().y)
+            groups = {f"G{i}": ids_by_y[2 * i:2 * i + 2] for i in range(3)}
+            self.dispatcher.regroup(groups)
+            for gid, area in zip(groups, [(0.0, 2.0), (0.0, 0.0), (0.0, -2.0)]):
+                self.dispatcher.send(gid, area, "wedge", spacing=1.0)
+            print(f"[auto] CROSS done ({self._phase_t:.1f}s) -> REGROUP 3x2 + CONVERGE", flush=True)
         elif self.phase == 2 and (done or self._phase_t > self._PHASE2_CAP):
             self.phase = 3
-            print("[auto] CROSS BACK done — squad home.", flush=True)
+            print("[auto] REFORM done — squad converged.", flush=True)
 
     def _build_markers(self) -> list[dict]:
         """rviz markers in the /map frame: each dog (arrow=pose, colored by group +

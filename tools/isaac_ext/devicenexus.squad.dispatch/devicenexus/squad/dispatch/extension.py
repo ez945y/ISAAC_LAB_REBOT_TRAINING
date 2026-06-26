@@ -126,14 +126,17 @@ class SquadDispatchExtension(omni.ext.IExt):
         if ls:
             self._draw.draw_lines(ls, le, lc, lw)
 
-        # Two kinds of safety circle:
-        #   per-DOG: the HARD personal bubble (red) — two dogs touch when these touch;
+        # Two kinds of safety boundary, matching the CBF geometry:
+        #   per-DOG: the HARD personal CAPSULE (red stadium = body half-length +
+        #            min_dist/2 radius); two dogs touch exactly when their capsules do.
         #   per-GROUP: a ring enclosing the group, colored by group (cohesion footprint).
         safety = snap.get("safety")
         dogs = snap.get("dogs", [])
         if safety and dogs:
+            half = safety.get("capsule_half", 0.25)
+            r = safety.get("hard_r", 0.35)
             for d in dogs:
-                self._circle(d["x"], d["y"], safety["hard"], (1.0, 0.3, 0.3, 0.8), width=1)  # hard: red
+                self._stadium(d["x"], d["y"], d.get("yaw", 0.0), half, r, (1.0, 0.3, 0.3, 0.9))
             pos = {d["id"]: (d["x"], d["y"]) for d in dogs}
             for gid, members in snap.get("groups", {}).items():
                 mp = [pos[m] for m in members if m in pos]
@@ -141,17 +144,35 @@ class SquadDispatchExtension(omni.ext.IExt):
                     continue
                 gx = sum(p[0] for p in mp) / len(mp)
                 gy = sum(p[1] for p in mp) / len(mp)
-                rad = max((math.hypot(p[0] - gx, p[1] - gy) for p in mp), default=0.0) + safety["hard"]
-                r, g, b = _group_rgb(gid)
-                self._circle(gx, gy, rad, (r, g, b, 0.7), z=0.05, width=2)
+                rad = max((math.hypot(p[0] - gx, p[1] - gy) for p in mp), default=0.0) + r
+                gr, gg, gb = _group_rgb(gid)
+                self._circle(gx, gy, rad, (gr, gg, gb, 0.7), z=0.06, width=2)
 
-    def _circle(self, cx: float, cy: float, radius: float, color, z: float = 0.07,
+    def _circle(self, cx: float, cy: float, radius: float, color, z: float = 0.12,
                 n: int = 20, width: int = 2) -> None:
         """Draw a flat ring on the floor as a closed spline (DebugDraw has no circle)."""
         if self._draw is None or radius <= 0.0:
             return
         pts = [(cx + radius * math.cos(2 * math.pi * k / n),
                 cy + radius * math.sin(2 * math.pi * k / n), z) for k in range(n)]
+        self._draw.draw_lines_spline(pts, color, width, True)
+
+    def _stadium(self, cx: float, cy: float, yaw: float, half: float, radius: float,
+                 color, z: float = 0.14, width: int = 1, nc: int = 7) -> None:
+        """Draw the dog's body CAPSULE outline (a stadium: a segment of half-length
+        ``half`` along ``yaw`` swept by ``radius``) — the honest hard-boundary shape,
+        raised a little off the floor so the dog mesh doesn't slice gaps in it."""
+        if self._draw is None or radius <= 0.0:
+            return
+        local = []
+        for k in range(nc + 1):                     # front cap, -90deg -> +90deg
+            a = -math.pi / 2 + math.pi * k / nc
+            local.append((half + radius * math.cos(a), radius * math.sin(a)))
+        for k in range(nc + 1):                     # back cap, +90deg -> +270deg
+            a = math.pi / 2 + math.pi * k / nc
+            local.append((-half + radius * math.cos(a), radius * math.sin(a)))
+        cyaw, syaw = math.cos(yaw), math.sin(yaw)
+        pts = [(cx + lx * cyaw - ly * syaw, cy + lx * syaw + ly * cyaw, z) for lx, ly in local]
         self._draw.draw_lines_spline(pts, color, width, True)
 
     # -- panel ----------------------------------------------------------------
