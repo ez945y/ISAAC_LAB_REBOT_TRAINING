@@ -63,16 +63,67 @@ class StopFilter:
 
 
 class OrcaFilter:
-    """Placeholder for the ORCA baseline (B2). Use a vetted implementation
-    (e.g. the RVO2 python bindings) rather than a hand-rolled one, so baseline
-    numbers are unimpeachable."""
+    """ORCA baseline (B2) on the official RVO2 bindings (sybrenstuvel/
+    Python-RVO2 wrapping the vetted RVO2 C++ library) — NOT hand-rolled.
+
+    Adapter: one throwaway PyRVOSimulator per filter call — self agent plus
+    every neighbour — stepped once; the ORCA-optimal velocity becomes the
+    command. Notes for the thesis table:
+      * disc body model, radius = min_dist/2 per agent (centre separation
+        0.7 m, same floor as DAM) — expect disc_in-style true-capsule dips
+        (E3.4); ORCA has no capsule support.
+      * wall points enter as zero-max-speed agents (RVO2 polygon obstacles
+        don't fit our point-chain walls); ORCA's reciprocity halves the
+        avoidance against them — a known conservative-optimist mismatch.
+      * no priority concept; omega passes through untouched.
+    Self velocity is approximated by the raw command (world frame): the
+    holonomic dog tracks its command within one step.
+    """
 
     name = "orca"
 
-    def __init__(self, *_, **__):
-        raise NotImplementedError(
-            "ORCA baseline not wired up yet — install RVO2 bindings and adapt here."
-        )
+    def __init__(self, radius: float = 0.35, max_speed: float = 1.5,
+                 neighbor_dist: float = 2.5, time_horizon: float = 2.0,
+                 dt: float = 0.02):
+        import rvo2  # vetted bindings; venv-only
+        self._rvo2 = rvo2
+        self.radius = radius
+        self.max_speed = max_speed
+        self.neighbor_dist = neighbor_dist
+        self.time_horizon = time_horizon
+        self.dt = dt
+
+    def filter(self, aid, cmd, pose, neighbors, self_priority=1.0):
+        import math
+        vx, vy, om = cmd
+        cx, cy, yaw = pose
+        cs, sn = math.cos(yaw), math.sin(yaw)
+        wvx, wvy = vx * cs - vy * sn, vx * sn + vy * cs   # pref velocity, world
+        sim = self._rvo2.PyRVOSimulator(
+            self.dt, self.neighbor_dist, 10, self.time_horizon,
+            self.time_horizon, self.radius, self.max_speed)
+        me = sim.addAgent((cx, cy))
+        sim.setAgentVelocity(me, (wvx, wvy))
+        sim.setAgentPrefVelocity(me, (wvx, wvy))
+        for nb in neighbors:
+            px, py = nb[0], nb[1]
+            nvx = nb[4] if len(nb) >= 6 else 0.0
+            nvy = nb[5] if len(nb) >= 6 else 0.0
+            static = len(nb) >= 8 and nb[7] >= 0.5
+            a = sim.addAgent((px, py))
+            if static:
+                sim.setAgentMaxSpeed(a, 0.0)
+                sim.setAgentVelocity(a, (0.0, 0.0))
+                sim.setAgentPrefVelocity(a, (0.0, 0.0))
+            else:
+                sim.setAgentVelocity(a, (nvx, nvy))
+                sim.setAgentPrefVelocity(a, (nvx, nvy))
+        sim.doStep()
+        nwx, nwy = sim.getAgentVelocity(me)
+        bvx = nwx * cs + nwy * sn
+        bvy = -nwx * sn + nwy * cs
+        changed = abs(bvx - vx) > 1e-5 or abs(bvy - vy) > 1e-5
+        return (bvx, bvy, om), {"decision": "CLAMP" if changed else "PASS"}
 
 
 class DamFilter:

@@ -15,7 +15,13 @@ VENV="/Users/chenyizhong/Documents/Claude/Projects/Security Guard.nosync/.venv/b
 
 - venv has: numpy, scipy, torch 2.10, dam **0.7.0** (editable install of the
   local DAM repo at `.../Security Guard.nosync`), osqp 1.1.3 (installed via
-  `uv pip install osqp --python "$VENV"` on 2026-07-11).
+  `uv pip install osqp --python "$VENV"` on 2026-07-11), and **pyrvo2**
+  (official sybrenstuvel/Python-RVO2 bindings, installed 2026-07-12 for the
+  ORCA baseline). Rebuild recipe if ever needed: clone the repo, then
+  `uv pip install cython setuptools wheel --python "$VENV"` and
+  `CMAKE_POLICY_VERSION_MINIMUM=3.5 uv pip install --no-build-isolation . --python "$VENV"`
+  (two gotchas: setup.py imports Cython at build time → no-build-isolation;
+  CMake 4 rejects the repo's old cmake_minimum_required → policy env var).
 - Plain `python3` (no venv) runs raw/stop/pydam experiments (stdlib+numpy/scipy).
 
 ## Ground rules
@@ -35,7 +41,7 @@ VENV="/Users/chenyizhong/Documents/Claude/Projects/Security Guard.nosync/.venv/b
 | **DAM 0.7 migration** | `Go2DAMWrapper` migrated `SafetyGuard`→`Guardrail` (dict-in `{"base_pose", "action"}`, command-space 3-vector, indices 3:6→0:3, `safe_action=[0,0,0]`); stackfile hardware block rewritten (no preset, inline action_layout) | ✅ done + live-verified (PASS passthrough / head-on brake+sidestep / cohesion pull). ⚠️ `jetbot_dam_wrapper.py` + its yaml NOT migrated (demo10 breaks under 0.7 until done). Isaac machine must upgrade to dam 0.7 |
 | pydam reference filter | `common/pydam.py`: numpy/scipy (SLSQP) mirror of the guard, every ablation knob exposed | ✅ done. **Cross-check vs real dam: 300 random cases, 205 clamped, worst component err 0.000** (`tests/test_pydam_vs_dam.py`); kinesim S1/S2 trajectories match real dam to 3 decimals |
 | Shared infra | `common/`: kinesim (exec/obs noise, obs delay), scenarios S1–S5, filters (raw/stop/orca-TODO/dam/pydam + FilterRouter), metrics (auto-agg, per-group completion, hard-slack telemetry), `ablation.py` sweep runner | ✅ done, smoke-tested |
-| **E2 baselines (RQ2)** | `run_e2_baselines.py`: raw/stop/pydam/dam × S1–S5 × 50 seeds (1000 episodes, local venv) | ✅ **MAIN TABLE DONE — the Pareto story holds**: raw fastest but minDD ≈ 0 everywhere (collides); stop zero violations but 94–100% deadlock (never completes); **dam 98–100% completion, zero deadlock, floor held** (S2 0.786 / S5 0.914 / S4 0.612 / S1 0.527 / S3 0.456 crowd-crush) at 5–45% makespan cost, filter p99 ≤ 1 ms. **BONUS: pydam ≡ dam to 3 decimals in aggregate across all 5 scenarios × 50 seeds** — the ablations' pydam numbers ARE dam numbers; the per-experiment "⏳ dam re-run" items below are closed by this equivalence (Isaac-loop validation remains as E1.x). ⏳ ORCA baseline (vetted RVO2 bindings — do not hand-roll) |
+| **E2 baselines (RQ2)** | `run_e2_baselines.py`: raw/stop/pydam/dam × S1–S5 × 50 seeds (1000 episodes, local venv) | ✅ **MAIN TABLE DONE — the Pareto story holds**: raw fastest but minDD ≈ 0 everywhere (collides); stop zero violations but 94–100% deadlock (never completes); **dam 98–100% completion, zero deadlock, floor held** (S2 0.786 / S5 0.914 / S4 0.612 / S1 0.527 / S3 0.456 crowd-crush) at 5–45% makespan cost, filter p99 ≤ 1.3 ms. **BONUS: pydam ≡ dam to 3 decimals in aggregate across all 5 scenarios × 50 seeds** — the ablations' pydam numbers ARE dam numbers; the per-experiment "⏳ dam re-run" items below are closed by this equivalence (Isaac-loop validation remains as E1.x). **ORCA (B2) DONE** — official RVO2 bindings, 5-method table complete: ORCA matches raw's speed and stays live in the open, but its disc model dips the TRUE capsule floor in every scenario (S1 0.339 / S2 0.440 / S3 0.224 / S4 0.324 / S5 0.543 vs dam 0.527/0.786/0.456/0.612/0.914) and deadlocks 18% at the bottleneck. dam is the only method simultaneously safe, live, and completing everywhere |
 | E3.1 priority ablation | `run_e31_priority.py`: S1, priority(3:1) vs symmetric, 20 seeds pydam | ✅ **ACCEPTED**: high-pri G0 completes 7.29s vs low-pri G1 7.61s; yield carried by G1 (path_ratio 1.077 vs 1.048); violations halved (79.9→34.8 steps), min capsule dist 0.46→0.62 m. Residual 5% deadlock in BOTH conditions (likely intra-group symmetric conflict — see F2b). ✔ dam numbers = pydam numbers (equivalence shown in E2, 1000 eps) |
 | E3.2 swirl ablation | `run_e32_swirl.py`: S2 × {swirl 0, 0.6} × {jitter 0, 0.15}, 20 seeds | ✅ **ACCEPTED — found & fixed a real frame bug (F4)**. After fix: swirl 0.6 → **0 violations, min dist 0.785 m (hard floor held), fastest makespan 5.96 s** in both jitter variants; swirl 0 at perfect symmetry → near-collision 0.088 m + 82 violation steps. pydam↔dam consistency re-verified (err 0.000) |
 | E3.3 soft/hard ablation | `run_e33_softhard.py`: S3 × {layered, hard_only, comfort_hard}, 20 seeds | ✅ **ACCEPTED — the layering result is the strongest so far**: layered 100% completion, makespan 12.2±0.7 s, 0 deadlock; hard_only 95% deadlock AND parks inside the floor (viol 2742 steps, slack 0.447 m — losing the soft layer costs BOTH liveness and safety); comfort_hard 0 violations but 100% deadlock (comfort-as-hard clogs the funnel). Debugging surfaced F5/F6/F7/F8. ✔ dam numbers = pydam numbers (equivalence shown in E2, 1000 eps) |
@@ -58,7 +64,7 @@ python3 experiments/tests/test_capsule_geometry.py
 python3 experiments/run_e2_baselines.py --methods raw,stop --scenarios S1,S2,S3,S4,S5 --seeds 5
 
 # full E2 with the real guard (local DAM venv works; Isaac itself not needed):
-"$VENV" experiments/run_e2_baselines.py --methods raw,stop,dam --scenarios S1,S2,S3,S4,S5 --seeds 50 --out experiments/results/e2_full
+"$VENV" experiments/run_e2_baselines.py --methods raw,stop,orca,pydam,dam --scenarios S1,S2,S3,S4,S5 --seeds 50 --out experiments/results/e2_full
 
 # ablations (pydam by default; add --method dam where supported):
 python3 experiments/run_e31_priority.py --seeds 20      # E3.1 priority
@@ -235,6 +241,9 @@ python3 experiments/tests/test_capsule_geometry.py
   geometrically dominate) and wall spacing is 0.5 m (still impassable at
   min_dist 0.7). pydam↔dam consistency re-verified after every change
   (err 0.000, static branch covered 30% of cases).
+- 2026-07-12 ORCA baseline wired on official Python-RVO2 bindings (adapter:
+  per-call micro-sim; discs r=0.35; walls = zero-max-speed agents; no
+  priority). Final 5-method E2 table (1250 episodes) regenerated.
 - 2026-07-12 E2 main table run locally (venv, 1000 episodes): pydam ≡ dam
   to 3 decimals in aggregate across S1–S5 × 50 seeds ⇒ ablation pydam
   numbers stand in for dam; remaining hardware questions move to E1.x.
