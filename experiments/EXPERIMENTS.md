@@ -40,7 +40,7 @@ VENV="/Users/chenyizhong/Documents/Claude/Projects/Security Guard.nosync/.venv/b
 | E3.2 swirl ablation | `run_e32_swirl.py`: S2 × {swirl 0, 0.6} × {jitter 0, 0.15}, 20 seeds | ✅ **ACCEPTED — found & fixed a real frame bug (F4)**. After fix: swirl 0.6 → **0 violations, min dist 0.785 m (hard floor held), fastest makespan 5.96 s** in both jitter variants; swirl 0 at perfect symmetry → near-collision 0.088 m + 82 violation steps. pydam↔dam consistency re-verified (err 0.000) |
 | E3.3 soft/hard ablation | `run_e33_softhard.py`: S3 × {layered, hard_only, comfort_hard}, 20 seeds | ✅ **ACCEPTED — the layering result is the strongest so far**: layered 100% completion, makespan 12.2±0.7 s, 0 deadlock; hard_only 95% deadlock AND parks inside the floor (viol 2742 steps, slack 0.447 m — losing the soft layer costs BOTH liveness and safety); comfort_hard 0 violations but 100% deadlock (comfort-as-hard clogs the funnel). Debugging surfaced F5/F6/F7/F8. ⏳ re-run `--method dam` on Isaac machine |
 | E3.5 velocity-aware ablation | `run_e35_velocity.py`: S2 × {va_on, va_off} × vmax {1.0, 1.5, 2.0}, 20 seeds | ✅ **ACCEPTED — clean dose-response**: va_off floor dip deepens with closing speed (minDD 0.824→0.688→0.619, viol 0→5→10 steps); va_on holds the floor at every speed (0.877/0.785/0.747, zero viol) for ≤ 3% makespan. Halved perceived closing rate = late reaction, exactly as theory predicts. Note: S2 is deterministic per condition (zero seed variance); jitter axis had no effect with swirl on. ⏳ re-run `--method dam` for thesis table |
-| E3.6 γ / dt sweep | S1+S3, conservatism-performance curve | ⬜ |
+| E3.6 γ / dt sweep | `run_e36_gamma.py`: S1+S3 × γ {0.1,0.2,0.4,0.7,1.0} (dt 0.2) + dt {0.1,0.4} at γ 0.4 + γ0.1×dt0.1, 20 seeds | ✅ **ACCEPTED — inverted-textbook curve + F9**: minDD rises MONOTONICALLY with γ (S1 0.30→0.78; S3 0.11→0.84) while liveness falls (S1 done 100%→75%, γ1.0 25% deadlock) — low γ = slack erosion + tangential blind spot (pass-through 2/20 S1, 5/20 S3 at γ0.1/dt0.2), high γ = brake-wall. dt is the second axis: dt0.1 removes S1 pass-through and DOMINATES dt0.2 on S3 (makespan 10.3 vs 12.2, same floor); dt0.4 catastrophic in congestion (80% dlk). Default γ0.4/dt0.2 sits at the knee (zero pass-through, 95–100% done); recommendation dt→0.1. S3 γ0.7 anomaly (60% dlk, worse than γ1.0): intermediate γ wedges the funnel — activates early enough to jam, too late to sort. ⏳ dam re-run |
 | E3.4 capsule vs disc | S4, equal-radius disc comparison | ⬜ |
 | E3.7 analytic vs autograd | S2, spurious-stop rate | ⬜ |
 | E4.1 tracking-error injection | noise on executed vs commanded velocity | ⬜ |
@@ -65,6 +65,7 @@ python3 experiments/run_e31_priority.py --seeds 20      # E3.1 priority
 python3 experiments/run_e32_swirl.py    --seeds 20      # E3.2 swirl x jitter
 python3 experiments/run_e33_softhard.py --seeds 20      # E3.3 layering
 python3 experiments/run_e35_velocity.py --seeds 20      # E3.5 velocity-aware x vmax
+python3 experiments/run_e36_gamma.py    --seeds 20      # E3.6 gamma/dt sweep (slow: 320 eps)
 
 # implementation-consistency gate (run after ANY guard/pydam change):
 "$VENV" experiments/tests/test_pydam_vs_dam.py
@@ -118,6 +119,27 @@ python3 experiments/tests/test_capsule_geometry.py
   into conflicting constraints (walls + mutual) erode the floor gradually.
   hard_only is far worse (wedges at 0.49 and SITS inside the floor all
   episode). Quantify vs γ in E3.6; report via E4.3 slack telemetry.
+- **F9 tangential linearization blind spot — γ is NOT a pure conservatism
+  knob (found by E3.6 probe, 2026-07-11)**: at S1's 90° crossing with γ=0.1
+  (dt 0.2) two capsules pass THROUGH each other (minDD 0.0) while both QPs
+  report near-zero slack. Verified step-by-step: each dog satisfies its
+  half-share constraint with EQUALITY (g·du = 0.5·req, slack 0), the shares
+  sum to the full requirement — yet realized distance violates the CBF bound
+  by ~0.17 m per horizon. Cause: d_pred projects the predicted positions of
+  the CURRENT closest-point pair onto the CURRENT normal; at 90° with
+  tangential relative motion the closest pair slides along the spines and the
+  normal rotates within the 0.2 s horizon, so real closure is second-order
+  invisible to the constraint, and equality-binding leaves zero margin to
+  absorb it. Low γ makes it WORSE (constraints activate far out → dogs spend
+  long periods manoeuvring tangentially at close range where the error
+  accumulates); swirl (deliberate tangential motion) and va_off deepen it.
+  γ→1 flips the failure to brake-wall deadlock instead. **dt is the binding
+  fix: dt 0.2→0.1 removes S1 pass-through (2/20→0/20) and cuts S3's
+  (5/20→1/20), while at the γ=0.4 default dt0.1 outright DOMINATES dt0.2 on
+  S3** (makespan 10.3 vs 12.2 s, same floor). Guard improvement queued:
+  shorten horizon (or multi-point spine constraints); stackfile default
+  γ=0.4/dt=0.2 has zero pass-through (worst episode 0.12 m at dt0.4) but
+  inherits the reduced-margin regime (S1 minDD ≈ 0.52±0.05).
 - **F8 reactive filter is myopic by design — routes are the task's job**: a
   CBF filter will not path-plan around a wall (correct local-minimum freeze at
   the wall face). S3 therefore gives every method the same waypoint route
