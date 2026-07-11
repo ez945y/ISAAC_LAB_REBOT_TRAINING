@@ -46,7 +46,7 @@ VENV="/Users/chenyizhong/Documents/Claude/Projects/Security Guard.nosync/.venv/b
 | E4.1 tracking-error injection | `run_e41_tracking.py`: S2+S3 × exec-noise σ {0, 0.1, 0.2, 0.4} m/s, 20 seeds | ✅ **ACCEPTED — graceful to a fault**: at σ=0.4 (27% of vmax) S2 floor 0.785→0.769-0.792 with ≤2 viol steps; S3 0.452→0.439 with violations slightly DOWN (dither greases the crush; makespan even improves) while hard slack rises 0.081→0.116 (QP visibly works harder). Mechanism: 50 Hz closed-loop re-linearisation corrects zero-mean noise within ~1 step (per-step displacement noise 8 mm ≪ γ margin). Thesis line: execution fidelity is NOT the binding assumption — the horizon model is (F9). ⏳ dam re-run |
 | E4.2 state noise + latency | `run_e42_obsnoise.py`: S2+S3 × {σ_obs 0–0.2 m, delay 100/200/500 ms, realistic 0.1 m+100 ms}, 20 seeds | ✅ **ACCEPTED — latency binds first, va-extrapolation carries to ~200 ms**: S2 floor 0.785→0.753 (100 ms) →0.722 (200 ms) →0.541+18 viol (500 ms, mis-placement 0.75 m ≥ the whole margin — yet velocity extrapolation still prevents anything worse); noise is milder (0.2 m → 0.718, ≤3 viol). Realistic point (0.1 m + 100 ms): S2 0.733, S3 unchanged — deployable. S3 stays crush-dominated (insensitive; worst 0.395 at 500 ms w/ 5% dlk; slack ↑ to 0.129 at 0.2 m noise). ⏳ dam re-run |
 | E4.3 slack usage | `run_e43_slack.py`: collates `max_hard_slack_m` across every finished results dir (no new sim; re-run after regenerating results) | ✅ **ACCEPTED — slack is only HALF a safety monitor**: 1372 episodes, Pearson(slack, viol) = +0.49 only. Two families separate cleanly: 128 QP-aware violation episodes (F7: hard_only wedge slack 0.447, obs-noise phantom constraints 0.129) vs **185 QP-blind episodes** (F9: swirl-off near-miss 0.088 m at slack 0.009 — the QP saw nothing). Thesis line: slack telemetry flags infeasibility-driven erosion; pair with a measured-distance monitor for linearization-driven penetration |
-| E4.4 non-cooperative agent | 1–2 dogs bypass the filter | ⬜ |
+| E4.4 non-cooperative agent | `run_e44_rogue.py`: S1+S5 × {coop, rogue1, rogue2} (rogues run raw via FilterRouter), 20 seeds | ✅ **ACCEPTED — the 0.5-share assumption fails gracefully, not catastrophically**: floor dips dose-dependently with rogue count (S1 0.520→0.353→0.264, depth 0.18→0.35→0.44; S5 0.850→0.743→0.644) because compliant dogs cover only their half of the requirement against an agent that covers none — but NO collisions (min > 0.26 everywhere) and liveness intact (95–100% done). Guard improvement queued: carry share 1.0 against neighbours flagged non-cooperative (walls already do this, F5). Probe also found & fixed F11 (S5 cohesion-vs-goal freeze). ⏳ dam re-run |
 | E4.5 scale sweep | S5 with N ∈ {2,4,8,12,16} (+ E1.2 timing) | ⬜ |
 | E1.x cross-embodiment / real latency | on Isaac machine | ⬜ |
 
@@ -71,6 +71,7 @@ python3 experiments/run_e34_capsule.py  --seeds 20      # E3.4 capsule vs disc
 python3 experiments/run_e41_tracking.py --seeds 20      # E4.1 exec-noise sweep
 python3 experiments/run_e42_obsnoise.py --seeds 20      # E4.2 obs noise + latency
 python3 experiments/run_e43_slack.py                    # E4.3 slack collation (analysis only)
+python3 experiments/run_e44_rogue.py    --seeds 20      # E4.4 non-cooperative agents
 
 # implementation-consistency gate (run after ANY guard/pydam change):
 "$VENV" experiments/tests/test_pydam_vs_dam.py
@@ -160,6 +161,15 @@ python3 experiments/tests/test_capsule_geometry.py
   mode is silent behavioural degradation. Census: gradient directions agree
   cos ≈ 0.98 far, degrade to 0.86 near (min −1.0), 100% degenerate at
   predicted overlap; latency 3–5×.
+- **F11 cohesion fights independent goals (found by E4.4 probe, fixed
+  2026-07-12)**: with S5's dogs alternating between two groups, the same-group
+  cohesion pull (max_dist 4.0) fought their independent goals — dogs froze at
+  the pull-vs-goal equilibrium (80% "deadlock", 5k stop-steps; MORE rogues
+  meant MORE liveness because raw dogs ignore the pull). Fix: S5 gives every
+  dog its own group (unstructured traffic has no squad). Thesis note: the
+  cohesion boundary presumes a shared squad objective; enabling it across
+  agents with independent tasks is a misconfiguration with a distinctive
+  signature (commanded-but-stationary at ~max_dist from a group-mate).
 - **F8 reactive filter is myopic by design — routes are the task's job**: a
   CBF filter will not path-plan around a wall (correct local-minimum freeze at
   the wall face). S3 therefore gives every method the same waypoint route
@@ -224,6 +234,8 @@ python3 experiments/tests/test_capsule_geometry.py
   geometrically dominate) and wall spacing is 0.5 m (still impassable at
   min_dist 0.7). pydam↔dam consistency re-verified after every change
   (err 0.000, static branch covered 30% of cases).
+- 2026-07-12 S5 groups changed to one-per-dog (F11) ⇒ earlier S5 numbers
+  from filtered methods are stale (raw/stop unaffected — they ignore groups).
 - 2026-07-12 metrics gained `stop_steps` (raw>0.5 m/s filtered to <0.05)
   and `reject_steps` (QP failure fallback) episode fields for E3.7/E4.x.
 - 2026-07-11 S3 scenario semantics changed (waypoints + goal spacing + 0.5 m

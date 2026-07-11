@@ -132,9 +132,14 @@ def s5_cruise(seed: int, n: int = 6, half: float = 6.0, min_sep: float = 2.0) ->
     for _ in range(n):
         starts.append(sample(starts))
         goals.append(sample(goals))
+    # Every dog is its OWN group: S5 is unstructured independent traffic, and
+    # same-group cohesion (max_dist pull) actively fights independent goals —
+    # dogs froze at the pull-vs-goal equilibrium (E4.4 probe: 80% "deadlock",
+    # 5k stop-steps, and MORE rogues meant MORE liveness because raw dogs
+    # ignore the pull). Cohesion belongs to squad tasks, not this scenario.
     return [
         AgentSpec(f"D{i}", sx, sy, rng.uniform(-math.pi, math.pi), gx, gy,
-                  group=f"G{i % 2}")
+                  group=f"G{i}")
         for i, ((sx, sy), (gx, gy)) in enumerate(zip(starts, goals))
     ]
 
