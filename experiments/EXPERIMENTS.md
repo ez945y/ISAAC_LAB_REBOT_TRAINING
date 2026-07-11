@@ -241,6 +241,10 @@ python3 experiments/tests/test_capsule_geometry.py
   geometrically dominate) and wall spacing is 0.5 m (still impassable at
   min_dist 0.7). pydam↔dam consistency re-verified after every change
   (err 0.000, static branch covered 30% of cases).
+- 2026-07-12 Thesis chapter 4 drafted (`experiments/thesis/ch4_experiments.md`)
+  + 7 publication figures (`make_figures.py`, regenerable; copies committed
+  under experiments/thesis/figures/). Narrative: 3 baselines fail 3 ways ->
+  7-axis attribution -> graceful degradation; F4-F11 woven in.
 - 2026-07-12 ORCA baseline wired on official Python-RVO2 bindings (adapter:
   per-call micro-sim; discs r=0.35; walls = zero-max-speed agents; no
   priority). Final 5-method E2 table (1250 episodes) regenerated.
