@@ -39,7 +39,7 @@ VENV="/Users/chenyizhong/Documents/Claude/Projects/Security Guard.nosync/.venv/b
 | E3.1 priority ablation | `run_e31_priority.py`: S1, priority(3:1) vs symmetric, 20 seeds pydam | ✅ **ACCEPTED**: high-pri G0 completes 7.29s vs low-pri G1 7.61s; yield carried by G1 (path_ratio 1.077 vs 1.048); violations halved (79.9→34.8 steps), min capsule dist 0.46→0.62 m. Residual 5% deadlock in BOTH conditions (likely intra-group symmetric conflict — see F2b). ⏳ re-run `--method dam` for the thesis table |
 | E3.2 swirl ablation | `run_e32_swirl.py`: S2 × {swirl 0, 0.6} × {jitter 0, 0.15}, 20 seeds | ✅ **ACCEPTED — found & fixed a real frame bug (F4)**. After fix: swirl 0.6 → **0 violations, min dist 0.785 m (hard floor held), fastest makespan 5.96 s** in both jitter variants; swirl 0 at perfect symmetry → near-collision 0.088 m + 82 violation steps. pydam↔dam consistency re-verified (err 0.000) |
 | E3.3 soft/hard ablation | `run_e33_softhard.py`: S3 × {layered, hard_only, comfort_hard}, 20 seeds | ✅ **ACCEPTED — the layering result is the strongest so far**: layered 100% completion, makespan 12.2±0.7 s, 0 deadlock; hard_only 95% deadlock AND parks inside the floor (viol 2742 steps, slack 0.447 m — losing the soft layer costs BOTH liveness and safety); comfort_hard 0 violations but 100% deadlock (comfort-as-hard clogs the funnel). Debugging surfaced F5/F6/F7/F8. ⏳ re-run `--method dam` on Isaac machine |
-| E3.5 velocity-aware ablation | S2, TTC vs static neighbours | ⬜ |
+| E3.5 velocity-aware ablation | `run_e35_velocity.py`: S2 × {va_on, va_off} × vmax {1.0, 1.5, 2.0}, 20 seeds | ✅ **ACCEPTED — clean dose-response**: va_off floor dip deepens with closing speed (minDD 0.824→0.688→0.619, viol 0→5→10 steps); va_on holds the floor at every speed (0.877/0.785/0.747, zero viol) for ≤ 3% makespan. Halved perceived closing rate = late reaction, exactly as theory predicts. Note: S2 is deterministic per condition (zero seed variance); jitter axis had no effect with swirl on. ⏳ re-run `--method dam` for thesis table |
 | E3.6 γ / dt sweep | S1+S3, conservatism-performance curve | ⬜ |
 | E3.4 capsule vs disc | S4, equal-radius disc comparison | ⬜ |
 | E3.7 analytic vs autograd | S2, spurious-stop rate | ⬜ |
@@ -64,6 +64,7 @@ python3 experiments/run_e2_baselines.py --methods raw,stop --scenarios S1,S2,S3,
 python3 experiments/run_e31_priority.py --seeds 20      # E3.1 priority
 python3 experiments/run_e32_swirl.py    --seeds 20      # E3.2 swirl x jitter
 python3 experiments/run_e33_softhard.py --seeds 20      # E3.3 layering
+python3 experiments/run_e35_velocity.py --seeds 20      # E3.5 velocity-aware x vmax
 
 # implementation-consistency gate (run after ANY guard/pydam change):
 "$VENV" experiments/tests/test_pydam_vs_dam.py
