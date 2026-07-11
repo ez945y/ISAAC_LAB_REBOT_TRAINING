@@ -16,7 +16,6 @@ Full run on the Isaac-side machine (still sim-lite, no Isaac needed):
 from __future__ import annotations
 
 import argparse
-import csv
 import sys
 from pathlib import Path
 
@@ -24,7 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common.filters import make_filter  # noqa: E402
 from common.kinesim import KineSim, SimConfig  # noqa: E402
-from common.metrics import EpisodeRecorder, MetricsConfig, aggregate, to_markdown  # noqa: E402
+from common.metrics import (EpisodeRecorder, MetricsConfig, aggregate,  # noqa: E402
+                            to_markdown, write_csv)
 from common.scenarios import SCENARIOS  # noqa: E402
 
 
@@ -32,7 +32,7 @@ def run_episode(scenario: str, seed: int, method: str, sim_cfg: SimConfig,
                 met_cfg: MetricsConfig) -> dict:
     specs = SCENARIOS[scenario](seed)
     filt = make_filter(method)  # fresh filter per episode: no cross-episode latch/guard state
-    sim = KineSim(specs, filt, sim_cfg)
+    sim = KineSim(specs, filt, sim_cfg, rng_seed=seed)
     rec = EpisodeRecorder(met_cfg)
     sim.run(recorder=rec)
     row = rec.finish(sim, scenario, seed, method)
@@ -75,17 +75,11 @@ def main() -> int:
                       f"minDD={row['min_dogdog_m']:.2f}m viol={row['viol_steps_dog']}")
 
     ep_csv = out_dir / "episodes.csv"
-    with ep_csv.open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        w.writerows(rows)
+    write_csv(ep_csv, rows)
 
     agg = aggregate(rows)
     agg_csv = out_dir / "aggregate.csv"
-    with agg_csv.open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(agg[0].keys()))
-        w.writeheader()
-        w.writerows(agg)
+    write_csv(agg_csv, agg)
 
     md = to_markdown(agg)
     (out_dir / "summary.md").write_text(md + "\n")

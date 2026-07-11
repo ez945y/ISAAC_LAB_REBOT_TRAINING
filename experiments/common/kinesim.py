@@ -13,7 +13,9 @@ Static obstacle "agents" never move and are exposed to filters as neighbours.
 from __future__ import annotations
 
 import math
+import random
 import time
+from collections import deque
 from dataclasses import dataclass, field
 
 
@@ -60,6 +62,10 @@ class SimConfig:
     k_yaw: float = 2.0
     goal_tol: float = 0.3
     max_time: float = 60.0
+    # -- robustness knobs (RQ4) --------------------------------------------
+    exec_noise_std: float = 0.0    # E4.1: gaussian noise on the EXECUTED world velocity (m/s)
+    obs_noise_std: float = 0.0     # E4.2: gaussian noise on observed neighbour positions (m)
+    obs_delay_steps: int = 0       # E4.2: neighbour observations delayed by k control steps
 
 
 @dataclass
@@ -75,10 +81,14 @@ class StepRecord:
 class KineSim:
     """Steps a squad of holonomic agents through a safety filter to their goals."""
 
-    def __init__(self, specs: list[AgentSpec], safety_filter, cfg: SimConfig | None = None):
+    def __init__(self, specs: list[AgentSpec], safety_filter, cfg: SimConfig | None = None,
+                 rng_seed: int = 0):
         self.cfg = cfg or SimConfig()
         self.filter = safety_filter
         self.agents = {s.aid: AgentState.from_spec(s) for s in specs}
+        self._rng = random.Random(rng_seed)   # noise source (exec/obs), episode-reproducible
+        self._hist: deque = deque(maxlen=max(1, self.cfg.obs_delay_steps + 1))
+        self._obs: dict = {}                   # aid -> observed (x, y, wvx, wvy, yaw)
 
     # -- nominal controller: body-frame P-control toward the goal ------------
     def nominal(self, ag: AgentState) -> tuple[float, float, float]:
@@ -96,19 +106,42 @@ class KineSim:
         om = max(-c.wmax, min(c.wmax, c.k_yaw * wrap_angle(math.atan2(dy, dx) - ag.yaw)))
         return (bvx, bvy, om)
 
+    def _snapshot_observations(self):
+        """Refresh what agents OBSERVE this step: possibly delayed + noisy states.
+
+        Ground truth is snapshotted per step; the observation used is the one
+        ``obs_delay_steps`` ticks old, with fresh position noise per step. One
+        shared observation per observed agent (all observers see the same value).
+        """
+        c = self.cfg
+        truth = {aid: (ag.x, ag.y, ag.wvx, ag.wvy, ag.yaw) for aid, ag in self.agents.items()}
+        self._hist.append(truth)
+        # deque maxlen = obs_delay_steps + 1, so the oldest entry IS the k-step-old
+        # observation once the buffer fills (and the best available during warmup).
+        delayed = self._hist[0]
+        self._obs = {}
+        for aid, (x, y, wvx, wvy, yaw) in delayed.items():
+            if c.obs_noise_std > 0.0 and not self.agents[aid].spec.static:
+                x += self._rng.gauss(0.0, c.obs_noise_std)
+                y += self._rng.gauss(0.0, c.obs_noise_std)
+            self._obs[aid] = (x, y, wvx, wvy, yaw)
+
     def _neighbors_of(self, aid: str) -> list[tuple]:
         """(x, y, priority, same_group, wvx, wvy, yaw, static) for every OTHER agent.
 
-        The trailing ``static`` flag (1.0 = wall point) is extra context for the
-        baseline filters; Go2DAMWrapper reads indices 0-6 only and ignores it.
+        Positions/velocities come from the (possibly delayed/noisy) observation
+        snapshot; an agent's OWN pose stays ground truth (odometry >> inter-robot
+        perception). The trailing ``static`` flag (1.0 = wall point) is extra
+        context for baseline filters; Go2DAMWrapper reads indices 0-6 only.
         """
         me = self.agents[aid]
         out = []
         for oid, ag in self.agents.items():
             if oid == aid:
                 continue
+            ox, oy, owvx, owvy, oyaw = self._obs[oid]
             same = 1.0 if (not ag.spec.static and ag.spec.group == me.spec.group) else 0.0
-            out.append((ag.x, ag.y, ag.spec.priority, same, ag.wvx, ag.wvy, ag.yaw,
+            out.append((ox, oy, ag.spec.priority, same, owvx, owvy, oyaw,
                         1.0 if ag.spec.static else 0.0))
         return out
 
@@ -118,6 +151,7 @@ class KineSim:
         trace: list[StepRecord] = []
         for k in range(steps):
             t = k * c.dt
+            self._snapshot_observations()
             rec = StepRecord(t=t, poses={}, raw_cmds={}, safe_cmds={}, filter_s={})
             # 1) decide every command from the SAME snapshot (synchronous update)
             pending = {}
@@ -145,6 +179,9 @@ class KineSim:
                 cs, sn = math.cos(ag.yaw), math.sin(ag.yaw)
                 wvx = vx * cs - vy * sn
                 wvy = vx * sn + vy * cs
+                if c.exec_noise_std > 0.0:  # E4.1: policy tracks the command imperfectly
+                    wvx += self._rng.gauss(0.0, c.exec_noise_std)
+                    wvy += self._rng.gauss(0.0, c.exec_noise_std)
                 nx, ny = ag.x + wvx * c.dt, ag.y + wvy * c.dt
                 ag.path_len += math.hypot(nx - ag.x, ny - ag.y)
                 ag.x, ag.y, ag.yaw = nx, ny, wrap_angle(ag.yaw + om * c.dt)

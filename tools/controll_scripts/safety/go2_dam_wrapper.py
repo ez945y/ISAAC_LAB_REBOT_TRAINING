@@ -14,10 +14,12 @@ Because ``nearest = min`` over all neighbours, ``nearest >= min_dist`` already
 implies *every* pair is clear, so the single nearest-distance band enforces both
 "don't collide" and "don't break formation" at once.
 
-Full obs/action vector is 6D ``[x, y, yaw, vx, vy, omega]`` (pose [0:3] +
-command [3:6]). Neighbour positions change every call, so they are injected into
-the guard through the ``solvers`` mapping (DAM 0.6.0 style) via a small mutable
-holder — the boundary callback reads them alongside the rollout solver.
+DAM 0.7.0 (``Guardrail``, dict-in/command-out): the observation is the
+``base_pose`` group ``[x, y, yaw]`` and the action is the command ``[vx, vy,
+omega]`` directly — no more 6D obs/action packing. Neighbour positions change
+every call, so they are injected into the guard through the ``solvers`` mapping
+via a small mutable holder — the boundary callback reads them alongside the
+rollout solver.
 
 The correction is a small QP on ``[vx, vy, omega]``: linearise the distance to the
 offending neighbour through the differentiable :class:`HolonomicSolver` rollout,
@@ -83,7 +85,7 @@ class _NeighborHolder:
 )
 def go2_min_max_separation(
     *,
-    obs,
+    base_pose,
     action,
     solvers,
     min_dist: float = 1.0,
@@ -118,8 +120,8 @@ def go2_min_max_separation(
         return True
     p_self = float(getattr(holder, "self_priority", 1.0))
 
-    state = list(obs.joint_positions[:3])              # [x, y, yaw]
-    command = list(action.target_joint_positions[3:6])  # [vx, vy, omega]
+    state = [float(v) for v in base_pose]                   # [x, y, yaw]
+    command = [float(v) for v in action.target_joint_positions[:3]]  # [vx, vy, omega]
     vx, vy, om = command
     cx, cy = state[0], state[1]
 
@@ -263,14 +265,14 @@ def go2_min_max_separation(
     res = prob.solve()
 
     if res.x is not None and np.all(np.isfinite(res.x)) and "solved" in str(res.info.status):
-        action.target_joint_positions[3] = float(vx + res.x[0])
-        action.target_joint_positions[4] = float(vy + res.x[1])
-        action.target_joint_positions[5] = float(om + res.x[2])
+        action.target_joint_positions[0] = float(vx + res.x[0])
+        action.target_joint_positions[1] = float(vy + res.x[1])
+        action.target_joint_positions[2] = float(om + res.x[2])
     elif hard_active:
         # Degenerate solver failure with the HARD floor active must fail safe: stop.
-        action.target_joint_positions[3] = 0.0
-        action.target_joint_positions[4] = 0.0
-        action.target_joint_positions[5] = 0.0
+        action.target_joint_positions[0] = 0.0
+        action.target_joint_positions[1] = 0.0
+        action.target_joint_positions[2] = 0.0
     return True
 
 
@@ -287,11 +289,15 @@ class Go2DAMWrapper:
     ) -> None:
         self.solver = solver or HolonomicSolver()
         self._neighbors = _NeighborHolder()
-        self._guard = dam.SafetyGuard(
+        # DAM 0.7.0: Guardrail is dict-in/command-out; on REJECT return an
+        # explicit stop twist (a velocity-controlled base must not "hold").
+        self._guard = dam.Guardrail(
             self._resolve_stackfile(stackfile),
             task=task,
-            degrees_mode=False,  # our 6D "joints" are pose + body velocity, not motor degrees
+            degrees_mode=False,  # pose "joints" are metres/radians, not motor degrees
             solvers={_SOLVER_KEY: self.solver, _NEIGHBOR_KEY: self._neighbors},
+            safe_action=[0.0, 0.0, 0.0],
+            quiet=True,
         )
         self._device = device
         self._last_decision = "PASS"
@@ -342,14 +348,14 @@ class Go2DAMWrapper:
 
         raw = command[0]       # [vx, vy, omega]
         pose = state[0, :3]    # [x, y, yaw]
-        zeros = torch.zeros(3, dtype=pose.dtype, device=pose.device)
-        obs_6 = torch.cat([pose, zeros])
-        action_6 = torch.cat([pose, raw])
 
-        safe_6 = torch.as_tensor(
-            self._guard(action_6, obs_6), dtype=raw.dtype, device=raw.device
+        safe = torch.as_tensor(
+            self._guard({
+                "base_pose": [float(v) for v in pose],
+                "action": np.asarray(raw.detach().cpu(), dtype=np.float64),
+            }),
+            dtype=raw.dtype, device=raw.device,
         ).reshape(-1)
-        safe = safe_6[3:6]
 
         self._step_count += 1
         self._last_delta = torch.max(torch.abs(safe - raw)).item()

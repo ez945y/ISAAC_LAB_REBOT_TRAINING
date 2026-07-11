@@ -51,6 +51,7 @@ class EpisodeRecorder:
         self.filter_times: list[float] = []
         self._progress_ref: dict = {}   # aid -> (t, x, y) start of current window
         self._stalled: set = set()
+        self.max_hard_slack = 0.0       # E4.3: worst hard-floor slack the QP ever bought
 
     def _capsule_dist(self, a, b, ha, hb) -> float:
         return seg_seg_closest(
@@ -99,6 +100,10 @@ class EpisodeRecorder:
             if delta > 1e-5:
                 self.interventions += 1
         self.filter_times.extend(rec.filter_s.values())
+        for info in rec.decisions.values():
+            hs = info.get("hard_slack_max", 0.0) if isinstance(info, dict) else 0.0
+            if isinstance(hs, (int, float)) and math.isfinite(hs):
+                self.max_hard_slack = max(self.max_hard_slack, hs)
 
         # -- deadlock: unfinished agent with ~no motion over a window ------
         for aid, ag in dyn:
@@ -128,9 +133,17 @@ class EpisodeRecorder:
         def pct(p):
             return ft_ms[min(len(ft_ms) - 1, int(p * len(ft_ms)))] if ft_ms else 0.0
 
+        per_group: dict = {}
+        for ag in dyn:  # per-group mean completion (E3.1 emergent yielding)
+            g = ag.spec.group
+            per_group.setdefault(g, []).append(ag.done_time if ag.done else sim.cfg.max_time)
+        group_fields = {f"completion_{g}_s": statistics.mean(v) for g, v in sorted(per_group.items())}
+
         return {
             "scenario": scenario, "seed": seed, "method": method,
             "n_dogs": len(dyn),
+            **group_fields,
+            "max_hard_slack_m": self.max_hard_slack,
             "all_done": all(ag.done for ag in dyn),
             "timeouts": sum(not ag.done for ag in dyn),
             "deadlock": bool(self._stalled and not all(ag.done for ag in dyn)),
@@ -150,45 +163,72 @@ class EpisodeRecorder:
         }
 
 
-_AGG_FIELDS = [
-    "makespan_s", "mean_completion_s", "path_ratio", "min_dogdog_m",
-    "viol_steps_dog", "max_viol_depth_m", "intervention_rate",
-    "mean_dcmd", "filter_p50_ms", "filter_p99_ms",
-]
-_RATE_FIELDS = ["all_done", "deadlock"]
+_SKIP_FIELDS = {"seed"}
 
 
-def aggregate(rows: list[dict]) -> list[dict]:
-    """Group by (scenario, method): mean +/- 95% CI for numerics, rate for bools."""
+def aggregate(rows: list[dict], keys: tuple = ("scenario", "method")) -> list[dict]:
+    """Group by ``keys``: mean +/- 95% CI for numeric fields, rate for booleans.
+
+    Fields are auto-detected from the rows, so dynamic columns (per-group
+    completion, sweep parameters stored as strings in the keys) just work.
+    """
     groups: dict[tuple, list[dict]] = {}
     for r in rows:
-        groups.setdefault((r["scenario"], r["method"]), []).append(r)
+        groups.setdefault(tuple(r[k] for k in keys), []).append(r)
+    all_fields: list[str] = []
+    for r in rows:
+        for f in r:
+            if f not in all_fields:
+                all_fields.append(f)
     out = []
-    for (scen, meth), rs in sorted(groups.items()):
-        agg = {"scenario": scen, "method": meth, "n_seeds": len(rs)}
-        for f in _AGG_FIELDS:
-            vals = [r[f] for r in rs if isinstance(r[f], (int, float)) and math.isfinite(r[f])]
-            if not vals:
-                agg[f], agg[f + "_ci95"] = math.nan, math.nan
+    for gkey, rs in sorted(groups.items(), key=lambda kv: tuple(map(str, kv[0]))):
+        agg = dict(zip(keys, gkey))
+        agg["n_seeds"] = len(rs)
+        for f in all_fields:
+            if f in keys or f in _SKIP_FIELDS:
                 continue
-            m = statistics.mean(vals)
-            sd = statistics.stdev(vals) if len(vals) > 1 else 0.0
-            agg[f] = m
-            agg[f + "_ci95"] = 1.96 * sd / math.sqrt(len(vals))
-        for f in _RATE_FIELDS:
-            agg[f + "_rate"] = sum(bool(r[f]) for r in rs) / len(rs)
+            vals = [r[f] for r in rs if f in r]
+            if not vals:
+                continue
+            if all(isinstance(v, bool) for v in vals):
+                agg[f + "_rate"] = sum(vals) / len(vals)
+            elif all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in vals):
+                fin = [v for v in vals if math.isfinite(v)]
+                if not fin:
+                    agg[f], agg[f + "_ci95"] = math.nan, math.nan
+                    continue
+                m = statistics.mean(fin)
+                sd = statistics.stdev(fin) if len(fin) > 1 else 0.0
+                agg[f] = m
+                agg[f + "_ci95"] = 1.96 * sd / math.sqrt(len(fin))
         out.append(agg)
     return out
+
+
+def write_csv(path, rows: list[dict]) -> None:
+    """CSV with the UNION of keys across rows (dynamic per-scenario fields)."""
+    import csv
+    fields: list[str] = []
+    for r in rows:
+        for f in r:
+            if f not in fields:
+                fields.append(f)
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields, restval="")
+        w.writeheader()
+        w.writerows(rows)
 
 
 def to_markdown(agg_rows: list[dict], fields: list[str] | None = None) -> str:
     fields = fields or ["makespan_s", "min_dogdog_m", "viol_steps_dog",
                         "deadlock_rate", "all_done_rate", "intervention_rate", "filter_p99_ms"]
-    head = ["scenario", "method", "n_seeds"] + fields
+    keys = [k for k in agg_rows[0] if not k.endswith("_ci95") and k != "n_seeds"
+            and k not in fields and not isinstance(agg_rows[0][k], float)]
+    head = keys + ["n_seeds"] + fields
     lines = ["| " + " | ".join(head) + " |",
              "|" + "|".join("---" for _ in head) + "|"]
     for r in agg_rows:
-        cells = [str(r["scenario"]), str(r["method"]), str(r["n_seeds"])]
+        cells = [str(r.get(k, "")) for k in keys] + [str(r["n_seeds"])]
         for f in fields:
             v = r.get(f, math.nan)
             ci = r.get(f + "_ci95")

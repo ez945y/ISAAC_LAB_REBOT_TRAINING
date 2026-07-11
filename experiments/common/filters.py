@@ -106,8 +106,31 @@ class DamFilter:
         self._wrap.close()
 
 
+class FilterRouter:
+    """Per-agent filter routing (E4.4 non-cooperative mix: some agents run a
+    different filter — e.g. raw — than the rest)."""
+
+    name = "router"
+
+    def __init__(self, default, overrides: dict | None = None):
+        self.default = default
+        self.overrides = overrides or {}
+
+    def filter(self, aid, cmd, pose, neighbors, self_priority=1.0):
+        f = self.overrides.get(aid, self.default)
+        return f.filter(aid, cmd, pose, neighbors, self_priority=self_priority)
+
+    def close(self):
+        for f in {id(x): x for x in [self.default, *self.overrides.values()]}.values():
+            if hasattr(f, "close"):
+                f.close()
+
+
 def make_filter(name: str, **kwargs):
+    if name == "pydam":
+        from .pydam import PyDamFilter
+        return PyDamFilter(**kwargs)
     table = {"raw": RawFilter, "stop": StopFilter, "orca": OrcaFilter, "dam": DamFilter}
     if name not in table:
-        raise ValueError(f"unknown filter '{name}' (choose from {sorted(table)})")
+        raise ValueError(f"unknown filter '{name}' (choose from raw, stop, orca, dam, pydam)")
     return table[name](**kwargs)

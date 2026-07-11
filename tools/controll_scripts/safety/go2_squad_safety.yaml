@@ -1,12 +1,8 @@
 # go2_squad_safety.yaml -- DAM safety config for the Go2 squad inter-dog distance.
 #
-# Observation vector (6D):   [x, y, yaw, vx, vy, omega]
-#   - pose group  [0:3]: x, y, yaw       -- current planar pose (world frame)
-#   - command group [3:6]: vx, vy, omega -- body-frame velocity (0 in obs)
-#
-# Action vector (6D):        [x, y, yaw, vx_cmd, vy_cmd, omega_cmd]
-#   - pose group  [0:3]: echoed from obs (not commanded)
-#   - command group [3:6]: requested holonomic velocity
+# DAM 0.7.0 (Guardrail, dict-in/command-out):
+#   observation group ``base_pose``: [x, y, yaw]  -- planar pose (world frame)
+#   action (command space):          [vx, vy, omega] -- body-frame velocity
 #
 # The single L1 boundary keeps each dog's NEAREST-neighbour distance inside the
 # band [min_dist, max_dist]:
@@ -19,12 +15,11 @@
 version: "1"
 
 hardware:
-  preset: go2_holonomic
-  joint_names: [x, y, yaw, vx, vy, omega]
+  # Self-contained embodiment (no registry preset): pose-space "joints" for the
+  # observation side; the action is a command-space twist, never deg-scaled.
+  joint_names: [x, y, yaw]
   degrees_mode: false
   action_layout:
-    - name: pose
-      keys: [x, y, yaw]
     - name: command
       keys: [vx, vy, omega]
 
