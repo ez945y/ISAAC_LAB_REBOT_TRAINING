@@ -36,7 +36,7 @@ VENV="/Users/chenyizhong/Documents/Claude/Projects/Security Guard.nosync/.venv/b
 | pydam reference filter | `common/pydam.py`: numpy/scipy (SLSQP) mirror of the guard, every ablation knob exposed | ✅ done. **Cross-check vs real dam: 300 random cases, 205 clamped, worst component err 0.000** (`tests/test_pydam_vs_dam.py`); kinesim S1/S2 trajectories match real dam to 3 decimals |
 | Shared infra | `common/`: kinesim (exec/obs noise, obs delay), scenarios S1–S5, filters (raw/stop/orca-TODO/dam/pydam + FilterRouter), metrics (auto-agg, per-group completion, hard-slack telemetry), `ablation.py` sweep runner | ✅ done, smoke-tested |
 | **E2 baselines (RQ2)** | `run_e2_baselines.py`: scenario × method × seed → episodes.csv + aggregate.csv + summary.md | ✅ script done, fake-data validated (raw/stop, S1–S5). ⏳ pending: `dam` run on Isaac machine; ORCA baseline |
-| E3.1 priority ablation | S1, priority on/off, per-group completion | ⬜ next up |
+| E3.1 priority ablation | `run_e31_priority.py`: S1, priority(3:1) vs symmetric, 20 seeds pydam | ✅ **ACCEPTED**: high-pri G0 completes 7.29s vs low-pri G1 7.61s; yield carried by G1 (path_ratio 1.077 vs 1.048); violations halved (79.9→34.8 steps), min capsule dist 0.46→0.62 m. Residual 5% deadlock in BOTH conditions (likely intra-group symmetric conflict — see F2b). ⏳ re-run `--method dam` for the thesis table |
 | E3.2 swirl ablation | S2, swirl on/off, deadlock rate | ⬜ |
 | E3.3 soft/hard ablation | S3, layered vs hard-only, throughput | ⬜ |
 | E3.5 velocity-aware ablation | S2, TTC vs static neighbours | ⬜ |
@@ -74,6 +74,12 @@ python3 experiments/run_e2_baselines.py --methods raw,stop,dam --scenarios S1,S2
 - **F2 symmetric-priority deadlock**: S1 crossing with all priorities equal
   deadlocks in 1/3 seeds (dam & pydam alike). E3.1's job is to show priority
   resolving it.
+- **F2b priority does not remove all deadlock**: E3.1 shows priority halves
+  violations and produces clean yielding, but a residual ~5% deadlock persists
+  in both conditions — inter-group priority can't break INTRA-group symmetric
+  conflicts (both dogs share a group priority). Worth a dedicated slice in the
+  thesis (per-agent priority jitter, as demo11's `_priority()` does, is the fix
+  to test).
 - **F3 stop-baseline mutual freeze**: threshold-stop deadlocks ~100% in every
   symmetric scenario (mutual latch below resume distance) — the headline
   weakness of the B1 baseline.

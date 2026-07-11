@@ -134,10 +134,21 @@ class EpisodeRecorder:
             return ft_ms[min(len(ft_ms) - 1, int(p * len(ft_ms)))] if ft_ms else 0.0
 
         per_group: dict = {}
-        for ag in dyn:  # per-group mean completion (E3.1 emergent yielding)
+        for ag in dyn:  # per-group metrics (E3.1 emergent yielding)
             g = ag.spec.group
-            per_group.setdefault(g, []).append(ag.done_time if ag.done else sim.cfg.max_time)
-        group_fields = {f"completion_{g}_s": statistics.mean(v) for g, v in sorted(per_group.items())}
+            straight = math.hypot(ag.spec.gx - ag.spec.x, ag.spec.gy - ag.spec.y)
+            ratio = (ag.path_len / straight) if (ag.done and straight > 1e-6) else math.nan
+            per_group.setdefault(g, []).append(
+                (ag.done_time if ag.done else sim.cfg.max_time,
+                 ag.done_time if ag.done else math.nan,   # completed dogs only
+                 ratio))
+        group_fields = {}
+        for g, vals in sorted(per_group.items()):
+            group_fields[f"completion_{g}_s"] = statistics.mean(v[0] for v in vals)
+            done_ts = [v[1] for v in vals if math.isfinite(v[1])]
+            group_fields[f"completion_{g}_done_s"] = statistics.mean(done_ts) if done_ts else math.nan
+            ratios_g = [v[2] for v in vals if math.isfinite(v[2])]
+            group_fields[f"path_ratio_{g}"] = statistics.mean(ratios_g) if ratios_g else math.nan
 
         return {
             "scenario": scenario, "seed": seed, "method": method,
