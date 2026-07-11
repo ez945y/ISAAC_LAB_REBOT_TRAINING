@@ -42,7 +42,7 @@ VENV="/Users/chenyizhong/Documents/Claude/Projects/Security Guard.nosync/.venv/b
 | E3.5 velocity-aware ablation | `run_e35_velocity.py`: S2 × {va_on, va_off} × vmax {1.0, 1.5, 2.0}, 20 seeds | ✅ **ACCEPTED — clean dose-response**: va_off floor dip deepens with closing speed (minDD 0.824→0.688→0.619, viol 0→5→10 steps); va_on holds the floor at every speed (0.877/0.785/0.747, zero viol) for ≤ 3% makespan. Halved perceived closing rate = late reaction, exactly as theory predicts. Note: S2 is deterministic per condition (zero seed variance); jitter axis had no effect with swirl on. ⏳ re-run `--method dam` for thesis table |
 | E3.6 γ / dt sweep | `run_e36_gamma.py`: S1+S3 × γ {0.1,0.2,0.4,0.7,1.0} (dt 0.2) + dt {0.1,0.4} at γ 0.4 + γ0.1×dt0.1, 20 seeds | ✅ **ACCEPTED — inverted-textbook curve + F9**: minDD rises MONOTONICALLY with γ (S1 0.30→0.78; S3 0.11→0.84) while liveness falls (S1 done 100%→75%, γ1.0 25% deadlock) — low γ = slack erosion + tangential blind spot (pass-through 2/20 S1, 5/20 S3 at γ0.1/dt0.2), high γ = brake-wall. dt is the second axis: dt0.1 removes S1 pass-through and DOMINATES dt0.2 on S3 (makespan 10.3 vs 12.2, same floor); dt0.4 catastrophic in congestion (80% dlk). Default γ0.4/dt0.2 sits at the knee (zero pass-through, 95–100% done); recommendation dt→0.1. S3 γ0.7 anomaly (60% dlk, worse than γ1.0): intermediate γ wedges the funnel — activates early enough to jam, too late to sort. ⏳ dam re-run |
 | E3.4 capsule vs disc | `run_e34_capsule.py`: S4 × {capsule, disc_in (h=0), disc_circ (h=0, dog-dog 1.2 / wall 0.95)}, 20 seeds | ✅ **ACCEPTED — capsule dominates both disc approximations**: capsule 100% done, true minDD 0.615; disc_in 100% done but true dips 0.476 + 32% more viol steps (under-approx is unsafe); disc_circ 100% deadlock AND true minDD 0.335 — the worst on BOTH axes: its constraints are infeasible in the 0.8 m corridor band, so the floor turns into slack erosion (F7) while liveness dies. Thesis line: over-conservative body models don't even buy safety. pydam gained ablation knob `wall_min_dist` (default unchanged; consistency gate re-passed). ⏳ dam re-run |
-| E3.7 analytic vs autograd | S2, spurious-stop rate | ⬜ |
+| E3.7 analytic vs autograd | `run_e37_gradient.py` (needs venv): census 2000 configs + S2+S3 × {analytic, autograd} × vmax {1.5, 2.0}, 20 seeds | ✅ **ACCEPTED**: census — gradient agreement decays with proximity (cos 0.983 far → 0.861 near, min −1.0 = full inversion; 100% degenerate at predicted overlap = the theoretical spurious-stop mode). In-episode: spurious stops ≈ 0 in these scenarios; the OPERATIVE costs of naive autograd are the head-on floor (S2 0.697/0.605 vs analytic 0.785/0.747, viol 2–12 vs 0) and 3–5× filter latency (S3 p99 4.5 vs 0.84 ms); congestion floor is parity. Plus finding F10: the first autograd casualty was this experiment's OWN torch geometry (silent tail-pinning in degenerate branches). ⏳ n/a for dam (dam has no autograd path in 0.7) |
 | E4.1 tracking-error injection | noise on executed vs commanded velocity | ⬜ |
 | E4.2 state noise + latency | noisy/delayed neighbour observations | ⬜ |
 | E4.3 slack usage | log max hard-slack across all runs (piggyback) | ⬜ |
@@ -67,6 +67,7 @@ python3 experiments/run_e33_softhard.py --seeds 20      # E3.3 layering
 python3 experiments/run_e35_velocity.py --seeds 20      # E3.5 velocity-aware x vmax
 python3 experiments/run_e36_gamma.py    --seeds 20      # E3.6 gamma/dt sweep (slow: 320 eps)
 python3 experiments/run_e34_capsule.py  --seeds 20      # E3.4 capsule vs disc
+"$VENV" experiments/run_e37_gradient.py --seeds 20      # E3.7 analytic vs autograd (torch)
 
 # implementation-consistency gate (run after ANY guard/pydam change):
 "$VENV" experiments/tests/test_pydam_vs_dam.py
@@ -141,6 +142,21 @@ python3 experiments/tests/test_capsule_geometry.py
   shorten horizon (or multi-point spine constraints); stackfile default
   γ=0.4/dt=0.2 has zero pass-through (worst episode 0.12 m at dt0.4) but
   inherits the reduced-margin regime (S1 minDD ≈ 0.52±0.05).
+- **F10 the autograd path's real hazard is silent degenerate-geometry bugs
+  (E3.7, 2026-07-12)**: the differentiable torch seg-seg distance written FOR
+  this experiment had the classic failure — the parallel/point fallback pins
+  the closest point at the TAIL, and the Gauss-Seidel re-projection only ran
+  when t was clamped. Head-on d_pred was overestimated by up to 2h (0.5 m) and
+  dogs clipped walls; the QP solved happily, nothing crashed, only behaviour
+  degraded. Caught ONLY by brute-force comparison against the exact analytic
+  geometry (3000 configs incl. forced parallel + point neighbours; now err
+  ≤ 1e-6, re-projection unconditional). The production guard's analytic path
+  was validated exactly this way on day one (500-case brute force). Thesis
+  line: for safety filters, "differentiate through the geometry" trades a
+  closed-form you can unit-test exhaustively for autodiff code whose failure
+  mode is silent behavioural degradation. Census: gradient directions agree
+  cos ≈ 0.98 far, degrade to 0.86 near (min −1.0), 100% degenerate at
+  predicted overlap; latency 3–5×.
 - **F8 reactive filter is myopic by design — routes are the task's job**: a
   CBF filter will not path-plan around a wall (correct local-minimum freeze at
   the wall face). S3 therefore gives every method the same waypoint route
@@ -205,6 +221,8 @@ python3 experiments/tests/test_capsule_geometry.py
   geometrically dominate) and wall spacing is 0.5 m (still impassable at
   min_dist 0.7). pydam↔dam consistency re-verified after every change
   (err 0.000, static branch covered 30% of cases).
+- 2026-07-12 metrics gained `stop_steps` (raw>0.5 m/s filtered to <0.05)
+  and `reject_steps` (QP failure fallback) episode fields for E3.7/E4.x.
 - 2026-07-11 S3 scenario semantics changed (waypoints + goal spacing + 0.5 m
   wall spacing) ⇒ any earlier S3 numbers (E2 probe runs) are stale;
   regenerate before quoting. E2 raw/stop S3+S4 re-smoked OK after the change

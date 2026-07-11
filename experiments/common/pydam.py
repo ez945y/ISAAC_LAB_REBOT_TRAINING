@@ -54,6 +54,9 @@ class PyDamFilter:
         wall_min_dist: float | None = None,  # ablation E3.4: separate hard floor
         # for STATIC neighbours (circumscribed-disc body model inflates dog-dog
         # by 2h but dog-wall by only 1h). None -> same min_dist as everything.
+        grad_mode: str = "analytic",  # ablation E3.7: "autograd" -> naive true-
+        # distance gradient via torch (needs the DAM venv) instead of the
+        # overshoot-safe frozen-normal surrogate. See common/torchgrad.py.
     ):
         self.p = dict(
             min_dist=min_dist, comfort_dist=comfort_dist, max_dist=max_dist,
@@ -64,6 +67,12 @@ class PyDamFilter:
         )
         self.velocity_aware = velocity_aware
         self.cost_diag = tuple(cost_diag)
+        self.grad_mode = grad_mode
+        if grad_mode == "autograd":
+            from . import torchgrad  # lazy: torch only needed for E3.7
+            self._torchgrad = torchgrad
+        elif grad_mode != "analytic":
+            raise ValueError(f"unknown grad_mode {grad_mode!r}")
 
     # ------------------------------------------------------------------
     def filter(self, aid, cmd, pose, neighbors, self_priority: float = 1.0):
@@ -112,11 +121,18 @@ class PyDamFilter:
                 cx, cy, cs, sn, h, px, py, ndx, ndy, nb_h)
             sep = max(dist_now, 1e-6)
             nrx, nry = (ax0 - bx0) / sep, (ay0 - by0) / sep
-            nbx = px + vpx * dt + t_off * ndx
-            nby = py + vpy * dt + t_off * ndy
-            sxf, syf = nx0 + s_off * cp, ny0 + s_off * sp
-            d_pred = nrx * (sxf - nbx) + nry * (syf - nby)
-            g = grad_pt(nrx, nry, s_off)
+            if self.grad_mode == "autograd":
+                # E3.7 naive path: true predicted distance + autograd gradient
+                # (rotates with the geometry; can flip sign through overlap)
+                d_pred, g = self._torchgrad.pred_dist_and_grad(
+                    cx, cy, syaw, (vx, vy, om), dt, h,
+                    px, py, nyaw, nb_h, vpx, vpy, p["max_v"], p["max_omega"])
+            else:
+                nbx = px + vpx * dt + t_off * ndx
+                nby = py + vpy * dt + t_off * ndy
+                sxf, syf = nx0 + s_off * cp, ny0 + s_off * sp
+                d_pred = nrx * (sxf - nbx) + nry * (syf - nby)
+                g = grad_pt(nrx, nry, s_off)
             md = p["wall_min_dist"] if is_static else p["min_dist"]
             req_hard = (dist_now - gamma * (dist_now - md)) - d_pred
             if req_hard > 1e-4:

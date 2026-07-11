@@ -52,6 +52,8 @@ class EpisodeRecorder:
         self._progress_ref: dict = {}   # aid -> (t, x, y) start of current window
         self._stalled: set = set()
         self.max_hard_slack = 0.0       # E4.3: worst hard-floor slack the QP ever bought
+        self.reject_steps = 0           # E3.7: QP failure -> (0,0,0) fallback
+        self.stop_steps = 0             # E3.7: near-zero safe cmd despite a live raw cmd
 
     def _capsule_dist(self, a, b, ha, hb) -> float:
         return seg_seg_closest(
@@ -99,8 +101,13 @@ class EpisodeRecorder:
             self.cmd_deltas.append(delta)
             if delta > 1e-5:
                 self.interventions += 1
+            # spurious-stop candidate: commanded to move, filtered to a standstill
+            if math.hypot(raw[0], raw[1]) > 0.5 and math.hypot(safe[0], safe[1]) < 0.05:
+                self.stop_steps += 1
         self.filter_times.extend(rec.filter_s.values())
         for info in rec.decisions.values():
+            if isinstance(info, dict) and info.get("decision") == "REJECT":
+                self.reject_steps += 1
             hs = info.get("hard_slack_max", 0.0) if isinstance(info, dict) else 0.0
             if isinstance(hs, (int, float)) and math.isfinite(hs):
                 self.max_hard_slack = max(self.max_hard_slack, hs)
@@ -167,6 +174,8 @@ class EpisodeRecorder:
             "max_viol_depth_m": self.max_depth_dog,
             "viol_steps_wall": self.viol_steps_wall,
             "intervention_rate": self.interventions / n_cmd,
+            "stop_steps": self.stop_steps,
+            "reject_steps": self.reject_steps,
             "mean_dcmd": statistics.mean(self.cmd_deltas) if self.cmd_deltas else 0.0,
             "max_dcmd": max(self.cmd_deltas) if self.cmd_deltas else 0.0,
             "filter_p50_ms": pct(0.50),
