@@ -20,7 +20,9 @@ import random
 from .kinesim import AgentSpec
 
 
-def _wall(prefix: str, x0: float, y0: float, x1: float, y1: float, spacing: float = 0.35) -> list[AgentSpec]:
+def _wall(prefix: str, x0: float, y0: float, x1: float, y1: float, spacing: float = 0.5) -> list[AgentSpec]:
+    # 0.5 m spacing is still impassable (a dog must keep min_dist=0.7 to EVERY
+    # point) while keeping the QP constraint count sane.
     n = max(2, int(math.hypot(x1 - x0, y1 - y0) / spacing) + 1)
     out = []
     for i in range(n):
@@ -62,24 +64,44 @@ def s2_headon(seed: int, gap: float = 8.0, jitter: float = 0.15) -> list[AgentSp
 
 def s3_bottleneck(seed: int, n: int = 4, gap_width: float = 1.6, depth: float = 4.0,
                   min_start_sep: float = 1.5) -> list[AgentSpec]:
-    rng = random.Random(seed)
     starts: list[tuple] = []
-    for _ in range(n):  # all start south of the gap, min separation between starts
-        for _ in range(500):
-            p = (rng.uniform(-2.5, 2.5), -depth - rng.uniform(0.0, 2.0))
-            if all(math.hypot(p[0] - q[0], p[1] - q[1]) >= min_start_sep for q in starts):
+    for round_ in range(20):  # deterministic retry rounds: greedy sampling can wedge
+        rng = random.Random(seed * 1000 + round_)
+        starts = []
+        ok = True
+        for _ in range(n):  # all start south of the gap, min separation between starts
+            for _ in range(500):
+                p = (rng.uniform(-2.5, 2.5), -depth - rng.uniform(0.0, 2.0))
+                if all(math.hypot(p[0] - q[0], p[1] - q[1]) >= min_start_sep for q in starts):
+                    break
+            else:
+                ok = False
                 break
-        else:
-            raise RuntimeError(f"s3_bottleneck: could not place {n} starts {min_start_sep} m apart")
-        starts.append(p)
+            starts.append(p)
+        if ok:
+            break
+    else:
+        raise RuntimeError(f"s3_bottleneck: could not place {n} starts {min_start_sep} m apart")
+    rng = random.Random(seed)  # goals drawn from the base seed regardless of rounds
+    goals: list[tuple] = []
+    for _ in range(n):  # goals need spacing too: 4 dogs can't PARK inside one
+        for _ in range(500):  # comfort radius of each other (endgame jam, not a
+            p = (rng.uniform(-2.5, 2.5), depth + rng.uniform(0.0, 2.0))  # bottleneck result)
+            if all(math.hypot(p[0] - q[0], p[1] - q[1]) >= min_start_sep for q in goals):
+                break
+        goals.append(p)
+    # Route every dog via the gap centre: the reactive filter is myopic and
+    # will not plan around walls, so the RAW command stream must aim through
+    # the gap (entry/exit waypoints straddle the wall line). What the filter
+    # is being tested on is deconfliction INSIDE the funnel.
+    wps = ((0.0, -1.2), (0.0, 1.2))
     specs = [
-        AgentSpec(f"D{i}", sx, sy, math.pi / 2,
-                  rng.uniform(-1.5, 1.5), depth + rng.uniform(-0.5, 0.5), group="G0")
-        for i, (sx, sy) in enumerate(starts)
+        AgentSpec(f"D{i}", sx, sy, math.pi / 2, gx, gy, group="G0", waypoints=wps)
+        for i, ((sx, sy), (gx, gy)) in enumerate(zip(starts, goals))
     ]
     g = gap_width / 2
-    specs += _wall("WL", -6.0, 0.0, -g, 0.0)
-    specs += _wall("WR", g, 0.0, 6.0, 0.0)
+    specs += _wall("WL", -3.5, 0.0, -g, 0.0)
+    specs += _wall("WR", g, 0.0, 3.5, 0.0)
     return specs
 
 

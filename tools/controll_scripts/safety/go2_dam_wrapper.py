@@ -57,7 +57,7 @@ class _NeighborHolder:
     __slots__ = ("points", "self_priority")
 
     def __init__(self) -> None:
-        self.points: list[tuple] = []  # (x, y, priority, same_group, vx, vy, yaw)
+        self.points: list[tuple] = []  # (x, y, priority, same_group, vx, vy, yaw, static)
         self.self_priority: float = 1.0
 
 
@@ -115,7 +115,7 @@ def go2_min_max_separation(
     """
     solver = solvers[_SOLVER_KEY]
     holder = solvers.get(_NEIGHBOR_KEY)
-    neighbors = list(getattr(holder, "points", []) or [])  # (x,y,prio,same_group,vx,vy,yaw)
+    neighbors = list(getattr(holder, "points", []) or [])  # (x,y,prio,sg,vx,vy,yaw,static)
     if not neighbors:
         return True
     p_self = float(getattr(holder, "self_priority", 1.0))
@@ -148,17 +148,21 @@ def go2_min_max_separation(
     # reacts on nose-to-nose distance (keeps centres further apart) while side-by-side
     # dogs can pack to body width -- exactly why capsules beat a circle for a long body.
 
-    def _capsule(px, py, vpx, vpy, nyaw):
+    def _capsule(px, py, vpx, vpy, nyaw, nb_half=capsule_half):
         """(current_dist, predicted_separation, grad) between the two body capsules.
 
         The gradient is along the CURRENT closest-pair separation direction (not through
         the predicted point): a fast step can overshoot/pass through a very near
         neighbour, and a raw distance gradient would then flip sign (tell the dog to
         speed up *through* it). Projecting on the current normal is overshoot-safe.
+
+        ``nb_half=0`` treats the neighbour as a POINT (static wall samples): giving
+        wall points a body half-length fattens them by h on both sides and can make
+        narrow gaps spuriously infeasible (E3.3 finding F6).
         """
         ndx, ndy = math.cos(nyaw), math.sin(nyaw)
         s_off, t_off, dist_now, ax0, ay0, bx0, by0 = seg_seg_closest(
-            cx, cy, cs, sn, capsule_half, px, py, ndx, ndy, capsule_half
+            cx, cy, cs, sn, capsule_half, px, py, ndx, ndy, nb_half
         )
         sep = max(dist_now, 1e-6)
         nrx, nry = (ax0 - bx0) / sep, (ay0 - by0) / sep   # unit normal, neighbour -> self
@@ -187,23 +191,36 @@ def go2_min_max_separation(
     #     up the comfort zone first (yields), the higher-priority one flows through.
     reach = influence + 2.0 * capsule_half
     nearest_d, nearest_n, nearest_pj = math.inf, None, 1.0
-    for px, py, p_j, _sg, vpx, vpy, nyaw in neighbors:
+    for nb in neighbors:
+        px, py, p_j, _sg, vpx, vpy, nyaw = nb[:7]
+        is_static = len(nb) >= 8 and nb[7] >= 0.5
         if math.hypot(cx - px, cy - py) - min_dist > reach:
             continue  # cheap centre pre-cull before the full capsule test
-        dist_now, d_pred, grad, nrm = _capsule(px, py, vpx, vpy, nyaw)
-        if dist_now < nearest_d:
-            nearest_d, nearest_n, nearest_pj = dist_now, nrm, p_j
+        dist_now, d_pred, grad, nrm = _capsule(
+            px, py, vpx, vpy, nyaw, nb_half=0.0 if is_static else capsule_half)
         req_hard = (dist_now - gamma * (dist_now - min_dist)) - d_pred
         if req_hard > 1e-4:
-            push.append((grad, 0.5 * req_hard, w_hard))   # symmetric share
+            # A static obstacle cannot do its half of the avoiding: this dog
+            # carries the full hard requirement (share 1.0, not 0.5).
+            push.append((grad, (1.0 if is_static else 0.5) * req_hard, w_hard))
             hard_active = True
+        if is_static:
+            # Walls exert ONLY the hard floor. Comfort is a SOCIAL distance
+            # between agents; applying it to static geometry makes any corridor
+            # narrower than 2*comfort_dist permanently impassable (finding F5:
+            # dogs froze 1.4 m short of a 1.6 m gap). Swirl likewise never
+            # circulates around a wall.
+            continue
+        if dist_now < nearest_d:
+            nearest_d, nearest_n, nearest_pj = dist_now, nrm, p_j
         req_soft = (dist_now - gamma * (dist_now - comfort_dist)) - d_pred
         if req_soft > 1e-4:
             lam = max(lam_min, p_j / (p_self + p_j))
             push.append((grad, lam * req_soft, w_soft))    # priority share
 
     # --- cohesion: nearest SAME-GROUP neighbour only (don't break formation) ---
-    same_group = [(px, py) for px, py, _p, sg, _vx, _vy, _yaw in neighbors if sg]
+    same_group = [(nb[0], nb[1]) for nb in neighbors
+                  if nb[3] and not (len(nb) >= 8 and nb[7] >= 0.5)]
     if same_group:
         npx, npy = min(same_group, key=lambda p: math.hypot(cx - p[0], cy - p[1]))
         nd = math.hypot(cx - npx, cy - npy)
@@ -346,7 +363,8 @@ class Go2DAMWrapper:
              float(p[3]) if len(p) >= 4 else 1.0,
              float(p[4]) if len(p) >= 6 else 0.0,
              float(p[5]) if len(p) >= 6 else 0.0,
-             float(p[6]) if len(p) >= 7 else 0.0)
+             float(p[6]) if len(p) >= 7 else 0.0,
+             float(p[7]) if len(p) >= 8 else 0.0)  # static: hard floor only
             for p in neighbors
         ]
         self._neighbors.self_priority = float(self_priority)

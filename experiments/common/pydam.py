@@ -93,14 +93,19 @@ class PyDamFilter:
 
         for nb in neighbors:
             px, py, p_j, sg = nb[0], nb[1], nb[2], nb[3]
+            is_static = len(nb) >= 8 and nb[7] >= 0.5
             vpx = nb[4] if (self.velocity_aware and len(nb) >= 6) else 0.0
             vpy = nb[5] if (self.velocity_aware and len(nb) >= 6) else 0.0
             nyaw = nb[6] if len(nb) >= 7 else 0.0
             if math.hypot(cx - px, cy - py) - p["min_dist"] > reach:
                 continue
             ndx, ndy = math.cos(nyaw), math.sin(nyaw)
+            # static obstacles are POINTS, not capsules: giving them a body
+            # half-length would fatten every wall point by h on both sides
+            # (found by E3.3: the S3 gap shrank 0.8→0.55 per side, infeasible)
+            nb_h = 0.0 if is_static else h
             s_off, t_off, dist_now, ax0, ay0, bx0, by0 = seg_seg_closest(
-                cx, cy, cs, sn, h, px, py, ndx, ndy, h)
+                cx, cy, cs, sn, h, px, py, ndx, ndy, nb_h)
             sep = max(dist_now, 1e-6)
             nrx, nry = (ax0 - bx0) / sep, (ay0 - by0) / sep
             nbx = px + vpx * dt + t_off * ndx
@@ -108,18 +113,22 @@ class PyDamFilter:
             sxf, syf = nx0 + s_off * cp, ny0 + s_off * sp
             d_pred = nrx * (sxf - nbx) + nry * (syf - nby)
             g = grad_pt(nrx, nry, s_off)
-            if dist_now < nearest_d:
-                nearest_d, nearest_n, nearest_pj = dist_now, (nrx, nry), p_j
             req_hard = (dist_now - gamma * (dist_now - p["min_dist"])) - d_pred
             if req_hard > 1e-4:
-                push.append((g, 0.5 * req_hard, p["w_hard"]))
+                # static neighbour can't do its half: carry the full requirement
+                push.append((g, (1.0 if is_static else 0.5) * req_hard, p["w_hard"]))
                 hard_active = True
+            if is_static:
+                continue  # walls: hard floor only (no comfort/swirl — F5)
+            if dist_now < nearest_d:
+                nearest_d, nearest_n, nearest_pj = dist_now, (nrx, nry), p_j
             req_soft = (dist_now - gamma * (dist_now - p["comfort_dist"])) - d_pred
             if req_soft > 1e-4:
                 lam = max(p["lam_min"], p_j / (self_priority + p_j))
                 push.append((g, lam * req_soft, p["w_soft"]))
 
-        same_group = [(nb[0], nb[1]) for nb in neighbors if nb[3] >= 0.5]
+        same_group = [(nb[0], nb[1]) for nb in neighbors
+                      if nb[3] >= 0.5 and not (len(nb) >= 8 and nb[7] >= 0.5)]
         if same_group:
             npx, npy = min(same_group, key=lambda q: math.hypot(cx - q[0], cy - q[1]))
             nd = math.hypot(cx - npx, cy - npy)

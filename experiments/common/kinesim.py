@@ -34,6 +34,12 @@ class AgentSpec:
     group: str = "G0"
     priority: float = 1.0
     static: bool = False  # static obstacle: never moves, never filtered
+    # Route waypoints visited (in order) before heading to the goal. Part of
+    # the TASK definition, shared by every method: the reactive filter is
+    # deliberately myopic and will not route around walls (S3 needs the raw
+    # command stream to aim through the gap, or every method just piles into
+    # the wall's local minimum).
+    waypoints: tuple = ()
 
 
 @dataclass
@@ -47,6 +53,7 @@ class AgentState:
     done: bool = False
     done_time: float | None = None
     path_len: float = 0.0
+    wp_idx: int = 0    # next waypoint to visit (== len(waypoints) → head to goal)
 
     @classmethod
     def from_spec(cls, s: AgentSpec) -> "AgentState":
@@ -61,11 +68,19 @@ class SimConfig:
     k_lin: float = 1.2
     k_yaw: float = 2.0
     goal_tol: float = 0.3
+    waypoint_tol: float = 0.6  # looser than goal_tol: waypoints are route hints
     max_time: float = 60.0
     # -- robustness knobs (RQ4) --------------------------------------------
     exec_noise_std: float = 0.0    # E4.1: gaussian noise on the EXECUTED world velocity (m/s)
     obs_noise_std: float = 0.0     # E4.2: gaussian noise on observed neighbour positions (m)
     obs_delay_steps: int = 0       # E4.2: neighbour observations delayed by k control steps
+    # -- perception budget ---------------------------------------------------
+    # Only the nearest K static (wall) points within this range are fed to the
+    # filter: along a straight wall the nearest points geometrically dominate
+    # the farther ones, and unbounded wall chains blow up the QP constraint
+    # count for zero behavioural difference.
+    max_static_neighbors: int = 6
+    static_cull_dist: float = 3.5
 
 
 @dataclass
@@ -93,7 +108,27 @@ class KineSim:
     # -- nominal controller: body-frame P-control toward the goal ------------
     def nominal(self, ag: AgentState) -> tuple[float, float, float]:
         c = self.cfg
-        dx, dy = ag.spec.gx - ag.x, ag.spec.gy - ag.y
+        wps = ag.spec.waypoints
+        while ag.wp_idx < len(wps):
+            wx, wy = wps[ag.wp_idx]
+            if math.hypot(wx - ag.x, wy - ag.y) < c.waypoint_tol:
+                ag.wp_idx += 1
+                continue
+            # Also advance once the dog has CROSSED the waypoint's plane
+            # (normal = incoming route direction): congestion can shove a dog
+            # past a waypoint it never got within tol of, and without this it
+            # would forever command BACK into the crowd behind it.
+            px_, py_ = wps[ag.wp_idx - 1] if ag.wp_idx > 0 else (ag.spec.x, ag.spec.y)
+            dx_, dy_ = wx - px_, wy - py_
+            if (ag.x - wx) * dx_ + (ag.y - wy) * dy_ > 0.0:
+                ag.wp_idx += 1
+                continue
+            break
+        if ag.wp_idx < len(wps):
+            tx, ty = wps[ag.wp_idx]
+        else:
+            tx, ty = ag.spec.gx, ag.spec.gy
+        dx, dy = tx - ag.x, ty - ag.y
         dist = math.hypot(dx, dy)
         if dist < c.goal_tol:
             return (0.0, 0.0, 0.0)
@@ -136,13 +171,20 @@ class KineSim:
         """
         me = self.agents[aid]
         out = []
+        statics = []
         for oid, ag in self.agents.items():
             if oid == aid:
                 continue
             ox, oy, owvx, owvy, oyaw = self._obs[oid]
-            same = 1.0 if (not ag.spec.static and ag.spec.group == me.spec.group) else 0.0
-            out.append((ox, oy, ag.spec.priority, same, owvx, owvy, oyaw,
-                        1.0 if ag.spec.static else 0.0))
+            if ag.spec.static:
+                d = math.hypot(me.x - ox, me.y - oy)
+                if d <= self.cfg.static_cull_dist:
+                    statics.append((d, (ox, oy, ag.spec.priority, 0.0, 0.0, 0.0, oyaw, 1.0)))
+                continue
+            same = 1.0 if ag.spec.group == me.spec.group else 0.0
+            out.append((ox, oy, ag.spec.priority, same, owvx, owvy, oyaw, 0.0))
+        statics.sort(key=lambda t: t[0])
+        out.extend(t[1] for t in statics[: self.cfg.max_static_neighbors])
         return out
 
     def run(self, recorder=None) -> list[StepRecord]:
