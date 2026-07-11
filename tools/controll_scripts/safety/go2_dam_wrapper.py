@@ -257,8 +257,13 @@ def go2_min_max_separation(
         # the higher-priority less but not zero -> both sidestep, the low one more.
         share = max(lam_min, nearest_pj / (p_self + nearest_pj))
         scale = swirl * prox * share
-        q[0] = -scale * (-nearest_n[1])   # 90deg CCW tangent of the separation normal
-        q[1] = -scale * (nearest_n[0])
+        # 90deg CCW tangent of the separation normal — a WORLD direction. Rotate it
+        # into this dog's BODY frame before biasing [du_vx, du_vy]: without the
+        # rotation two head-on dogs (yaws pi apart) get pushed to the SAME world
+        # side, stay collinear, and the standoff never breaks (bug found by E3.2).
+        tx, ty = -nearest_n[1], nearest_n[0]
+        q[0] = -scale * (tx * cs + ty * sn)
+        q[1] = -scale * (-tx * sn + ty * cs)
     A = sparse.csc_matrix(np.array(rows, dtype=float))
     prob = osqp.OSQP()
     prob.setup(P, q, A, np.array(lo), np.array(hi), verbose=False, eps_abs=1e-5, eps_rel=1e-5)

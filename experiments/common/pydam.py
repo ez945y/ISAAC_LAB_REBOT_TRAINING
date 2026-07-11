@@ -145,8 +145,10 @@ class PyDamFilter:
                        max(p["comfort_dist"] - p["min_dist"], 1e-6))
             share = max(p["lam_min"], nearest_pj / (self_priority + nearest_pj))
             scale = p["swirl"] * prox * share
-            q[0] = -scale * (-nearest_n[1])
-            q[1] = -scale * (nearest_n[0])
+            # world CCW tangent rotated into the BODY frame (frame bug fix, E3.2)
+            tx, ty = -nearest_n[1], nearest_n[0]
+            q[0] = -scale * (tx * cs + ty * sn)
+            q[1] = -scale * (-tx * sn + ty * cs)
 
         cons = []
         for k, (g, rhs, _w) in enumerate(push):     # g.du + s_k >= rhs

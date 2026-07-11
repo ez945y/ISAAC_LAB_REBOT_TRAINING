@@ -37,7 +37,7 @@ VENV="/Users/chenyizhong/Documents/Claude/Projects/Security Guard.nosync/.venv/b
 | Shared infra | `common/`: kinesim (exec/obs noise, obs delay), scenarios S1–S5, filters (raw/stop/orca-TODO/dam/pydam + FilterRouter), metrics (auto-agg, per-group completion, hard-slack telemetry), `ablation.py` sweep runner | ✅ done, smoke-tested |
 | **E2 baselines (RQ2)** | `run_e2_baselines.py`: scenario × method × seed → episodes.csv + aggregate.csv + summary.md | ✅ script done, fake-data validated (raw/stop, S1–S5). ⏳ pending: `dam` run on Isaac machine; ORCA baseline |
 | E3.1 priority ablation | `run_e31_priority.py`: S1, priority(3:1) vs symmetric, 20 seeds pydam | ✅ **ACCEPTED**: high-pri G0 completes 7.29s vs low-pri G1 7.61s; yield carried by G1 (path_ratio 1.077 vs 1.048); violations halved (79.9→34.8 steps), min capsule dist 0.46→0.62 m. Residual 5% deadlock in BOTH conditions (likely intra-group symmetric conflict — see F2b). ⏳ re-run `--method dam` for the thesis table |
-| E3.2 swirl ablation | S2, swirl on/off, deadlock rate | ⬜ |
+| E3.2 swirl ablation | `run_e32_swirl.py`: S2 × {swirl 0, 0.6} × {jitter 0, 0.15}, 20 seeds | ✅ **ACCEPTED — found & fixed a real frame bug (F4)**. After fix: swirl 0.6 → **0 violations, min dist 0.785 m (hard floor held), fastest makespan 5.96 s** in both jitter variants; swirl 0 at perfect symmetry → near-collision 0.088 m + 82 violation steps. pydam↔dam consistency re-verified (err 0.000) |
 | E3.3 soft/hard ablation | S3, layered vs hard-only, throughput | ⬜ |
 | E3.5 velocity-aware ablation | S2, TTC vs static neighbours | ⬜ |
 | E3.6 γ / dt sweep | S1+S3, conservatism-performance curve | ⬜ |
@@ -63,14 +63,20 @@ python3 experiments/run_e2_baselines.py --methods raw,stop,dam --scenarios S1,S2
 
 ## Early findings (fake-data phase — keep, these are thesis material)
 
-- **F1 hard-floor penetration**: in fast head-on approaches (S2, closing ≈3 m/s)
-  the capsule distance dips to ~0.49 m (0.21 m below min_dist=0.7) for ~30 steps
-  around the closest pass — pydam and real dam identically. Cause hypothesis:
-  the overshoot-safe projection on the CURRENT normal over a dt=0.2 s horizon
-  under-reacts while both bodies orbit (normal rotates). This is exactly the
-  E4.3/E3.6 story: quantify violation depth vs γ/dt/w_hard, and frame min_dist
-  as `physical clearance + ε` (bodies still never touch: 0.49 > 2×body radius).
-  DO NOT silently retune before the sweeps are run.
+- **F1 hard-floor penetration (REVISED by F4)**: the 0.45–0.49 m dips first seen
+  in S2 were mostly caused by the swirl frame bug (F4). With the fix, S2 head-on
+  holds ≥ 0.785 m with zero violations. Residual penetration still exists in
+  multi-dog scenarios (S1 min ≈ 0.62 with priority) — quantify properly in
+  E3.6/E4.3; keep the `min_dist = clearance + ε` framing.
+- **F4 swirl reference-frame bug (found by E3.2, fixed 2026-07-11)**: the swirl
+  tangent was a WORLD-frame direction applied directly to the BODY-frame
+  [du_vx, du_vy] cost — two head-on dogs (yaw π apart) were biased to the SAME
+  world side, staying collinear (probe: both drifted world-y −0.450). Fix:
+  rotate the tangent into each body frame (`go2_dam_wrapper.py` + `pydam.py`,
+  identical change). After the fix swirl provides BOTH liveness and safety:
+  symmetric encounters go from 0.088 m near-miss to 0.785 m clean orbit.
+  ⚠️ demo11's visual "swirl works" was asymmetry breaking the tie, not coherent
+  circulation — thesis should report the before/after ablation as a finding.
 - **F2 symmetric-priority deadlock**: S1 crossing with all priorities equal
   deadlocks in 1/3 seeds (dam & pydam alike). E3.1's job is to show priority
   resolving it.

@@ -48,9 +48,12 @@ def s1_crossing(seed: int, n_per_group: int = 2, half: float = 5.0,
     return specs
 
 
-def s2_headon(seed: int, gap: float = 8.0) -> list[AgentSpec]:
+def s2_headon(seed: int, gap: float = 8.0, jitter: float = 0.15) -> list[AgentSpec]:
+    """Two dogs swap places. ``jitter`` sets the lateral start offset: 0.15 m is
+    the mild default; 0.0 is the PERFECT standoff (deadlock stress test — the
+    sidestep-cheap QP alone cannot break exact symmetry, only swirl can)."""
     rng = random.Random(seed)
-    jy = rng.uniform(-0.15, 0.15)  # small lateral jitter; near-perfect symmetry stresses deadlock
+    jy = rng.uniform(-jitter, jitter) if jitter > 0 else 0.0
     return [
         AgentSpec("A", -gap / 2, jy, 0.0, gap / 2, -jy, group="G0"),
         AgentSpec("B", gap / 2, -jy, math.pi, -gap / 2, jy, group="G1"),
