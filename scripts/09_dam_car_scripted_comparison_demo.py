@@ -206,7 +206,7 @@ def create_scene_cfg(with_worker: bool = False) -> type:
             prim_path="/World/RawArena/RightForbidden",
             spawn=_cuboid((SAFE_X_MAX - SAFE_X_MIN, SIDE_BAND_WIDTH, 0.001), red),
             init_state=AssetBaseCfg.InitialStateCfg(
-                pos=(LANE_CENTER_X, RAW_LANE_Y - ARENA_WIDTH / 2.0 + SIDE_BAND_WIDTH / 2.0, 0.0002)
+                pos=((SAFE_X_MIN + SAFE_X_MAX) / 2.0, RAW_LANE_Y - ARENA_WIDTH / 2.0 + SIDE_BAND_WIDTH / 2.0, 0.0002)
             ),
         )
         raw_bottom_forbidden = AssetBaseCfg(
@@ -218,14 +218,14 @@ def create_scene_cfg(with_worker: bool = False) -> type:
             prim_path="/World/DamArena/LeftForbidden",
             spawn=_cuboid((SAFE_X_MAX - SAFE_X_MIN, SIDE_BAND_WIDTH, 0.001), red),
             init_state=AssetBaseCfg.InitialStateCfg(
-                pos=(LANE_CENTER_X, DAM_LANE_Y + ARENA_WIDTH / 2.0 - SIDE_BAND_WIDTH / 2.0, 0.0002)
+                pos=((SAFE_X_MIN + SAFE_X_MAX) / 2.0, DAM_LANE_Y + ARENA_WIDTH / 2.0 - SIDE_BAND_WIDTH / 2.0, 0.0002)
             ),
         )
         dam_right_forbidden = AssetBaseCfg(
             prim_path="/World/DamArena/RightForbidden",
             spawn=_cuboid((SAFE_X_MAX - SAFE_X_MIN, SIDE_BAND_WIDTH, 0.001), red),
             init_state=AssetBaseCfg.InitialStateCfg(
-                pos=(LANE_CENTER_X, DAM_LANE_Y - ARENA_WIDTH / 2.0 + SIDE_BAND_WIDTH / 2.0, 0.0002)
+                pos=((SAFE_X_MIN + SAFE_X_MAX) / 2.0, DAM_LANE_Y - ARENA_WIDTH / 2.0 + SIDE_BAND_WIDTH / 2.0, 0.0002)
             ),
         )
         dam_bottom_forbidden = AssetBaseCfg(

@@ -9,7 +9,7 @@
 construction worker walks a path on THIS machine, before we fold the character
 setup into demo 9. Run it on the WebRTC livestream and watch.
 
-    python scripts/_ira_worker_smoke.py --livestream 2
+    python scripts/smoke/_ira_worker_smoke.py --livestream 2
 
 Once the worker walks here, the same `character` config block ports into demo 9
 via CharacterLoader (against demo 9's existing stage instead of a loaded env).
@@ -32,7 +32,7 @@ args_cli = parser.parse_args()
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "tools"))
 from livestream.livestream_support import apply_livestream_defaults  # noqa: E402
 
 apply_livestream_defaults(args_cli)

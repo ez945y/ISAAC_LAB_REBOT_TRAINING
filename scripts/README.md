@@ -3,6 +3,12 @@
 Numbered demo scripts for learning Isaac Lab fundamentals — from basic scene setup
 to robot teleoperation, dataset replay, and DAM safety demos.
 
+> **Heads-up — this machine runs headless (no local window).** You *watch* a demo by
+> connecting the **Isaac Sim WebRTC client** and adding `--livestream 2` — otherwise
+> you'll only see console logs and think nothing happened. The `demoNN_*.sh` launchers
+> turn streaming on (and source the env/ROS) for you. First: `source ~/IsaacLab/env_isaaclab/bin/activate`.
+> See **WebRTC Livestreaming** below for the client IP/ports.
+
 ## Scripts
 
 | # | Script | Description |
@@ -15,10 +21,20 @@ to robot teleoperation, dataset replay, and DAM safety demos.
 | 06 | `06_teleoperate_demo.py` | Leader arm teleoperation via socket |
 | 07 | `07_moving_from_dataset.py` | Load & replay LeRobot dataset episodes in sim with video export |
 | 08 | `08_augmented_replay.py` | Augmented replay with multiple episodes, cube configs & cameras |
-| 09 | `09_dam_car_scripted_comparison_demo.py` | Twin-lane Jetbot RAW vs DAM SafetyGuard comparison |
-| 10 | `10_dam_scripted_comparison_demo.py` | Scripted RAW vs DAM safety comparison for recording |
-| 11 | `11_dam_safety_demo.py` | Keyboard EE control with DAM filtering |
+| 09 | `09_dam_car_scripted_comparison_demo.py` | Twin-lane Jetbot RAW vs DAM, in-process (single command) |
+| 10 | `10_dam_car_direct_comparison_demo.py` | Twin-lane Jetbot RAW vs DAM, **DAM in-process** on the native app (like 09, single `python`) |
+| 10 (legacy) | `10_dam_car_ros_comparison_demo_legacy.py` | Older variant: DAM driven over ROS 2 — needs the guard node (use `demo10_legacy_ros_webrtc.sh`) |
+| 11 | `11_go2_squad_dispatch.py` | Go2 6-dog squad dispatch — drive it live over ROS/keyboard (use `demo11_go2_squad_ros.sh`) |
 | 12 | `12_dam_teleoperate_demo.py` | Leader-arm teleoperation with DAM filtering |
+| 13 | `13_dam_safety_demo.py` | Keyboard end-effector control with DAM filtering |
+| 14 | `14_dam_scripted_comparison_demo.py` | Twin-arm SO-ARM-101 scripted RAW vs DAM (recording); `demo14_arm_comparison.sh` |
+
+10 and 11 boot the **native** isaacsim app (the legacy 10 ROS-bridge variant and 11's
+RL-policy pieces don't run under Isaac Lab's `AppLauncher`); the rest are Isaac Lab
+scripts. The current demo 10 stays native to keep the same WebRTC stream path but no
+longer needs ROS — it drives the DAM car in-process like 09. The `demoNN_*.sh`
+launchers in this folder handle the env + ROS sourcing + multi-process wiring for you.
+
 ## Progression
 
 ```
@@ -38,27 +54,76 @@ to robot teleoperation, dataset replay, and DAM safety demos.
  ↓
 08  + Augmented replay (multi-episode, multi-camera)
  ↓
-09  + Scripted Jetbot safety comparison
+09  + Jetbot RAW vs DAM safety (in-process)
  ↓
-10  + Scripted SO-ARM DAM comparison
+10  + Jetbot RAW vs DAM, native app, in-process (ROS-bridge variant -> legacy)
  ↓
-11  + Keyboard DAM safety filtering
+11  + Go2 squad dispatch (ROS / keyboard control)
  ↓
 12  + Leader-arm DAM teleoperation
+ ↓
+13  + Keyboard DAM safety filtering
+ ↓
+14  + Twin-arm scripted DAM comparison
 ```
 
 ## Usage
 
-All scripts are standalone. Run from the repo root:
+Scripts 01–08 are standalone — run from the repo root:
 
 ```bash
 python scripts/07_moving_from_dataset.py --dataset MikeChenYZ/so101_isaac_mimic_test --episode 0 --video --video_dir ./videos --enable_cameras
 python scripts/08_augmented_replay.py --enable_cameras
-python scripts/09_dam_car_scripted_comparison_demo.py
-python scripts/10_dam_scripted_comparison_demo.py --mode compare
 ```
 
 Dataset conversion and streaming utilities live under `tools/`.
+
+## DAM / robotics demos (09–14)
+
+All accept `--livestream 2` to stream to the WebRTC client (see below). The
+`demoNN_*.sh` launchers source the env + ROS and wire up the extra processes — use
+them for 11/14 and the legacy 10; the rest (incl. the current 10) run with a single
+`python` command.
+
+**09 — Jetbot RAW vs DAM, one process (Isaac Lab):**
+```bash
+python scripts/09_dam_car_scripted_comparison_demo.py --livestream 2
+```
+
+**10 — Jetbot RAW vs DAM, in-process on the native app** (single process, no ROS):
+```bash
+scripts/demo10_webrtc.sh                 # env + stream cleanup + sim
+scripts/demo10_webrtc.sh --worker        # add the walking worker (like 09)
+# manual: python scripts/10_dam_car_direct_comparison_demo.py --livestream 2
+# (camera: --cam-eye "-3,0,2.5" --cam-target "0.7,0,0.1")
+```
+<sub>Same story as 09 with the native WebRTC stream path. Legacy ROS-bridge variant
+(sim + guard node, two processes): `scripts/demo10_legacy_ros_webrtc.sh` — runs
+`10_dam_car_ros_comparison_demo_legacy.py` + `tools/ros/dam_jetbot_guard_node.py`.</sub>
+
+**11 — Go2 squad dispatch, drive it live:**
+```bash
+scripts/demo11_go2_squad_ros.sh        # sim + interactive dispatch client
+```
+<sub>Manual: T1 `python scripts/11_go2_squad_dispatch.py --ros-control --livestream 2`,
+T2 `python tools/ros/go2_squad_dispatch_client.py --interactive`.
+Also `--auto` for the hands-off 2×3→3×2 run, or no `--ros-control` for keyboard drive
+in the sim terminal.</sub>
+
+**12 — leader-arm teleop + DAM:**
+```bash
+python scripts/12_dam_teleoperate_demo.py --livestream 2
+```
+
+**13 — keyboard end-effector control + DAM:**
+```bash
+python scripts/13_dam_safety_demo.py --livestream 2
+```
+
+**14 — twin-arm scripted RAW vs DAM:**
+```bash
+scripts/demo14_arm_comparison.sh --mode compare      # or --mode dam / --mode raw
+```
 
 ## WebRTC Livestreaming (remote viewing)
 
@@ -71,6 +136,12 @@ python scripts/09_dam_car_scripted_comparison_demo.py --livestream 2
 ```
 
 On the client: enter the server IP, ports **49100** (signal) / **47998** (stream), Connect.
+
+> **Native demos (10, 11):** these boot the native isaacsim app, not `AppLauncher`,
+> so `apply_livestream_defaults` doesn't apply. They inject the same proven settings
+> via `native_livestream_argv()` (incl. `streamType=webrtc`) before `SimulationApp` —
+> their `.sh` launchers handle it, and also kill any prior stream first (a hard-killed
+> run leaks the NVENC encoder → `NVST_R_BUSY` on the next start).
 
 ### Why `livestream_support.py` exists
 

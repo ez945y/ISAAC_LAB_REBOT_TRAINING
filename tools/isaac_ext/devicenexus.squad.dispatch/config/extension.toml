@@ -1,0 +1,16 @@
+[package]
+version = "0.1.0"
+category = "Simulation"
+title = "Squad Dispatch"
+description = "Live dispatch console for the Go2 squad: dog positions + dispatch controls in the viewport/stream."
+authors = ["DeviceNexus"]
+repository = ""
+keywords = ["isaac", "squad", "dispatch", "go2"]
+writeTarget.kit = true
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"isaacsim.util.debug_draw" = {}
+
+[[python.module]]
+name = "devicenexus.squad.dispatch"
