@@ -76,3 +76,6 @@ tests/
 # Isaac Sim WebRTC streamer trace logs
 *.etli
 NvStreamer-*.etli
+
+# Thesis experiment outputs (regenerable)
+experiments/results/

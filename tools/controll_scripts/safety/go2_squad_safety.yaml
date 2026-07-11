@@ -58,7 +58,7 @@ boundaries:
           lam_min: 0.3        # min comfort-yield share even at top priority (never fully frozen -> breaks cyclic deadlock)
           w_hard: 1000.0      # hard-floor slack penalty (near-inviolable; kept modest for QP conditioning)
           w_soft: 30.0        # comfort/cohesion slack penalty (gives way under pressure)
-          capsule_half: 0.25  # body half-length (m); spine-point distance -> capsule model
+          capsule_half: 0.25  # body half-length (m); exact segment-segment capsule distance
           swirl: 0.6          # tangential circulation near a neighbour -> SIDESTEP around instead of stopping
 
 tasks:

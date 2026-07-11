@@ -37,6 +37,7 @@ import osqp
 import torch
 from scipy import sparse
 
+from .capsule_geometry import seg_seg_closest
 from .holonomic_solver import HolonomicSolver
 
 # Shared with the stackfile (``callback: go2_min_max_separation``) and the
@@ -139,14 +140,11 @@ def go2_min_max_separation(
             o * dt * (-nrx * sp + nry * cp),               # d/d omega (rotates the offset)
         ])
 
-    # CAPSULE body model: approximate each dog's elongated body by spheres along its
-    # heading at offsets {-h, 0, h} (h = capsule_half; h=0 -> the old point/disc). The
-    # inter-dog distance is the closest spine-point pair, so head-on a pair reacts on
-    # nose-to-nose distance (keeps centres further apart) while side-by-side dogs can
-    # pack to body width -- exactly why capsules beat a circle for a long body.
-    offs = (-capsule_half, 0.0, capsule_half) if capsule_half > 1e-6 else (0.0,)
-    self_now = [(cx + o * cs, cy + o * sn) for o in offs]
-    self_pred = [(nx0 + o * cp, ny0 + o * sp) for o in offs]
+    # CAPSULE body model: each dog's elongated body is the sweep of a disc along its
+    # spine segment ``centre ± capsule_half * heading`` (h=0 -> point/disc). The
+    # inter-dog distance is the EXACT closest segment-segment pair, so head-on a pair
+    # reacts on nose-to-nose distance (keeps centres further apart) while side-by-side
+    # dogs can pack to body width -- exactly why capsules beat a circle for a long body.
 
     def _capsule(px, py, vpx, vpy, nyaw):
         """(current_dist, predicted_separation, grad) between the two body capsules.
@@ -157,23 +155,17 @@ def go2_min_max_separation(
         speed up *through* it). Projecting on the current normal is overshoot-safe.
         """
         ndx, ndy = math.cos(nyaw), math.sin(nyaw)
-        nb_now = [(px + o * ndx, py + o * ndy) for o in offs]
-        best, bi, bj = math.inf, 0, 0
-        for i, a in enumerate(self_now):
-            for j, b in enumerate(nb_now):
-                dd = math.hypot(a[0] - b[0], a[1] - b[1])
-                if dd < best:
-                    best, bi, bj = dd, i, j
-        dist_now = best
-        ax0, ay0 = self_now[bi]
-        bx0, by0 = nb_now[bj]
-        sep = max(best, 1e-6)
+        s_off, t_off, dist_now, ax0, ay0, bx0, by0 = seg_seg_closest(
+            cx, cy, cs, sn, capsule_half, px, py, ndx, ndy, capsule_half
+        )
+        sep = max(dist_now, 1e-6)
         nrx, nry = (ax0 - bx0) / sep, (ay0 - by0) / sep   # unit normal, neighbour -> self
-        nbx = px + vpx * dt + offs[bj] * ndx               # neighbour's matching point, predicted
-        nby = py + vpy * dt + offs[bj] * ndy
-        sxf, syf = self_pred[bi]
+        nbx = px + vpx * dt + t_off * ndx                  # neighbour's closest point, predicted
+        nby = py + vpy * dt + t_off * ndy
+        sxf = nx0 + s_off * cp                             # own closest point under predicted pose
+        syf = ny0 + s_off * sp
         d_pred = nrx * (sxf - nbx) + nry * (syf - nby)      # predicted separation along the normal
-        return dist_now, d_pred, _grad_pt(nrx, nry, offs[bi]), (nrx, nry)
+        return dist_now, d_pred, _grad_pt(nrx, nry, s_off), (nrx, nry)
 
     # Each entry: (grad(3,), rhs, slack_weight). push => grad.du + s >= rhs (apart);
     # pull => grad.du - s <= rhs (together). The per-constraint slack weight is what
