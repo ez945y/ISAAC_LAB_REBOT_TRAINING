@@ -51,12 +51,16 @@ class PyDamFilter:
         max_omega: float = 2.0,
         velocity_aware: bool = True,   # ablation E3.5: False -> neighbours treated as static
         cost_diag: tuple = (2.0, 0.5, 3.0),
+        wall_min_dist: float | None = None,  # ablation E3.4: separate hard floor
+        # for STATIC neighbours (circumscribed-disc body model inflates dog-dog
+        # by 2h but dog-wall by only 1h). None -> same min_dist as everything.
     ):
         self.p = dict(
             min_dist=min_dist, comfort_dist=comfort_dist, max_dist=max_dist,
             dt=dt, gamma=gamma, influence=influence, lam_min=lam_min,
             w_hard=w_hard, w_soft=w_soft, capsule_half=capsule_half, swirl=swirl,
             max_v=max_v, max_omega=max_omega,
+            wall_min_dist=min_dist if wall_min_dist is None else wall_min_dist,
         )
         self.velocity_aware = velocity_aware
         self.cost_diag = tuple(cost_diag)
@@ -113,7 +117,8 @@ class PyDamFilter:
             sxf, syf = nx0 + s_off * cp, ny0 + s_off * sp
             d_pred = nrx * (sxf - nbx) + nry * (syf - nby)
             g = grad_pt(nrx, nry, s_off)
-            req_hard = (dist_now - gamma * (dist_now - p["min_dist"])) - d_pred
+            md = p["wall_min_dist"] if is_static else p["min_dist"]
+            req_hard = (dist_now - gamma * (dist_now - md)) - d_pred
             if req_hard > 1e-4:
                 # static neighbour can't do its half: carry the full requirement
                 push.append((g, (1.0 if is_static else 0.5) * req_hard, p["w_hard"]))
