@@ -58,6 +58,11 @@ def main() -> int:
         for r in csv.DictReader(open(ep)):
             if "max_hard_slack_m" not in r:
                 continue
+            # slack telemetry only exists for the guard's QP: baseline methods
+            # (raw/stop/orca) log 0 and would pollute the analysis, and the
+            # pydam equivalence rows in e2 duplicate the dam episodes
+            if r.get("method", "") in ("raw", "stop", "orca", "pydam"):
+                continue
             try:
                 rows.append({
                     "exp": d.name,
