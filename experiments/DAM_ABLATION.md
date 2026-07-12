@@ -71,6 +71,22 @@ python3 experiments/run_e35_velocity.py --seeds 20
    `experiments/common/torchgrad.py` 只剩載入 shim）——
    `grad_mode="autograd"` 在兩實作跑的是同一段程式碼。
 
+## pydam 還需要嗎？（2026-07-12 使用者提問的結論）
+
+需要，但角色改變了。`--method dam` 落地後，pydam 從「跑消融的唯一
+工具」變成兩件事：
+
+1. **等價閘門的第二本帳**。論文第四項貢獻（參考實作＋等價性閘門）
+   的成立前提就是存在兩份獨立實作互相對帳——刪掉 pydam，
+   `test_pydam_vs_dam.py` 閘門消失，「無聲 bug 靠交叉對帳截獲」
+   （F10 型）的安全網也一起消失。它不是測試用的次級品，是冗餘通道。
+2. **免 venv 的快速通道**。pydam 只要 numpy/scipy，任何機器（含 CI）
+   都能跑管線驗證與快速預覽；dam 路徑需要 torch/osqp venv。
+
+**新規則**：日後新實驗直接 `--method dam` 跑正式路徑；pydam 只在
+兩種情況下跟進新旋鈕——(a) 該邏輯需要交叉對帳，(b) 需要免 venv
+執行。改 guard 邏輯後必跑等價閘門的鐵律不變。
+
 ## 鐵律
 
 - **改了 guard（callback / wrapper / stackfile）之後，必跑等價閘門**：
