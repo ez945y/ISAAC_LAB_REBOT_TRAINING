@@ -1,8 +1,16 @@
 # 正式版 DAM 消融介面（--method dam）
 
-讓論文的每一個消融／魯棒性實驗都能直接在**正式版 guard**
+讓論文的每一個消融／魯棒性實驗都能直接在**正式執行路徑**
 （`Go2DAMWrapper` → dam 0.7 Guardrail → OSQP）上產出數據，而不只是
 pydam 參考實作。2026-07-12 建立；等價閘門與 smoke 驗證紀錄見文末。
+
+**架構釐清**：dam 套件（Security Guard repo）只是中介層——提供
+Guardrail 執行框架、裁決聚合與 stackfile 載入；guard 的實際邏輯是
+掛進去的**外部 callback**（`go2_min_max_separation`，住在本 repo
+`tools/controll_scripts/safety/`）。本次所有開關都加在 callback 層，
+**dam 套件本身零改動**。「正式版」在本文件中一律指「經 dam Guardrail
+＋OSQP 執行的 callback 路徑」，與 pydam（numpy/SLSQP 直跑同一數學）
+相對。
 
 ## 用法
 
@@ -27,25 +35,25 @@ python3 experiments/run_e35_velocity.py --seeds 20
 `common/filters.py`）。dam 端：callback 參數合併進暫存 stackfile；
 `max_v`/`max_omega` 建構 `HolonomicSolver`。
 
-| 消融軸 | 旋鈕 | dam 支援 |
+| 消融軸 | 旋鈕 | callback 支援 |
 |---|---|---|
-| E3.1 優先權 | `self_priority` / 鄰居 priority（呼叫時傳入） | 原生 |
-| E3.2 swirl | `swirl` | 原生 |
-| E3.3 軟硬分層 | 僅硬層 = `comfort_dist=0.7`；舒適硬化 = `w_soft=1000` | 原生 |
+| E3.1 優先權 | `self_priority` / 鄰居 priority（呼叫時傳入） | 既有 |
+| E3.2 swirl | `swirl` | 既有 |
+| E3.3 軟硬分層 | 僅硬層 = `comfort_dist=0.7`；舒適硬化 = `w_soft=1000` | 既有 |
 | E3.4 身體模型 | 內接圓盤 = `capsule_half=0`；外接 = `capsule_half=0, min_dist=1.2, wall_min_dist=0.95` | `wall_min_dist` **本次新增** |
 | E3.5 速度感知 | `velocity_aware=False` | **本次新增** |
-| E3.6 γ/Δt | `gamma`、`dt` | 原生 |
+| E3.6 γ/Δt | `gamma`、`dt` | 既有 |
 | E3.7 梯度路徑 | `grad_mode="autograd"` | **本次新增** |
 | E4.1/E4.2/E4.5 | 模擬層變因（雜訊/延遲/N），guard 不變 | 不需 |
 | E4.3 鬆弛遙測 | info dict `hard_slack_max`（見下） | **本次新增** |
-| E4.4 非合作 | `FilterRouter` 混編 raw | 原生 |
+| E4.4 非合作 | `FilterRouter` 混編 raw（實驗管線層，與 callback 無關） | 不需 |
 
 `cost_diag` 為 pydam 專屬（正式版 QP 硬編碼 `[2.0, 0.5, 3.0]`），
 傳給 dam 會直接 raise。
 
-## 本次在正式版新增的東西
+## 本次在 callback 層新增的東西
 
-全部在 `tools/controll_scripts/safety/`：
+全部在 `tools/controll_scripts/safety/`（dam 套件零改動）：
 
 1. **`go2_min_max_separation` 三個新參數**（預設值 = 原行為，等價
    閘門保證零漂移）：
