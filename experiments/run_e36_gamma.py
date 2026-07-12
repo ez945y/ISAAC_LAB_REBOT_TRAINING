@@ -40,7 +40,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common.ablation import Condition, run_sweep  # noqa: E402
-from common.pydam import PyDamFilter  # noqa: E402
+from common.filters import make_guard  # noqa: E402
 
 MD_FIELDS = ["makespan_s", "mean_completion_s", "all_done_rate", "deadlock_rate",
              "min_dogdog_m", "viol_steps_dog", "mean_dcmd", "intervention_rate",
@@ -49,22 +49,26 @@ MD_FIELDS = ["makespan_s", "mean_completion_s", "all_done_rate", "deadlock_rate"
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="E3.6 gamma/dt sweep")
+    ap.add_argument("--method", default="pydam", choices=["pydam", "dam"],
+                    help="guard implementation (dam needs the DAM venv)")
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--gammas", default="0.1,0.2,0.4,0.7,1.0")
     ap.add_argument("--out", default="experiments/results/e36_gamma")
     args = ap.parse_args()
+    if args.method != "pydam" and args.out == ap.get_default("out"):
+        args.out += f"_{args.method}"
 
     conditions = [
         Condition(label=f"g{g}_dt0.2",
-                  make_filter=lambda g=float(g): PyDamFilter(gamma=g))
+                  make_filter=lambda g=float(g): make_guard(args.method, gamma=g))
         for g in (x.strip() for x in args.gammas.split(",") if x.strip())
     ] + [
         Condition(label=f"g0.4_dt{dt}",
-                  make_filter=lambda dt=dt: PyDamFilter(gamma=0.4, dt=dt))
+                  make_filter=lambda dt=dt: make_guard(args.method, gamma=0.4, dt=dt))
         for dt in (0.1, 0.4)
     ] + [
         Condition(label="g0.1_dt0.1",   # F9 interaction: short horizon at low γ
-                  make_filter=lambda: PyDamFilter(gamma=0.1, dt=0.1)),
+                  make_filter=lambda: make_guard(args.method, gamma=0.1, dt=0.1)),
     ]
     run_sweep("E3.6", ["S1", "S3"], conditions, args.seeds, args.out,
               markdown_fields=MD_FIELDS)

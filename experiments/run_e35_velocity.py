@@ -30,7 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common.ablation import Condition, run_sweep  # noqa: E402
-from common.pydam import PyDamFilter  # noqa: E402
+from common.filters import make_guard  # noqa: E402
 
 MD_FIELDS = ["min_dogdog_m", "viol_steps_dog", "deadlock_rate", "all_done_rate",
              "makespan_s", "mean_dcmd", "intervention_rate", "max_hard_slack_m"]
@@ -38,13 +38,17 @@ MD_FIELDS = ["min_dogdog_m", "viol_steps_dog", "deadlock_rate", "all_done_rate",
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="E3.5 velocity-aware ablation")
+    ap.add_argument("--method", default="pydam", choices=["pydam", "dam"],
+                    help="guard implementation (dam needs the DAM venv)")
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--out", default="experiments/results/e35_velocity")
     args = ap.parse_args()
+    if args.method != "pydam" and args.out == ap.get_default("out"):
+        args.out += f"_{args.method}"
 
     conditions = [
         Condition(label=f"va_{'on' if va else 'off'}_v{v}",
-                  make_filter=lambda va=va, v=v: PyDamFilter(velocity_aware=va, max_v=v),
+                  make_filter=lambda va=va, v=v: make_guard(args.method, velocity_aware=va, max_v=v),
                   sim_overrides={"vmax": v},
                   scenario_kwargs={"jitter": 0.15})
         for va in (True, False)

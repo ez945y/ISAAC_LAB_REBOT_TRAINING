@@ -30,8 +30,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common.ablation import Condition, run_sweep  # noqa: E402
-from common.filters import FilterRouter, RawFilter  # noqa: E402
-from common.pydam import PyDamFilter  # noqa: E402
+from common.filters import FilterRouter, RawFilter, make_guard  # noqa: E402
+
 
 MD_FIELDS = ["min_dogdog_m", "viol_steps_dog", "max_viol_depth_m",
              "all_done_rate", "deadlock_rate", "makespan_s",
@@ -43,20 +43,24 @@ ROGUES_1 = ("G1_0", "D0")
 ROGUES_2 = ("G1_0", "G0_1", "D0", "D1")
 
 
-def _router(rogues: tuple) -> FilterRouter:
-    return FilterRouter(PyDamFilter(), {aid: RawFilter() for aid in rogues})
+def _router(method: str, rogues: tuple = ()) -> FilterRouter:
+    return FilterRouter(make_guard(method), {aid: RawFilter() for aid in rogues})
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="E4.4 non-cooperative agents")
+    ap.add_argument("--method", default="pydam", choices=["pydam", "dam"],
+                    help="guard implementation (dam needs the DAM venv)")
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--out", default="experiments/results/e44_rogue")
     args = ap.parse_args()
+    if args.method != "pydam" and args.out == ap.get_default("out"):
+        args.out += f"_{args.method}"
 
     conditions = [
-        Condition(label="coop", make_filter=lambda: FilterRouter(PyDamFilter())),
-        Condition(label="rogue1", make_filter=lambda: _router(ROGUES_1)),
-        Condition(label="rogue2", make_filter=lambda: _router(ROGUES_2)),
+        Condition(label="coop", make_filter=lambda: _router(args.method)),
+        Condition(label="rogue1", make_filter=lambda: _router(args.method, ROGUES_1)),
+        Condition(label="rogue2", make_filter=lambda: _router(args.method, ROGUES_2)),
     ]
     run_sweep("E4.4", ["S1", "S5"], conditions, args.seeds, args.out,
               markdown_fields=MD_FIELDS)

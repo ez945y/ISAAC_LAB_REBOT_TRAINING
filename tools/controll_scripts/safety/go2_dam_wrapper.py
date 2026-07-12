@@ -54,11 +54,19 @@ class _NeighborHolder:
     frozen). ``points`` is a list of ``(x, y, priority)``; ``self_priority`` is the
     acting dog's priority — together they set the responsibility split."""
 
-    __slots__ = ("points", "self_priority")
+    __slots__ = ("points", "self_priority",
+                 "last_hard_slack", "last_n_push", "last_n_pull")
 
     def __init__(self) -> None:
         self.points: list[tuple] = []  # (x, y, priority, same_group, vx, vy, yaw, static)
         self.self_priority: float = 1.0
+        # Per-call telemetry written back by the boundary callback (E4.3 /
+        # dual-channel monitoring): worst hard-floor slack the QP bought this
+        # call (nan = solver failure with the hard floor active), and the
+        # number of push/pull constraints assembled.
+        self.last_hard_slack: float = 0.0
+        self.last_n_push: int = 0
+        self.last_n_pull: int = 0
 
 
 @dam.register_callback(
@@ -81,6 +89,13 @@ class _NeighborHolder:
         "capsule_half": "Half-length (m) of each dog's body capsule (0 = point/disc model).",
         "swirl": "Tangential circulation bias near a neighbour (escapes head-on standoff "
                  "/ local minima -> liveness, all in the QP).",
+        "wall_min_dist": "Optional separate hard floor (m) for STATIC neighbours; None -> "
+                         "min_dist. Ablation E3.4: a circumscribed-disc body inflates dog-dog "
+                         "clearance by 2h but dog-wall by only 1h.",
+        "velocity_aware": "Predict neighbours forward by their observed velocity (default). "
+                          "False -> treat neighbours as static (ablation E3.5).",
+        "grad_mode": "'analytic' (default): overshoot-safe frozen-normal surrogate gradient. "
+                     "'autograd': naive true-distance gradient via torch (ablation E3.7).",
     },
 )
 def go2_min_max_separation(
@@ -99,6 +114,9 @@ def go2_min_max_separation(
     w_soft: float = 30.0,
     capsule_half: float = 0.0,
     swirl: float = 0.0,
+    wall_min_dist: float | None = None,
+    velocity_aware: bool = True,
+    grad_mode: str = "analytic",
     **_kwargs,
 ):
     """L1 boundary with priority-weighted responsibility (emergent yielding).
@@ -116,6 +134,8 @@ def go2_min_max_separation(
     solver = solvers[_SOLVER_KEY]
     holder = solvers.get(_NEIGHBOR_KEY)
     neighbors = list(getattr(holder, "points", []) or [])  # (x,y,prio,sg,vx,vy,yaw,static)
+    if holder is not None:
+        holder.last_hard_slack, holder.last_n_push, holder.last_n_pull = 0.0, 0, 0
     if not neighbors:
         return True
     p_self = float(getattr(holder, "self_priority", 1.0))
@@ -194,11 +214,22 @@ def go2_min_max_separation(
     for nb in neighbors:
         px, py, p_j, _sg, vpx, vpy, nyaw = nb[:7]
         is_static = len(nb) >= 8 and nb[7] >= 0.5
+        if not velocity_aware:
+            vpx = vpy = 0.0    # ablation E3.5: neighbours treated as static
         if math.hypot(cx - px, cy - py) - min_dist > reach:
             continue  # cheap centre pre-cull before the full capsule test
-        dist_now, d_pred, grad, nrm = _capsule(
-            px, py, vpx, vpy, nyaw, nb_half=0.0 if is_static else capsule_half)
-        req_hard = (dist_now - gamma * (dist_now - min_dist)) - d_pred
+        nb_half = 0.0 if is_static else capsule_half
+        dist_now, d_pred, grad, nrm = _capsule(px, py, vpx, vpy, nyaw, nb_half=nb_half)
+        if grad_mode == "autograd":
+            # Ablation E3.7: naive true-distance gradient (rotates with the
+            # geometry; can flip sign through overlap). dist_now/normal still
+            # come from the exact analytic closest pair above.
+            from .torchgrad import pred_dist_and_grad
+            d_pred, grad = pred_dist_and_grad(
+                cx, cy, syaw, (vx, vy, om), dt, capsule_half,
+                px, py, nyaw, nb_half, vpx, vpy, solver.max_v, solver.max_omega)
+        floor = min_dist if (wall_min_dist is None or not is_static) else wall_min_dist
+        req_hard = (dist_now - gamma * (dist_now - floor)) - d_pred
         if req_hard > 1e-4:
             # A static obstacle cannot do its half of the avoiding: this dog
             # carries the full hard requirement (share 1.0, not 0.5).
@@ -286,15 +317,25 @@ def go2_min_max_separation(
     prob.setup(P, q, A, np.array(lo), np.array(hi), verbose=False, eps_abs=1e-5, eps_rel=1e-5)
     res = prob.solve()
 
+    if holder is not None:
+        holder.last_n_push, holder.last_n_pull = len(push), len(pull)
     if res.x is not None and np.all(np.isfinite(res.x)) and "solved" in str(res.info.status):
         action.target_joint_positions[0] = float(vx + res.x[0])
         action.target_joint_positions[1] = float(vy + res.x[1])
         action.target_joint_positions[2] = float(om + res.x[2])
+        if holder is not None:
+            # E4.3 telemetry: worst slack the QP bought on a HARD constraint
+            # this call (slacks are ordered push-first in the variable vector).
+            holder.last_hard_slack = max(
+                (float(res.x[3 + i]) for i, (_g, _r, w) in enumerate(push)
+                 if w >= w_hard * 0.999), default=0.0)
     elif hard_active:
         # Degenerate solver failure with the HARD floor active must fail safe: stop.
         action.target_joint_positions[0] = 0.0
         action.target_joint_positions[1] = 0.0
         action.target_joint_positions[2] = 0.0
+        if holder is not None:
+            holder.last_hard_slack = math.nan
     return True
 
 
@@ -392,6 +433,21 @@ class Go2DAMWrapper:
     @property
     def last_decision(self) -> str:
         return self._last_decision
+
+    @property
+    def last_hard_slack(self) -> float:
+        """Worst hard-floor slack the QP bought on the last call (E4.3 telemetry;
+        nan = solver failure with the hard floor active). Pair with a
+        measured-distance monitor: slack only sees infeasibility-driven erosion."""
+        return self._neighbors.last_hard_slack
+
+    @property
+    def last_n_push(self) -> int:
+        return self._neighbors.last_n_push
+
+    @property
+    def last_n_pull(self) -> int:
+        return self._neighbors.last_n_pull
 
     @property
     def last_delta(self) -> float:

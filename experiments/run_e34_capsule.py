@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common.ablation import Condition, run_sweep  # noqa: E402
-from common.pydam import PyDamFilter  # noqa: E402
+from common.filters import make_guard  # noqa: E402
 
 MD_FIELDS = ["all_done_rate", "deadlock_rate", "makespan_s", "min_dogdog_m",
              "viol_steps_dog", "viol_steps_wall", "mean_dcmd",
@@ -40,17 +40,21 @@ MD_FIELDS = ["all_done_rate", "deadlock_rate", "makespan_s", "min_dogdog_m",
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="E3.4 capsule vs disc body model")
+    ap.add_argument("--method", default="pydam", choices=["pydam", "dam"],
+                    help="guard implementation (dam needs the DAM venv)")
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--out", default="experiments/results/e34_capsule")
     args = ap.parse_args()
+    if args.method != "pydam" and args.out == ap.get_default("out"):
+        args.out += f"_{args.method}"
 
     conditions = [
         Condition(label="capsule",
-                  make_filter=lambda: PyDamFilter()),
+                  make_filter=lambda: make_guard(args.method)),
         Condition(label="disc_in",
-                  make_filter=lambda: PyDamFilter(capsule_half=0.0)),
+                  make_filter=lambda: make_guard(args.method, capsule_half=0.0)),
         Condition(label="disc_circ",
-                  make_filter=lambda: PyDamFilter(capsule_half=0.0,
+                  make_filter=lambda: make_guard(args.method, capsule_half=0.0,
                                                   min_dist=1.2,
                                                   wall_min_dist=0.95)),
     ]

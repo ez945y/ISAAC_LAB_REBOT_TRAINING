@@ -128,11 +128,21 @@ class OrcaFilter:
 
 class DamFilter:
     """The real DAM guard (Go2DAMWrapper). Imports torch/dam lazily so machines
-    without them can still run raw/stop experiments."""
+    without them can still run raw/stop experiments.
+
+    Ablation knobs: accepts the SAME keyword knobs as PyDamFilter (gamma, dt,
+    capsule_half, swirl, velocity_aware, grad_mode, wall_min_dist, ...). They
+    are merged over the stackfile's callback params into a temp stackfile;
+    ``max_v``/``max_omega`` go to the HolonomicSolver instead. ``cost_diag``
+    is NOT supported (hard-coded in the production QP)."""
 
     name = "dam"
 
-    def __init__(self, stackfile: str = "go2_squad_safety.yaml", device: str = "cpu"):
+    #: knobs that configure the rollout solver rather than the callback
+    _SOLVER_KNOBS = ("max_v", "max_omega")
+
+    def __init__(self, stackfile: str = "go2_squad_safety.yaml", device: str = "cpu",
+                 **knobs):
         import sys
         from pathlib import Path
         tools = Path(__file__).resolve().parents[2] / "tools"
@@ -140,8 +150,36 @@ class DamFilter:
             sys.path.insert(0, str(tools))
         import torch  # noqa: F401
         from controll_scripts.safety import Go2DAMWrapper
+        from controll_scripts.safety.holonomic_solver import HolonomicSolver
         self._torch = torch
-        self._wrap = Go2DAMWrapper(stackfile, device=device)
+        if "cost_diag" in knobs:
+            raise ValueError("cost_diag is pydam-only (production QP hard-codes it)")
+        solver_kw = {k: knobs.pop(k) for k in self._SOLVER_KNOBS if k in knobs}
+        solver = HolonomicSolver(**solver_kw) if solver_kw else None
+        if knobs:
+            stackfile = self._patched_stackfile(stackfile, knobs)
+        self._wrap = Go2DAMWrapper(stackfile, device=device, solver=solver)
+
+    @staticmethod
+    def _patched_stackfile(stackfile: str, params: dict) -> str:
+        """Write a temp stackfile with ``params`` merged over the callback params
+        of every boundary node, and return its path."""
+        import tempfile
+        from pathlib import Path
+        import yaml
+        src = Path(stackfile)
+        if not src.exists():
+            src = (Path(__file__).resolve().parents[2]
+                   / "tools/controll_scripts/safety" / stackfile)
+        doc = yaml.safe_load(src.read_text())
+        for bound in doc.get("boundaries", {}).values():
+            for node in bound.get("nodes", []):
+                node.setdefault("params", {}).update(params)
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", prefix="dam_ablation_", delete=False)
+        yaml.safe_dump(doc, tmp)
+        tmp.close()
+        return tmp.name
 
     def filter(self, aid, cmd, pose, neighbors, self_priority=1.0):
         t = self._torch
@@ -151,6 +189,9 @@ class DamFilter:
         return tuple(safe[0].tolist()), {
             "decision": self._wrap.last_decision,
             "delta": self._wrap.last_delta,
+            "hard_slack_max": self._wrap.last_hard_slack,
+            "n_push": self._wrap.last_n_push,
+            "n_pull": self._wrap.last_n_pull,
         }
 
     def close(self):
@@ -185,3 +226,16 @@ def make_filter(name: str, **kwargs):
     if name not in table:
         raise ValueError(f"unknown filter '{name}' (choose from raw, stop, orca, dam, pydam)")
     return table[name](**kwargs)
+
+
+def make_guard(method: str, **knobs):
+    """Guard factory for the ablation sweeps: same knob names on both
+    implementations, so every run_e3x/e4x script takes ``--method pydam|dam``.
+    pydam = stdlib+numpy/scipy reference; dam = the real Go2DAMWrapper
+    (needs the DAM venv — see experiments/DAM_ABLATION.md)."""
+    if method == "pydam":
+        from .pydam import PyDamFilter
+        return PyDamFilter(**knobs)
+    if method == "dam":
+        return DamFilter(**knobs)
+    raise ValueError(f"unknown guard method {method!r} (pydam|dam)")

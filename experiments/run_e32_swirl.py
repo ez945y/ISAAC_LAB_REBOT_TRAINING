@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common.ablation import Condition, run_sweep  # noqa: E402
-from common.pydam import PyDamFilter  # noqa: E402
+from common.filters import make_guard  # noqa: E402
 
 MD_FIELDS = ["deadlock_rate", "all_done_rate", "makespan_s", "min_dogdog_m",
              "viol_steps_dog", "path_ratio", "intervention_rate"]
@@ -29,15 +29,19 @@ MD_FIELDS = ["deadlock_rate", "all_done_rate", "makespan_s", "min_dogdog_m",
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="E3.2 swirl ablation")
+    ap.add_argument("--method", default="pydam", choices=["pydam", "dam"],
+                    help="guard implementation (dam needs the DAM venv)")
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--swirls", default="0.0,0.6",
                     help="comma list of swirl gains (default 0.0,0.6)")
     ap.add_argument("--out", default="experiments/results/e32_swirl")
     args = ap.parse_args()
+    if args.method != "pydam" and args.out == ap.get_default("out"):
+        args.out += f"_{args.method}"
 
     conditions = [
         Condition(label=f"swirl_{s}_j{j}",
-                  make_filter=lambda s=float(s): PyDamFilter(swirl=s),
+                  make_filter=lambda s=float(s): make_guard(args.method, swirl=s),
                   scenario_kwargs={"jitter": j})
         for s in (x.strip() for x in args.swirls.split(",") if x.strip())
         for j in (0.0, 0.15)   # perfect standoff + mild asymmetry

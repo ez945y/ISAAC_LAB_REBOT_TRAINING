@@ -33,7 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common.ablation import Condition, run_sweep  # noqa: E402
-from common.pydam import PyDamFilter  # noqa: E402
+from common.filters import make_guard  # noqa: E402
 
 MD_FIELDS = ["min_dogdog_m", "viol_steps_dog", "viol_steps_wall",
              "all_done_rate", "deadlock_rate", "makespan_s", "mean_dcmd",
@@ -42,23 +42,27 @@ MD_FIELDS = ["min_dogdog_m", "viol_steps_dog", "viol_steps_wall",
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="E4.2 observation noise + latency")
+    ap.add_argument("--method", default="pydam", choices=["pydam", "dam"],
+                    help="guard implementation (dam needs the DAM venv)")
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--out", default="experiments/results/e42_obsnoise")
     args = ap.parse_args()
+    if args.method != "pydam" and args.out == ap.get_default("out"):
+        args.out += f"_{args.method}"
 
     conditions = [
         Condition(label=f"noise{s}",
-                  make_filter=lambda: PyDamFilter(),
+                  make_filter=lambda: make_guard(args.method),
                   sim_overrides={"obs_noise_std": s})
         for s in (0.0, 0.05, 0.1, 0.2)
     ] + [
         Condition(label=f"delay{k*20}ms",
-                  make_filter=lambda: PyDamFilter(),
+                  make_filter=lambda: make_guard(args.method),
                   sim_overrides={"obs_delay_steps": k})
         for k in (5, 10, 25)
     ] + [
         Condition(label="real_0.1m_100ms",
-                  make_filter=lambda: PyDamFilter(),
+                  make_filter=lambda: make_guard(args.method),
                   sim_overrides={"obs_noise_std": 0.1, "obs_delay_steps": 5}),
     ]
     run_sweep("E4.2", ["S2", "S3"], conditions, args.seeds, args.out,

@@ -37,7 +37,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common.ablation import Condition, run_sweep  # noqa: E402
-from common.pydam import PyDamFilter, seg_seg_closest  # noqa: E402
+from common.filters import make_guard  # noqa: E402
+from common.pydam import seg_seg_closest  # noqa: E402
 
 MD_FIELDS = ["stop_steps", "reject_steps", "min_dogdog_m", "viol_steps_dog",
              "all_done_rate", "deadlock_rate", "makespan_s",
@@ -98,10 +99,14 @@ def census(n: int, out_path: Path) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="E3.7 analytic vs autograd gradient")
+    ap.add_argument("--method", default="pydam", choices=["pydam", "dam"],
+                    help="guard implementation (dam needs the DAM venv)")
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--census", type=int, default=2000)
     ap.add_argument("--out", default="experiments/results/e37_gradient")
     args = ap.parse_args()
+    if args.method != "pydam" and args.out == ap.get_default("out"):
+        args.out += f"_{args.method}"
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -109,7 +114,7 @@ def main() -> int:
 
     conditions = [
         Condition(label=f"{mode}_v{v}",
-                  make_filter=lambda mode=mode, v=v: PyDamFilter(grad_mode=mode, max_v=v),
+                  make_filter=lambda mode=mode, v=v: make_guard(args.method, grad_mode=mode, max_v=v),
                   sim_overrides={"vmax": v})
         for mode in ("analytic", "autograd")
         for v in (1.5, 2.0)

@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common.ablation import Condition, run_sweep  # noqa: E402
-from common.pydam import PyDamFilter  # noqa: E402
+from common.filters import make_guard  # noqa: E402
 
 MD_FIELDS = ["min_dogdog_m", "viol_steps_dog", "all_done_rate", "deadlock_rate",
              "makespan_s", "mean_completion_s", "intervention_rate",
@@ -32,14 +32,18 @@ MD_FIELDS = ["min_dogdog_m", "viol_steps_dog", "all_done_rate", "deadlock_rate",
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="E4.5 scale sweep")
+    ap.add_argument("--method", default="pydam", choices=["pydam", "dam"],
+                    help="guard implementation (dam needs the DAM venv)")
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--ns", default="2,4,8,12,16")
     ap.add_argument("--out", default="experiments/results/e45_scale")
     args = ap.parse_args()
+    if args.method != "pydam" and args.out == ap.get_default("out"):
+        args.out += f"_{args.method}"
 
     conditions = [
         Condition(label=f"n{n}",
-                  make_filter=lambda: PyDamFilter(),
+                  make_filter=lambda: make_guard(args.method),
                   scenario_kwargs={"n": int(n)})
         for n in (x.strip() for x in args.ns.split(",") if x.strip())
     ]

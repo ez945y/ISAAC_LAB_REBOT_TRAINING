@@ -13,6 +13,12 @@ VENV="/Users/chenyizhong/Documents/Claude/Projects/Security Guard.nosync/.venv/b
 "$VENV" experiments/run_e2_baselines.py --methods raw,stop,pydam,dam ...
 ```
 
+Every ablation/robustness sweep (e31–e45) also takes `--method dam` to run
+on the REAL guard instead of pydam — knob mapping, new callback switches
+(`wall_min_dist` / `velocity_aware` / `grad_mode`) and the hard-slack
+telemetry interface are documented in **`experiments/DAM_ABLATION.md`**
+(added 2026-07-12; equivalence gate PASS + e35 dam smoke = thesis numbers).
+
 - venv has: numpy, scipy, torch 2.10, dam **0.7.0** (editable install of the
   local DAM repo at `.../Security Guard.nosync`), osqp 1.1.3 (installed via
   `uv pip install osqp --python "$VENV"` on 2026-07-11), and **pyrvo2**
