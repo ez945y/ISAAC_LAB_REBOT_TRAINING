@@ -173,6 +173,42 @@ hardware-like execution (Pearson +0.17 vs +0.50; 292 QP-blind viol episodes)
 — the dual-channel monitoring recommendation is mandatory, not optional;
 (4) F12 solver-version sensitivity of hard_only.
 
+## RQ1 experiments — final verdict (2026-07-19)
+
+**E1.1 即時性（可預測）**: full-distribution benchmark over 105k replayed real
+calls (quiet machine, canonical run in `results/e11_latency/`): p50 0.10–0.39 ms,
+p99.9 ≤ 0.53 ms, max ≤ 0.67 ms, ZERO calls over 2 ms; cold start ≤ 0.9 ms.
+Predictability: latency is monotone in the ACTIVE QP constraint count (p50
+0.13 → 0.43 ms across 0→7 constraints, p99 ≤ 0.53 in every bucket), and the
+constraint count is bounded by construction (≤6 statics + N−1 dynamics) →
+bounded worst case, not an open tail. Rare ~40–50 ms OS-scheduling event at
+~1e-5/call (non-deterministic, GC ruled out by A/B); consequence = one held
+command = E1.3's delay-1-tick condition (no degradation). In-loop e45 numbers
+corroborate (p99 1.35 ms at N=16 incl. contention).
+
+**E1.2 跨具身（F13 rotational sweep + budget trade-off)**: same scenarios/
+seeds/guard on a differential-drive Carter. (a) naive transfer (max_vy=0 only)
+collapses — the sidestep liveness mechanism is embodiment-specific; (b) the
+principled adapter (steering=cheap axis + swirl→yaw, `drive_mode=differential`)
+restores kinesim behaviour, but the residual floor erosion is the ROTATIONAL
+SWEEP: a turning capsule's nose swings toward the neighbour — F9's steering
+variant, one-sided ≈ h, mutual ≈ 2h; (c) on real bodies the un-budgeted floor
+means PHYSICAL CONTACT (Carter width 0.5 m: axis-floor 0.35 ⇒ overlap) —
+kinesim cannot see this, Isaac shows falls/wedges; (d) floor re-budget maps the
+trade-off: b095 (+h) perfect on S2, marginal S1/S4; b120 (+2h) safe everywhere
+(0 falls, floors 0.72–0.86) but reproduces E3.4 over-conservatism in the S4
+corridor (30 % completion). Isaac↔kinesim floors agree to ±0.03 in every dam
+condition. Thesis line: the architecture transfers with a 4-line kinematic
+adapter; the nonholonomic base faces a REAL safety-liveness trade-off the
+holonomic base does not — and the guard exposes it as one interpretable knob.
+
+**E1.3 延遲預算閉環**: actuation-side delay (guard OUTPUT arriving late —
+distinct from E4.2's perception-side INPUT delay) injected at 0/20/40/100 ms on
+BOTH backends: completion intact throughout; floors degrade mildly and
+monotonically (S2 Isaac 0.710→0.639 at 100 ms). Against measured p99.9 =
+0.53 ms this is an EMPIRICAL margin of ≥75× (flat to 40 ms) and ~190× to the
+first mild degradation — closing RQ1's real-latency question without hardware.
+
 ## Handoff notes (historical, kinesim phase)
 
 1. **DAM 0.7 breaking change**: dam 0.7 renamed `SafetyGuard`→`Guardrail` and
