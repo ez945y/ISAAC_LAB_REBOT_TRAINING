@@ -4,6 +4,86 @@ Branch: `exp/thesis-experiments` (forked from `feat/go2-squad-dispatch` after it
 Maps to the RQ design (RQ1–RQ4; RQ5 dropped). One experiment script at a time:
 finish + fake-data-validate the current one before starting the next.
 
+## Isaac machine environment (rst_spark, DGX Spark / aarch64) — read this first here
+
+Everything below in this section was verified 2026-07-18 on the Isaac machine.
+
+```bash
+# ALL python runs (kinesim AND isaac) use the Isaac Lab venv:
+source ~/IsaacLab/env_isaaclab/bin/activate
+# anything that imports isaacsim ALSO needs (aarch64 quirk, same as demo10/11 .sh):
+export LD_PRELOAD="/lib/aarch64-linux-gnu/libgomp.so.1"
+```
+
+- **dam 0.7.0 is live here**: `~/DAM` was upgraded 0.6.0 → v0.7.0 on 2026-07-18
+  (`git pull --ff-only` to 2385331; pre-existing local edits to assets/presets.yaml
+  + examples/stackfiles/jetbot_lane_safety.yaml are in `git stash`
+  ("pre-0.7-local-mods")). The venv imports it editable-style; `Guardrail` works.
+  Sanity: kinesim S2+dam reproduces the thesis numbers exactly
+  (makespan 5.96 s, minDD 0.784, 0 viol).
+- venv also has: torch 2.10 (cu130), osqp 1.0.5, scipy, yaml. **No pyrvo2** →
+  ORCA (B2) cannot run here; Isaac-side E2 skips orca.
+- **Isaac-in-the-loop rerun of E2/E3.x/E4.x lives in `experiments/isaac/`**
+  (headless SimulationApp + Go2FlatTerrainPolicy + real dam Guardrail; the old
+  kinesim scripts/results are untouched):
+
+```bash
+# Isaac rerun (one long-lived headless app; ≤4 parallel arenas, batched policy;
+# per-episode checkpoint, resumable):
+python experiments/isaac/run_isaac_suite.py --exp all            # or --exp e2,e32,...
+# kinesim dam-reference, same manifest/checkpoint format (done 2026-07-18 via the
+# original run_e*.py scripts → experiments/results/<exp>_dam + e2_full; for future
+# regens use the registry twin):
+python experiments/run_kinesim_suite.py --exp all
+# compare the two pools (no Isaac needed):
+python experiments/isaac/compare.py                              # → isaac/results/COMPARISON.md
+```
+
+  **Status 2026-07-18 (evening)**: kinesim reference pool COMPLETE on this
+  machine (`experiments/results/`, thesis E2 table reproduced EXACTLY: dam S1
+  0.527 / S2 0.786 / S3 0.456 / S4 0.612 / S5 0.914). Isaac suite RUNNING
+  (order e32,e31,e34,e35,e2,e33,e41,e42,e36,e37,e44,e45; resume-safe; log
+  in the session scratchpad, results under `experiments/isaac/results/`).
+  Interim per-experiment verdicts (see `isaac/results/COMPARISON.md`,
+  regenerate any time with `python experiments/isaac/compare.py`):
+  - **e32 swirl** ✅ story holds (0.6 → minDD 0.70/0 viol; off → 0.55 w/ viols;
+    kinesim's perfect-symmetry 0.088 m standoff doesn't materialise — real
+    gait asymmetry breaks the tie). makespan +18–20 % (under-tracking).
+  - **e31 priority** ✅ yielding + floor ≈; residual 10 % non-completion on
+    both sides (Isaac labels it deadlock, kinesim plain timeout).
+  - **e34 capsule vs disc** ✅ headline claim reproduces exactly (capsule
+    0.636 vs disc_in 0.457 vs disc_circ 100 % dlk + floor collapse); 0 wall
+    violations, 0 falls beside REAL walls.
+  - **e35 velocity-aware** ✅ dose-response ordering identical; Isaac floors
+    uniformly 0.06–0.17 m lower, gap grows with speed (tracking-error margin
+    erosion — the embodiment effect the experiment predicts). No falls at
+    vmax 2.0.
+  - Systematic embodiment deltas so far (consistent, explainable):
+    makespan +18–20 %, floors ~0.05–0.15 m lower, small viol-step counts
+    where kinesim had zero.
+  Backend probe findings baked in: (1) go2 asset root-prim z reads ~0.22
+  standing / ~0.10 mid-gait → fall detection is tilt-only; (2) policy
+  under-tracks ~20 % (cmd 1.0 → 0.83 m/s, 1.5 → 1.2). Speed: batched policy
+  runtime (one (N,48) inference for all dogs, 8.6× on the policy path) + ≤4
+  parallel arenas ⇒ ~2.2× suite throughput; remaining bottleneck is PhysX
+  itself (~7 ms/step @ 8 dogs).
+
+  **Architecture (refactored 2026-07-18, second pass)** — one source of truth,
+  two backends, shared plumbing (design details live ONLY in
+  `experiments/isaac/README.md`; this is the map):
+
+  | piece | file | role |
+  |---|---|---|
+  | sweep manifest | `common/registry.py` | ALL E2/E3.x/E4.x conditions, defined once (`build_experiments()` + `KINESIM_DIRS`) |
+  | checkpoint IO | `common/sweep_io.py` | per-episode jsonl append + resume + csv/agg/summary finalize (both backends) |
+  | Isaac backend | `isaac/sim_backend.py` | `Go2Pool` (K arenas × S dogs, one world) + `IsaacArenaSim(KineSim)` tick API |
+  | Isaac runner | `isaac/runner.py` | multi-arena scheduler (≤4 episodes in parallel, barrier on wall change) |
+  | entry points | `isaac/run_isaac_suite.py`, `run_kinesim_suite.py` | same manifest, Isaac vs kinesim execution |
+  | comparison | `isaac/compare.py` | seed-matched side-by-side → `isaac/results/COMPARISON.md` |
+
+  The 12 historical `run_e*.py` stay as the pydam/raw/orca + E3.7-census entry
+  points — do NOT add new conditions there, add them to the registry.
+
 ## Local environment (IMPORTANT)
 
 Use the DAM dev venv for anything needing torch/osqp/dam — **on this Mac**:

@@ -79,3 +79,4 @@ NvStreamer-*.etli
 
 # Thesis experiment outputs (regenerable)
 experiments/results/
+experiments/isaac/results/
