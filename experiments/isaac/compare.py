@@ -81,7 +81,8 @@ def _flag(kv, kc, iv, ic) -> str:
     return "≈" if abs(kv - iv) <= tol else "≠"
 
 
-def compare_experiment(key: str, exp, kdir: Path, idir: Path) -> str | None:
+def collect(exp, kdir: Path, idir: Path) -> list[tuple] | None:
+    """[(scenario, condition, n_seeds, isaac_falls, k_agg, i_agg)] on matched seeds."""
     krows, irows = load_rows(kdir), load_rows(idir)
     if not krows or not irows:
         return None
@@ -89,9 +90,7 @@ def compare_experiment(key: str, exp, kdir: Path, idir: Path) -> str | None:
     for src, rows in (("kinesim", krows), ("isaac", irows)):
         for r in rows:
             cells.setdefault((r["scenario"], r["condition"]), {}).setdefault(src, []).append(r)
-
-    lines = [f"## {exp.name} — kinesim (real dam) vs Isaac (Go2 + real dam)", ""]
-    fields = exp.md_fields
+    out = []
     for (scen, cond), by_src in sorted(cells.items()):
         k, i = by_src.get("kinesim", []), by_src.get("isaac", [])
         seeds = sorted({r["seed"] for r in k} & {r["seed"] for r in i})
@@ -99,14 +98,20 @@ def compare_experiment(key: str, exp, kdir: Path, idir: Path) -> str | None:
             continue
         k = [r for r in k if r["seed"] in seeds]
         i = [r for r in i if r["seed"] in seeds]
-        ka = aggregate(k, keys=("scenario", "condition"))[0]
-        ia = aggregate(i, keys=("scenario", "condition"))[0]
-        falls = sum(r.get("n_falls", 0) for r in i)
-        lines.append(f"### {scen} / {cond}  (n={len(seeds)} matched seeds"
+        out.append((scen, cond, len(seeds), sum(r.get("n_falls", 0) for r in i),
+                    aggregate(k, keys=("scenario", "condition"))[0],
+                    aggregate(i, keys=("scenario", "condition"))[0]))
+    return out
+
+
+def render_markdown(exp, cells: list[tuple]) -> str:
+    lines = [f"## {exp.name} — kinesim (real dam) vs Isaac (Go2 + real dam)", ""]
+    for scen, cond, n, falls, ka, ia in cells:
+        lines.append(f"### {scen} / {cond}  (n={n} matched seeds"
                      + (f", isaac falls={falls}" if falls else "") + ")")
         lines.append("| metric | kinesim | isaac | match |")
         lines.append("|---|---|---|---|")
-        for f in fields:
+        for f in exp.md_fields:
             base = f[:-5] if f.endswith("_rate") else f
             if f not in ka and f not in ia and base not in ka:
                 continue
@@ -117,25 +122,86 @@ def compare_experiment(key: str, exp, kdir: Path, idir: Path) -> str | None:
     return "\n".join(lines)
 
 
+# Two fixed categorical slots (validated reference palette; never re-assigned):
+_C_KINESIM = "#2a78d6"   # slot 1 (blue)  — kinesim, always
+_C_ISAAC = "#1baf7a"     # slot 2 (aqua)  — Isaac, always
+_PANELS = [("min_dogdog_m", "min capsule distance (m)"),
+           ("makespan_s", "makespan (s)"),
+           ("all_done", "completion rate")]
+
+
+def render_figure(key: str, exp, cells: list[tuple], fig_dir: Path) -> Path:
+    """One PNG per experiment: paired bars kinesim-vs-Isaac per condition with
+    95% CI whiskers, one panel per headline metric, shared category axis."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    labels = [f"{scen}\n{cond}" for scen, cond, *_ in cells]
+    x = range(len(labels))
+    fig, axes = plt.subplots(len(_PANELS), 1, sharex=True,
+                             figsize=(max(6.4, 1.05 * len(labels) + 1.5),
+                                      2.2 * len(_PANELS)))
+    for ax, (field, title) in zip(axes, _PANELS):
+        rate = field + "_rate"
+        for off, src, color, idx in ((-0.19, "kinesim", _C_KINESIM, 4),
+                                     (0.19, "isaac", _C_ISAAC, 5)):
+            agg = [c[idx] for c in cells]
+            fk = [rate if rate in a else field for a in agg]
+            vals = [a.get(f, math.nan) for a, f in zip(agg, fk)]
+            errs = [a.get(f + "_ci95") or 0.0 for a, f in zip(agg, fk)]
+            ax.bar([xi + off for xi in x], vals, width=0.36, color=color,
+                   yerr=errs, error_kw={"elinewidth": 1, "ecolor": "#666660"},
+                   label=src, edgecolor="white", linewidth=0.8, zorder=3)
+        ax.set_title(title, fontsize=9, loc="left", color="#40403a")
+        ax.grid(axis="y", color="#e8e8e3", linewidth=0.8, zorder=0)
+        ax.tick_params(labelsize=8, color="#c3c2b7")
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        for side in ("left", "bottom"):
+            ax.spines[side].set_color("#c3c2b7")
+        if field == "min_dogdog_m":
+            ax.axhline(0.7, color="#8a8a82", linewidth=1, linestyle=(0, (4, 3)))
+            ax.annotate("hard floor 0.7 m", xy=(-0.45, 0.7),
+                        fontsize=7, color="#6f6f67", ha="left", va="bottom")
+    axes[0].legend(loc="upper right", fontsize=8, frameon=False)
+    axes[-1].set_xticks(list(x), labels, fontsize=7.5)
+    fig.suptitle(f"{exp.name}: kinesim vs Isaac (matched seeds)", fontsize=11,
+                 x=0.02, ha="left", color="#26261f")
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    path = fig_dir / f"cmp_{key}.png"
+    fig.savefig(path, dpi=150, facecolor="white")
+    plt.close(fig)
+    return path
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="kinesim vs Isaac comparison")
     ap.add_argument("--exp", default="all")
     ap.add_argument("--kinesim-root", default=str(REPO / "experiments/results"))
     ap.add_argument("--isaac-root", default=str(_HERE / "results"))
     ap.add_argument("--out", default=str(_HERE / "results/COMPARISON.md"))
+    ap.add_argument("--no-figures", action="store_true",
+                    help="skip PNG generation (figures land in results/figures/)")
     args = ap.parse_args()
 
     exps = build_experiments()
     keys = list(exps) if args.exp == "all" else \
         [k.strip() for k in args.exp.split(",") if k.strip()]
+    fig_dir = Path(args.isaac_root) / "figures"
     sections = []
     for k in keys:
         exp = exps[k]
-        sec = compare_experiment(k, exp, Path(args.kinesim_root) / KINESIM_DIRS[k],
-                                 Path(args.isaac_root) / exp.key)
-        if sec is None:
+        cells = collect(exp, Path(args.kinesim_root) / KINESIM_DIRS[k],
+                        Path(args.isaac_root) / exp.key)
+        if not cells:
             print(f"[compare] {k}: missing episodes on one side — skipped")
             continue
+        sec = render_markdown(exp, cells)
+        if not args.no_figures:
+            fig = render_figure(k, exp, cells, fig_dir)
+            sec += f"\n![{exp.name} comparison](figures/{fig.name})\n"
         sections.append(sec)
         print(f"[compare] {k}: ok")
     out = Path(args.out)
