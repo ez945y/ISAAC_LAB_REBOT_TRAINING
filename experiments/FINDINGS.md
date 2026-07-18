@@ -147,6 +147,32 @@ also *determinism of the failure mode*. Thesis: report both outcomes as the
 two faces of the same F7 regime; the Isaac rerun (osqp 1.0.5) shows a third:
 0.6 completion + 6 falls from congestion contact.
 
+## Isaac-in-the-loop rerun — final verdict (2026-07-18, 655 episodes)
+
+Full suite (E2, E3.1–3.7, E4.1–4.5) re-executed with real Go2 RL locomotion +
+PhysX + real dam 0.7 Guardrail, seed-matched against the kinesim dam pool
+(tables+figures: `experiments/isaac/results/COMPARISON.md`).
+
+**Every thesis-level qualitative claim survives the embodiment**: the E2
+Pareto story (dam uniquely safe+live+completing; stop 100% freeze; raw now
+PHYSICALLY crashes — 4 falls), capsule>disc, velocity-aware dose-response,
+monotone γ curve incl. the γ0.7 wedge anomaly, latency-binds-first, rogue
+dose-dependence, perfect liveness scaling to N=16 (0 falls, filter p99
+1.35 ms ≈ 7 % of the 50 Hz budget).
+
+**Systematic quantitative deltas (all explained by ~20 % command
+under-tracking):** makespan +18–20 %; hard floors 0.05–0.17 m lower, gap
+growing with commanded speed and crowd density (N≥12: 0.35 vs 0.47–0.51);
+small viol-step counts where kinesim had zero.
+
+**Embodiment-only findings:** (1) perfect-symmetry deadlocks don't materialise
+— gait asymmetry breaks ties kinesim can't; (2) congestion produces real
+contact falls (E3.3 hard_only: 6, E2 raw: 4) — "deadlock" understates what
+congestion does to legged robots; (3) E4.3 slack telemetry is even blinder on
+hardware-like execution (Pearson +0.17 vs +0.50; 292 QP-blind viol episodes)
+— the dual-channel monitoring recommendation is mandatory, not optional;
+(4) F12 solver-version sensitivity of hard_only.
+
 ## Handoff notes (historical, kinesim phase)
 
 1. **DAM 0.7 breaking change**: dam 0.7 renamed `SafetyGuard`→`Guardrail` and

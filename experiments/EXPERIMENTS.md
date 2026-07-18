@@ -130,16 +130,16 @@ live progress: `python experiments/isaac/status.py`.
 | E2 baselines | ✅ (Pareto story; pydam≡dam) | ✅ story holds; raw physically crashes (4 falls); S3 dam 3/10 funnel wedge |
 | E3.1 priority | ✅ | ✅ consistent |
 | E3.2 swirl | ✅ (F4 fix) | ✅ consistent |
-| E3.3 layering | ✅ | 🔄 running — hard_only COMPLETES on Isaac (gait dither frees the wedge) |
+| E3.3 layering | ✅ | ✅ ordering holds; hard_only shows 3rd failure face (0.6 done + 6 falls); see F12 |
 | E3.4 capsule | ✅ | ✅ consistent (headline claim reproduces) |
 | E3.5 velocity-aware | ✅ | ✅ dose-response identical; floors 0.06–0.17 m lower with speed |
-| E3.6 γ/dt | ✅ | ⬜ queued |
-| E3.7 gradient | ✅ | ⬜ queued |
-| E4.1 exec noise | ✅ | ⬜ queued |
-| E4.2 obs noise/latency | ✅ | ⬜ queued |
-| E4.3 slack collation | ✅ | (collation over both pools once done) |
-| E4.4 rogue | ✅ | ⬜ queued |
-| E4.5 scale | ✅ | ⬜ queued |
+| E3.6 γ/dt | ✅ | ✅ monotone γ curve + γ0.7 S3 wedge anomaly reproduce |
+| E3.7 gradient | ✅ | ✅ analytic>autograd floor + latency ratio reproduce |
+| E4.1 exec noise | ✅ | ✅ graceful-to-a-fault reproduces (dither even helps) |
+| E4.2 obs noise/latency | ✅ | ✅ latency-binds-first ladder reproduces (floors −0.06–0.09) |
+| E4.3 slack collation | ✅ | ✅ done — Isaac Pearson(slack,viol) +0.17 vs kinesim +0.50: dual-channel conclusion STRONGER on real embodiment |
+| E4.4 rogue | ✅ | ✅ dose-dependent dip, no catastrophe |
+| E4.5 scale | ✅ | ✅ 100% liveness at every N, 0 falls @16 dogs, p99 1.35 ms; density erosion deeper (N≥12) |
 
 Systematic embodiment deltas so far: makespan +18–20 % (policy under-tracks
 ~20 %), hard floors ~0.05–0.17 m lower, small viol counts where kinesim had 0.
