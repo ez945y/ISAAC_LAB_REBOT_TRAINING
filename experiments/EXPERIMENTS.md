@@ -144,7 +144,10 @@ python3 experiments/tests/test_capsule_geometry.py
   report near-zero slack. Verified step-by-step: each dog satisfies its
   half-share constraint with EQUALITY (g·du = 0.5·req, slack 0), the shares
   sum to the full requirement — yet realized distance violates the CBF bound
-  by ~0.17 m per horizon. Cause: d_pred projects the predicted positions of
+  by ~0.17 m per horizon. Root cause is the necessary consequence of
+  finite-horizon linearization (NOT a mistuned knob): to write a linear QP
+  constraint you must freeze the approach direction for one horizon. Cause:
+  d_pred projects the predicted positions of
   the CURRENT closest-point pair onto the CURRENT normal; at 90° with
   tangential relative motion the closest pair slides along the spines and the
   normal rotates within the 0.2 s horizon, so real closure is second-order
