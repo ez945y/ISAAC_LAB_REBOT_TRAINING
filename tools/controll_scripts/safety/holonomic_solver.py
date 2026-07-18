@@ -37,6 +37,11 @@ class HolonomicSolver:
     default_dt: float = 1.0 / 60.0
     max_v: float = 1.5      # linear cap per body axis (m/s), >= the policy's command range
     max_omega: float = 2.0  # yaw-rate cap (rad/s)
+    # Optional separate LATERAL cap (m/s). None -> max_v (holonomic, default —
+    # behaviour unchanged). 0.0 models a nonholonomic differential-drive base:
+    # the guard's QP then cannot buy safety with a sidestep and must brake/turn
+    # (RQ1 cross-embodiment, E1.2).
+    max_vy: float | None = None
 
     def rollout(self, state, command, dt: float | None = None) -> torch.Tensor:
         """Predict the next planar state from ``state`` and ``[vx, vy, omega]``.
@@ -73,8 +78,9 @@ class HolonomicSolver:
         cmd = _as_tensor(command).reshape(-1)
         if cmd.numel() != 3:
             raise ValueError(f"HolonomicSolver expected command [vx, vy, omega], got {tuple(cmd.shape)}")
+        mvy = self.max_v if self.max_vy is None else self.max_vy
         return torch.stack([
             torch.clamp(cmd[0], -self.max_v, self.max_v),
-            torch.clamp(cmd[1], -self.max_v, self.max_v),
+            torch.clamp(cmd[1], -mvy, mvy),
             torch.clamp(cmd[2], -self.max_omega, self.max_omega),
         ])

@@ -74,6 +74,13 @@ class SimConfig:
     exec_noise_std: float = 0.0    # E4.1: gaussian noise on the EXECUTED world velocity (m/s)
     obs_noise_std: float = 0.0     # E4.2: gaussian noise on observed neighbour positions (m)
     obs_delay_steps: int = 0       # E4.2: neighbour observations delayed by k control steps
+    cmd_delay_steps: int = 0       # E1.3: ACTUATION latency — the executed command is the
+    #                                filtered command from k control steps ago (transport
+    #                                delay between compute and actuation; 0 = instantaneous)
+    diff_drive: bool = False       # E1.2: differential-drive base — the nominal controller
+    #                                emits [v, 0, omega] (heading-first unicycle P-control;
+    #                                no strafe). Pair with a max_vy=0 guard so the QP cannot
+    #                                buy safety laterally either.
     # -- perception budget ---------------------------------------------------
     # Only the nearest K static (wall) points within this range are fed to the
     # filter: along a straight wall the nearest points geometrically dominate
@@ -104,6 +111,9 @@ class KineSim:
         self._rng = random.Random(rng_seed)   # noise source (exec/obs), episode-reproducible
         self._hist: deque = deque(maxlen=max(1, self.cfg.obs_delay_steps + 1))
         self._obs: dict = {}                   # aid -> observed (x, y, wvx, wvy, yaw)
+        # E1.3 actuation delay: per-agent FIFO of filtered commands; the oldest
+        # entry is what actually reaches the base this step (zeros during warmup).
+        self._cmd_q: dict = {}                 # aid -> deque of safe cmds
 
     # -- nominal controller: body-frame P-control toward the goal ------------
     def nominal(self, ag: AgentState) -> tuple[float, float, float]:
@@ -132,6 +142,14 @@ class KineSim:
         dist = math.hypot(dx, dy)
         if dist < c.goal_tol:
             return (0.0, 0.0, 0.0)
+        if c.diff_drive:
+            # Unicycle P-control: turn toward the target, drive forward scaled by
+            # heading alignment (no reverse, no strafe) — standard diff-drive
+            # go-to-goal. The cos gating stops it driving while facing away.
+            err = wrap_angle(math.atan2(dy, dx) - ag.yaw)
+            om = max(-c.wmax, min(c.wmax, c.k_yaw * err))
+            v = min(c.vmax, c.k_lin * dist) * max(0.0, math.cos(err))
+            return (v, 0.0, om)
         # Desired world velocity, capped, rotated into the body frame.
         scale = min(1.0, c.vmax / max(c.k_lin * dist, 1e-9)) * c.k_lin
         wvx, wvy = scale * dx, scale * dy
@@ -214,6 +232,12 @@ class KineSim:
             # 2) integrate (first-order holonomic, same as the guard's model)
             for aid, (raw, safe) in pending.items():
                 ag = self.agents[aid]
+                if c.cmd_delay_steps > 0:
+                    q = self._cmd_q.setdefault(
+                        aid, deque([(0.0, 0.0, 0.0)] * c.cmd_delay_steps,
+                                   maxlen=c.cmd_delay_steps + 1))
+                    q.append(safe)
+                    safe = q.popleft()
                 vx, vy, om = safe
                 vx = max(-c.vmax, min(c.vmax, vx))
                 vy = max(-c.vmax, min(c.vmax, vy))

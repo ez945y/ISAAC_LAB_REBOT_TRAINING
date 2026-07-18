@@ -277,8 +277,12 @@ def go2_min_max_separation(
         return r
 
     rows += [_row([(0, 1.0)]), _row([(1, 1.0)]), _row([(2, 1.0)])]  # actuator deltas
-    lo += [-solver.max_v - vx, -solver.max_v - vy, -solver.max_omega - om]
-    hi += [solver.max_v - vx, solver.max_v - vy, solver.max_omega - om]
+    # Lateral cap may differ (max_vy=0 -> differential drive: no sidestep,
+    # the QP must resolve conflicts with braking/turning only — E1.2).
+    _mvy = getattr(solver, "max_vy", None)
+    _mvy = solver.max_v if _mvy is None else _mvy
+    lo += [-solver.max_v - vx, -_mvy - vy, -solver.max_omega - om]
+    hi += [solver.max_v - vx, _mvy - vy, solver.max_omega - om]
     for k in range(m):                                              # slacks >= 0
         rows.append(_row([(3 + k, 1.0)])); lo.append(0.0); hi.append(np.inf)
 

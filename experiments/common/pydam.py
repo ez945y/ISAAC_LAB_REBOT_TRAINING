@@ -49,6 +49,7 @@ class PyDamFilter:
         swirl: float = 0.6,
         max_v: float = 1.5,
         max_omega: float = 2.0,
+        max_vy: float | None = None,  # E1.2: separate lateral cap; 0.0 = diff drive
         velocity_aware: bool = True,   # ablation E3.5: False -> neighbours treated as static
         cost_diag: tuple = (2.0, 0.5, 3.0),
         wall_min_dist: float | None = None,  # ablation E3.4: separate hard floor
@@ -63,6 +64,7 @@ class PyDamFilter:
             dt=dt, gamma=gamma, influence=influence, lam_min=lam_min,
             w_hard=w_hard, w_soft=w_soft, capsule_half=capsule_half, swirl=swirl,
             max_v=max_v, max_omega=max_omega,
+            max_vy=max_v if max_vy is None else max_vy,
             wall_min_dist=min_dist if wall_min_dist is None else wall_min_dist,
         )
         self.velocity_aware = velocity_aware
@@ -85,7 +87,7 @@ class PyDamFilter:
 
         # rollout (same first-order holonomic model as HolonomicSolver)
         vxc = max(-p["max_v"], min(p["max_v"], vx))
-        vyc = max(-p["max_v"], min(p["max_v"], vy))
+        vyc = max(-p["max_vy"], min(p["max_vy"], vy))
         omc = max(-p["max_omega"], min(p["max_omega"], om))
         nx0 = cx + (vxc * cs - vyc * sn) * dt
         ny0 = cy + (vxc * sn + vyc * cs) * dt
@@ -193,7 +195,7 @@ class PyDamFilter:
                          "jac": (lambda z, gi=gi, ki=ki: -_row(n, gi, ki, -1.0))})
 
         bounds = [(-p["max_v"] - vx, p["max_v"] - vx),
-                  (-p["max_v"] - vy, p["max_v"] - vy),
+                  (-p["max_vy"] - vy, p["max_vy"] - vy),
                   (-p["max_omega"] - om, p["max_omega"] - om)] + [(0.0, None)] * m
 
         def cost(z):

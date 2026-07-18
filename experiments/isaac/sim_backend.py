@@ -355,6 +355,12 @@ class IsaacArenaSim(KineSim):
         self._max_steps = int(round(self.cfg.max_time / self.cfg.dt))
         self._rec: StepRecord | None = None
         self._dyn_ids = [aid for aid, ag in self.agents.items() if not ag.spec.static]
+        # E1.3 actuation delay (mirrors kinesim): FIFO of filtered commands per
+        # dog; the executed command is cmd_delay_steps control ticks old.
+        from collections import deque as _deque
+        self._cmd_q = {aid: _deque([(0.0, 0.0, 0.0)] * self.cfg.cmd_delay_steps,
+                                   maxlen=self.cfg.cmd_delay_steps + 1)
+                       for aid in self._dyn_ids} if self.cfg.cmd_delay_steps > 0 else None
         if len(self._dyn_ids) > pool.S:
             raise ValueError(f"scenario needs {len(self._dyn_ids)} dogs but arena "
                              f"slots={pool.S}; configure() the pool first")
@@ -410,6 +416,10 @@ class IsaacArenaSim(KineSim):
             rec.raw_cmds[aid] = raw
             rec.safe_cmds[aid] = safe
             rec.decisions[aid] = info
+            if self._cmd_q is not None:
+                q = self._cmd_q[aid]
+                q.append(safe)
+                safe = q.popleft()
             vx = max(-c.vmax, min(c.vmax, safe[0]))
             vy = max(-c.vmax, min(c.vmax, safe[1]))
             om = max(-c.wmax, min(c.wmax, safe[2]))

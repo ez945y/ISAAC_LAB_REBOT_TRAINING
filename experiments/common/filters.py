@@ -139,7 +139,7 @@ class DamFilter:
     name = "dam"
 
     #: knobs that configure the rollout solver rather than the callback
-    _SOLVER_KNOBS = ("max_v", "max_omega")
+    _SOLVER_KNOBS = ("max_v", "max_omega", "max_vy")
 
     def __init__(self, stackfile: str = "go2_squad_safety.yaml", device: str = "cpu",
                  **knobs):

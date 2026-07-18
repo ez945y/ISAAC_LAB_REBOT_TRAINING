@@ -170,6 +170,20 @@ def build_experiments() -> dict[str, Experiment]:
         seeds=5, max_dogs=4,
     )
 
+    # -- E1.3 actuation-latency injection (RQ1: compute->actuation transport)
+    exps["e13"] = Experiment(
+        "E1.3", "e13_actlatency", ["S2", "S3"],
+        [
+            Condition(label=f"act_delay_{k * 20}ms", make_filter=_dam,
+                      sim_overrides={"cmd_delay_steps": k})
+            for k in (0, 1, 2, 5)
+        ],
+        ["min_dogdog_m", "viol_steps_dog", "viol_steps_wall",
+         "all_done_rate", "deadlock_rate", "makespan_s", "mean_dcmd",
+         "max_hard_slack_m"],
+        seeds=10, max_dogs=4,
+    )
+
     # -- E4.1 tracking-error injection (run_e41_tracking.py) -----------------
     exps["e41"] = Experiment(
         "E4.1", "e41_tracking", ["S2", "S3"],
@@ -237,6 +251,7 @@ def build_experiments() -> dict[str, Experiment]:
 # experiment key -> kinesim reference results dir under experiments/results/
 # (produced by the original run_e*.py scripts / run_kinesim_suite.py)
 KINESIM_DIRS = {
+    "e13": "e13_actlatency_dam",
     "e2": "e2_full",
     "e31": "e31_priority_dam",
     "e32": "e32_swirl_dam",
