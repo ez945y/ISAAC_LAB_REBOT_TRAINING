@@ -130,6 +130,23 @@ in `experiments/isaac/results/COMPARISON.md` (regenerable).
   tested on deconfliction INSIDE the funnel, not on global planning. Thesis
   framing: layered safety filter ≠ planner; cite as scope boundary.
 
+## F12 hard_only is solver-version-sensitive (found by the 2026-07-18 regen)
+
+Regenerating the kinesim dam pool on the Isaac machine (dam v0.7.0 tag,
+osqp 1.0.5) reproduced the thesis numbers EXACTLY for E2 (all 15 cells),
+E3.2, E3.4, E3.5 — but E3.3's **hard_only** flipped: thesis (Mac, dam 0.7-dev,
+osqp 1.1.3) recorded 95% deadlock parked inside the floor (viol 2742, slack
+0.447); here it is 100% completion with wall-scraping transit (makespan 18.2 s,
+minDD 0.314, viol 503, viol_wall 201, slack 0.652). layered and comfort_hard
+are unchanged. Interpretation: hard_only lives on the infeasibility knife edge
+(F7) — the emergent outcome (wedge vs squeeze-through) is decided by which
+slack split the QP solver returns under heavy infeasibility, so it is
+sensitive to solver version/numerics. The LAYERED guard is robust across
+solver versions; losing the soft layer costs not just safety+liveness but
+also *determinism of the failure mode*. Thesis: report both outcomes as the
+two faces of the same F7 regime; the Isaac rerun (osqp 1.0.5) shows a third:
+0.6 completion + 6 falls from congestion contact.
+
 ## Handoff notes (historical, kinesim phase)
 
 1. **DAM 0.7 breaking change**: dam 0.7 renamed `SafetyGuard`→`Guardrail` and
