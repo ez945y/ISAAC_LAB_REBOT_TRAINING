@@ -96,6 +96,9 @@ class _NeighborHolder:
                           "False -> treat neighbours as static (ablation E3.5).",
         "grad_mode": "'analytic' (default): overshoot-safe frozen-normal surrogate gradient. "
                      "'autograd': naive true-distance gradient via torch (ablation E3.7).",
+        "drive_mode": "'holonomic' (default) or 'differential' (E1.2): a diff-drive base "
+                      "has no lateral channel, so the QP's cheap-sidestep cost profile and "
+                      "the swirl's lateral bias are remapped to steering (yaw).",
     },
 )
 def go2_min_max_separation(
@@ -117,6 +120,7 @@ def go2_min_max_separation(
     wall_min_dist: float | None = None,
     velocity_aware: bool = True,
     grad_mode: str = "analytic",
+    drive_mode: str = "holonomic",
     **_kwargs,
 ):
     """L1 boundary with priority-weighted responsibility (emergent yielding).
@@ -297,7 +301,10 @@ def go2_min_max_separation(
     # Cost weights on [du_vx, du_vy, du_omega]: braking (du_vx) is EXPENSIVE and a
     # lateral sidestep (du_vy) is CHEAP, so the QP slides around a neighbour instead
     # of stopping dead in its path; yaw is dearest (prefer strafe over re-heading).
-    P = sparse.csc_matrix(np.diag([2.0, 0.5, 3.0] + slack_w))
+    # A differential drive has no sidestep — steering IS its lateral mechanism, so
+    # yaw becomes the cheap axis instead (E1.2 kinematic adapter).
+    diag3 = [2.0, 0.5, 3.0] if drive_mode != "differential" else [2.0, 0.5, 0.5]
+    P = sparse.csc_matrix(np.diag(diag3 + slack_w))
     q = np.zeros(n)
     # SWIRL (liveness): a gentle tangential bias around the nearest neighbour makes
     # conflicting dogs circulate the SAME way instead of standing off head-on or
@@ -316,6 +323,12 @@ def go2_min_max_separation(
         tx, ty = -nearest_n[1], nearest_n[0]
         q[0] = -scale * (tx * cs + ty * sn)
         q[1] = -scale * (-tx * sn + ty * cs)
+        if drive_mode == "differential":
+            # No lateral channel to bias: circulate by STEERING toward the
+            # tangent instead. cross(heading, tangent) is the signed heading
+            # error to the tangent direction — bias du_omega to close it.
+            q[1] = 0.0
+            q[2] = -scale * (cs * ty - sn * tx)
     A = sparse.csc_matrix(np.array(rows, dtype=float))
     prob = osqp.OSQP()
     prob.setup(P, q, A, np.array(lo), np.array(hi), verbose=False, eps_abs=1e-5, eps_rel=1e-5)

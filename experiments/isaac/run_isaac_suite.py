@@ -65,6 +65,7 @@ def _register_deprecated() -> None:
 _register_deprecated()
 _enable("isaacsim.core.api")
 _enable("isaacsim.robot.policy.examples")
+_enable("isaacsim.robot.wheeled_robots")   # Carter embodiment (E1.2)
 simulation_app.update()
 
 sys.path.insert(0, str(_HERE))          # sim_backend / runner as top-level modules
@@ -72,7 +73,7 @@ sys.path.insert(0, str(_HERE.parent))   # experiments/common
 
 from common.registry import build_experiments
 from runner import run_experiment_isaac
-from sim_backend import Go2Pool
+from sim_backend import make_pool
 
 
 def main() -> int:
@@ -84,9 +85,15 @@ def main() -> int:
         print(f"unknown experiment keys: {unknown} (have {list(exps)})")
         return 1
 
+    embodiments = {exps[k].embodiment for k in keys}
+    if len(embodiments) > 1:
+        print(f"one embodiment per invocation (got {embodiments}); "
+              f"run e12 separately from the go2 experiments")
+        return 1
+    emb = embodiments.pop()
     print(f"[suite] running {keys} (seeds override={args.seeds}); "
-          f"building world + Go2 pool...", flush=True)
-    pool = Go2Pool()
+          f"building world + {emb} pool...", flush=True)
+    pool = make_pool(emb)
     t0 = time.perf_counter()
     for k in keys:
         exp = exps[k]

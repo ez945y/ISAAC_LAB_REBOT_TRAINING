@@ -75,8 +75,15 @@ def capture_workload(config: str, seeds: int) -> list[tuple]:
 
 
 def bench(calls: list[tuple], runs: int) -> dict:
-    """Replay ``calls`` against a fresh guard ``runs`` times; full stats."""
-    out: dict = {"n_calls": len(calls), "runs": []}
+    """Replay ``calls`` against a fresh guard ``runs`` times; full stats.
+
+    The last run also records the number of ACTIVE QP constraints per call
+    (n_push + n_pull from the guard's telemetry): latency is a function of the
+    QP size, and the constraint count is bounded by construction (static
+    neighbours culled to 6, dynamics ≤ N-1, ≤ 2 constraints each) — so the
+    per-bucket distribution is the PREDICTABILITY evidence (RQ1).
+    """
+    out: dict = {"n_calls": len(calls), "runs": [], "by_constraints": {}}
     for run_idx in range(runs):
         filt = make_filter("dam")
         t0 = time.perf_counter()
@@ -85,11 +92,25 @@ def bench(calls: list[tuple], runs: int) -> dict:
         for c in calls[:200]:                          # warmup
             filt.filter(*c[:4], self_priority=c[4])
         lat = []
+        ncons = []
         for c in calls:
             t0 = time.perf_counter()
-            filt.filter(*c[:4], self_priority=c[4])
+            _safe, info = filt.filter(*c[:4], self_priority=c[4])
             lat.append((time.perf_counter() - t0) * 1e3)
+            ncons.append(int(info.get("n_push", 0)) + int(info.get("n_pull", 0)))
         filt.close()
+        if run_idx == runs - 1:
+            buckets: dict[int, list] = {}
+            for ms, nc in zip(lat, ncons):
+                buckets.setdefault(nc, []).append(ms)
+            for nc, v in sorted(buckets.items()):
+                v.sort()
+                out["by_constraints"][nc] = {
+                    "n": len(v),
+                    "p50_ms": round(v[len(v) // 2], 4),
+                    "p99_ms": round(v[min(len(v) - 1, int(0.99 * len(v)))], 4),
+                    "max_ms": round(v[-1], 4),
+                }
         lat.sort()
 
         def pct(p):
@@ -187,6 +208,17 @@ def main() -> int:
             f"| {cfg} | {res['n_calls']} | {worst['p50_ms']:.3f} | {worst['p90_ms']:.3f} | "
             f"{worst['p99_ms']:.3f} | {worst['p999_ms']:.3f} | {worst['max_ms']:.3f} | "
             f"{worst['over_2ms']} | {worst['over_20ms']} | {cold:.1f} | {xs} |")
+    # -- predictability: latency vs active-constraint count (pooled N16 + walls)
+    lines += ["", "## Predictability: latency vs active QP constraints", "",
+              "Constraint count is bounded by construction (≤ 6 culled statics + "
+              "N−1 dynamics, ≤ 2 constraints each), so worst-case latency is a "
+              "bounded function of squad size — not an open-ended tail.", "",
+              "| workload | active constraints | calls | p50 | p99 | max |",
+              "|---|---|---|---|---|---|"]
+    for cfg in ("S5xN16", "S3walls"):
+        for nc, st in results[cfg]["by_constraints"].items():
+            lines.append(f"| {cfg} | {nc} | {st['n']} | {st['p50_ms']:.3f} | "
+                         f"{st['p99_ms']:.3f} | {st['max_ms']:.3f} |")
     md = "\n".join(lines) + "\n"
     (out_dir / "summary.md").write_text(md)
     print("\n" + md)

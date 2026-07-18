@@ -327,6 +327,98 @@ class Go2Pool:
         return (x - ox, y - oy, yaw, upright)
 
 
+class CarterPool(Go2Pool):
+    """Differential-drive embodiment (E1.2): NVIDIA Carter v1, velocity-driven
+    wheels, no RL policy — the [v, omega] command maps kinematically to wheel
+    speeds. Same world/wall/arena machinery as Go2Pool; only the body differs.
+    The guard's vy channel is unused (pair with max_vy=0 + diff_drive nominal)."""
+
+    USD = "/Isaac/Robots/NVIDIA/Carter/carter_v1.usd"
+    WHEEL_DOFS = ["left_wheel", "right_wheel"]
+    WHEEL_RADIUS = 0.24
+    WHEEL_BASE = 0.54
+    SPAWN_Z = 0.3
+
+    def _grow_to(self, n: int) -> None:
+        from isaacsim.robot.wheeled_robots.robots import WheeledRobot
+        from isaacsim.storage.native import get_assets_root_path
+
+        while len(self.dogs) < n:
+            i = len(self.dogs)
+            px, py = self._park_xy(i)
+            robot = WheeledRobot(
+                prim_path=f"/World/Carter_{i}", name=f"carter_{i}",
+                wheel_dof_names=list(self.WHEEL_DOFS), create_robot=True,
+                usd_path=get_assets_root_path() + self.USD,
+                position=[px, py, self.SPAWN_Z])
+            self.world.scene.add(robot)
+            self.dogs.append(robot)
+            self._needs_reset = True
+
+    def configure(self, arenas: int, slots: int, wall_specs: list) -> None:
+        self.K, self.S = arenas, slots
+        self._grow_to(arenas * slots)
+        self._set_walls(wall_specs)
+        if self._needs_reset:
+            self.world.reset()          # scene-registered robots re-initialize here
+            self._needs_reset = False
+
+    def teleport_arena(self, arena: int, starts: list[tuple]) -> None:
+        import numpy as np
+
+        ox, oy = self.offset(arena)
+        for i in range(self.S):
+            robot = self.dogs[self.slot(arena, i)]
+            if i < len(starts):
+                x, y, yaw = starts[i]
+                x, y = x + ox, y + oy
+            else:
+                (x, y), yaw = self._park_xy(self.slot(arena, i)), 0.0
+            robot.set_world_pose(position=np.array([x, y, self.SPAWN_Z]),
+                                 orientation=np.array(_yaw_quat(yaw)))
+            robot.set_linear_velocity(np.zeros(3))
+            robot.set_angular_velocity(np.zeros(3))
+            robot.set_joint_velocities(np.zeros(robot.num_dof))
+
+    def step_physics(self, cmds: list[tuple]) -> None:
+        import numpy as np
+        from isaacsim.core.utils.types import ArticulationAction
+
+        t0 = time.perf_counter()
+        r, b = self.WHEEL_RADIUS, self.WHEEL_BASE
+        for robot, (v, _vy, om) in zip(self.dogs, cmds):
+            wl = (v - om * b / 2.0) / r
+            wr = (v + om * b / 2.0) / r
+            robot.apply_wheel_actions(ArticulationAction(
+                joint_velocities=np.array([wl, wr])))
+        t1 = time.perf_counter()
+        self.world.step(render=False)
+        self._pose_cache = None
+        p = self._prof
+        p["apply_s"] += t1 - t0
+        p["world_s"] += time.perf_counter() - t1
+        p["steps"] += 1
+
+    def _refresh_poses(self) -> None:
+        cache = []
+        for robot in self.dogs:
+            pos, quat = robot.get_world_pose()   # quat (w, x, y, z)
+            w, x, y, z = (float(quat[0]), float(quat[1]),
+                          float(quat[2]), float(quat[3]))
+            yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+            upright = 1.0 - 2.0 * (x * x + y * y)
+            cache.append((float(pos[0]), float(pos[1]), yaw, upright))
+        self._pose_cache = cache
+
+
+def make_pool(embodiment: str):
+    if embodiment == "go2":
+        return Go2Pool()
+    if embodiment == "carter":
+        return CarterPool()
+    raise ValueError(f"unknown embodiment {embodiment!r} (go2|carter)")
+
+
 class IsaacArenaSim(KineSim):
     """One episode in one arena, driven tick-by-tick by the suite runner.
 

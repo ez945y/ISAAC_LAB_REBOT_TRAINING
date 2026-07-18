@@ -55,6 +55,8 @@ class PyDamFilter:
         wall_min_dist: float | None = None,  # ablation E3.4: separate hard floor
         # for STATIC neighbours (circumscribed-disc body model inflates dog-dog
         # by 2h but dog-wall by only 1h). None -> same min_dist as everything.
+        drive_mode: str = "holonomic",  # E1.2: "differential" -> no lateral
+        # channel; cheap axis + swirl bias remap to steering (yaw).
         grad_mode: str = "analytic",  # ablation E3.7: "autograd" -> naive true-
         # distance gradient via torch (needs the DAM venv) instead of the
         # overshoot-safe frozen-normal surrogate. See common/torchgrad.py.
@@ -68,6 +70,9 @@ class PyDamFilter:
             wall_min_dist=min_dist if wall_min_dist is None else wall_min_dist,
         )
         self.velocity_aware = velocity_aware
+        self.drive_mode = drive_mode
+        if drive_mode == "differential" and tuple(cost_diag) == (2.0, 0.5, 3.0):
+            cost_diag = (2.0, 0.5, 0.5)   # steering is the cheap axis (E1.2)
         self.cost_diag = tuple(cost_diag)
         self.grad_mode = grad_mode
         if grad_mode == "autograd":
@@ -181,6 +186,9 @@ class PyDamFilter:
             tx, ty = -nearest_n[1], nearest_n[0]
             q[0] = -scale * (tx * cs + ty * sn)
             q[1] = -scale * (-tx * sn + ty * cs)
+            if self.drive_mode == "differential":
+                q[1] = 0.0                       # no lateral channel to bias
+                q[2] = -scale * (cs * ty - sn * tx)  # steer toward the tangent
 
         cons = []
         for k, (g, rhs, _w) in enumerate(push):     # g.du + s_k >= rhs

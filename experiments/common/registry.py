@@ -28,6 +28,8 @@ class Experiment:
     md_fields: list
     seeds: int           # default seed count for the Isaac run
     max_dogs: int        # pool size this experiment needs
+    embodiment: str = "go2"   # Isaac execution body: "go2" (RL quadruped) or
+    #                           "carter" (differential-drive wheeled base, E1.2)
 
 
 def _dam(**knobs):
@@ -170,7 +172,50 @@ def build_experiments() -> dict[str, Experiment]:
         seeds=5, max_dogs=4,
     )
 
-    # -- E1.3 actuation-latency injection (RQ1: compute->actuation transport)
+    # -- E1.2 cross-embodiment (RQ1: same scenarios/guard/seeds, the only change
+    #    is the BODY — nonholonomic differential drive; the guard loses its
+    #    sidestep move via max_vy=0 and must brake/turn) --------------------
+    exps["e12"] = Experiment(
+        "E1.2", "e12_crossembodiment", ["S1", "S2", "S4"],
+        [
+            # naive transfer: only the actuator bound changes — shows the
+            # sidestep assumption is embodiment-specific (liveness collapses)
+            Condition(label="dam_naive",
+                      make_filter=lambda: _dam(max_vy=0.0),
+                      sim_overrides={"diff_drive": True}),
+            # + the kinematic adapter: steering becomes the cheap axis and the
+            # swirl circulates via yaw. Remaining erosion = ROTATIONAL SWEEP:
+            # a turning capsule's nose swings toward the neighbour, which the
+            # linearised constraint underestimates (F9's steering variant).
+            Condition(label="dam_diff",
+                      make_filter=lambda: _dam(max_vy=0.0, drive_mode="differential"),
+                      sim_overrides={"diff_drive": True}),
+            # + floor re-budget by the sweep: one nose (h=0.25) / both noses
+            # (2h). b120 is expected to reproduce the E3.4 over-conservatism
+            # failure in the S4 corridor — the diff base lives on a genuine
+            # safety-liveness trade-off the holonomic base does not face.
+            Condition(label="dam_diff_b095",
+                      make_filter=lambda: _dam(max_vy=0.0, drive_mode="differential",
+                                               min_dist=0.95, wall_min_dist=0.7),
+                      sim_overrides={"diff_drive": True}),
+            Condition(label="dam_diff_b120",
+                      make_filter=lambda: _dam(max_vy=0.0, drive_mode="differential",
+                                               min_dist=1.2, wall_min_dist=0.7),
+                      sim_overrides={"diff_drive": True}),
+            Condition(label="raw_diff", make_filter=RawFilter,
+                      sim_overrides={"diff_drive": True}),
+        ],
+        ["makespan_s", "min_dogdog_m", "viol_steps_dog", "viol_steps_wall",
+         "deadlock_rate", "all_done_rate", "intervention_rate",
+         "max_hard_slack_m"],
+        seeds=10, max_dogs=4, embodiment="carter",
+    )
+
+    # -- E1.3 latency budget closure (RQ1: E1.1 measures the delay WE cause;
+    #    this closes the loop by amplifying compute->actuation transport far
+    #    beyond the measured value and showing behaviour is unchanged. NOT a
+    #    robustness axis: E4.2 delays the guard's INPUT (perception), this
+    #    delays its OUTPUT (actuation) — the other loop segment) ------------
     exps["e13"] = Experiment(
         "E1.3", "e13_actlatency", ["S2", "S3"],
         [
@@ -251,6 +296,7 @@ def build_experiments() -> dict[str, Experiment]:
 # experiment key -> kinesim reference results dir under experiments/results/
 # (produced by the original run_e*.py scripts / run_kinesim_suite.py)
 KINESIM_DIRS = {
+    "e12": "e12_crossembodiment_dam",
     "e13": "e13_actlatency_dam",
     "e2": "e2_full",
     "e31": "e31_priority_dam",

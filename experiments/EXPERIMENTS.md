@@ -119,6 +119,35 @@ telemetry interface are documented in **`experiments/DAM_ABLATION.md`**
 - Results go to `experiments/results/` (gitignored, regenerable).
 - Every episode is `(scenario, seed)`-reproducible; report mean ± 95% CI.
 
+## RQ1 experiments (E1.1–E1.3, started 2026-07-18 evening)
+
+Design + rationale in `common/registry.py` (e12/e13) and `run_e11_latency.py`.
+- **E1.1 latency**: full-distribution benchmark over replayed real workloads +
+  constraint-count predictability buckets. Preliminary (quiet machine): p50
+  0.10–0.39 ms, p99.9 ≤ 0.56 ms, flat in N; rare ~40 ms outlier ≈ 3e-6/call,
+  non-deterministic (OS event, not GC — A/B tested, not input-dependent);
+  consequence covered by E1.3's delay-1-tick condition. Canonical rerun happens
+  after the e12 Isaac run frees the machine → `results/e11_latency_quiet/`.
+- **E1.2 cross-embodiment (Carter diff-drive)**: same scenarios/guard/seeds,
+  5 conditions (raw_diff / dam_naive / dam_diff / dam_diff_b095 / dam_diff_b120).
+  Guard gained `max_vy` solver bound + `drive_mode=differential` (cost remap +
+  swirl→steering) — BOTH equivalence-gated (default path bit-identical S2
+  5.96/0.784; pydam↔dam err ≤1e-4 in both modes). Key findings already locked:
+  naive transfer collapses (S2 minDD 0.06); adapter restores liveness
+  (6.4 s/0.466); residual erosion = ROTATIONAL SWEEP (turning capsule's nose,
+  F9's steering variant; h one-sided, 2h mutual); in Isaac the un-budgeted
+  floor means PHYSICAL CONTACT for 0.5 m-wide Carters → the b095/b120 floor
+  re-budget axis maps the diff-drive safety-liveness trade-off (b120 expected
+  to reproduce E3.4 over-conservatism in S4). Carter backend verified by probe
+  (drives 1.0 m/s, omega sign correct, teleport OK).
+- **E1.3 latency budget closure**: `cmd_delay_steps` in SimConfig (kinesim +
+  Isaac, delay-0 bit-identical to pre-change). NOT a robustness axis: E4.2
+  delays the guard's INPUT (perception), e13 delays its OUTPUT (actuation).
+  kinesim reference done (`results/e13_actlatency_dam/`); Isaac queued after e12.
+
+Runs in flight: e12 kinesim→Isaac chained in background; then e13 Isaac; then
+canonical e11. compare.py picks e12/e13 up automatically (registry-driven).
+
 ## Status (compact)
 
 Detailed result blurbs + findings F1–F11 + decision log: **`experiments/FINDINGS.md`**.
