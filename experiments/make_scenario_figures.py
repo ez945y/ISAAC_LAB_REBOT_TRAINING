@@ -84,14 +84,15 @@ def _wrap(s: str, width: int) -> str:
 
 def setup_ax(ax, title, subtitle, read, xlim, ylim, compact,
              note_xy=(0.02, 0.02)):
-    fs_title, fs_note, wrap_w = (15, 11, 34) if compact else (12, 9, 34)
+    fs_title, fs_note, wrap_w = (13, 10, 24) if compact else (12, 9, 34)
     ax.set_xlim(*xlim)
     ax.set_ylim(*ylim)
     ax.grid(color=GRID, linewidth=0.8)
     ax.tick_params(labelsize=8.5 if compact else 8, color=GRID)
     for side in ax.spines.values():
         side.set_color(GRID)
-    ax.set_title(title + "\n" + subtitle, loc="left", fontsize=fs_title,
+    sub = _wrap(subtitle, 19) if compact else subtitle
+    ax.set_title(title + "\n" + sub, loc="left", fontsize=fs_title,
                  color=INK, pad=8)
     if compact:
         # fill the grid cell (aligned titles); note goes below the panel so it
@@ -181,7 +182,7 @@ def scene_s4(ax, compact=False):
     specs = SCENARIOS["S4"](0)
     setup_ax(ax,
              "S4 走廊（corridor pass）",
-             "2.2 m 走廊內兩台對向會車，必須錯車、無法繞出",
+             "走廊寬 2.2 m，對向會車必須錯車",
              "長條身體的幾何處理：膠囊模型允許貼身錯車；"
              "內接圓盤誤判安全、外接圓盤判定無法通過",
              (-5.2, 5.2), (-3.4, 3.4), compact)
@@ -201,7 +202,7 @@ def scene_s5(ax, compact=False):
     specs = SCENARIOS["S5"](0)
     setup_ax(ax,
              "S5 巡航（random cruise）",
-             "N 台（預設 6，可掃至 16）隨機起訖、各自獨立任務",
+             "隨機起訖、各自獨立任務（N≤16）",
              "間距維持與完成時間的長期平衡、規模與密度壓力、"
              "混入非合作代理的效應",
              (-7.0, 7.0), (-7.0, 7.0), compact)
@@ -232,7 +233,7 @@ def main() -> int:
         print("wrote", path)
 
     # combined landscape 2x3 grid (thesis figure; last cell blank)
-    fig, axes = plt.subplots(2, 3, figsize=(16.5, 10.0),
+    fig, axes = plt.subplots(2, 3, figsize=(13.2, 8.0),
                              constrained_layout=True)
     flat = axes.ravel()
     for (key, draw), ax in zip(SCENES, flat):
