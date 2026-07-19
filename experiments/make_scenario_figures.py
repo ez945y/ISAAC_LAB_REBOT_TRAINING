@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""One annotated figure per scenario (S1–S5): the concrete layout (from the
-REAL scenario generators, seed 0) plus what behaviour the experiment reads.
+"""Scenario figures (S1–S5): the concrete layout (from the REAL scenario
+generators, seed 0) plus the behaviour each experiment reads.
 
     python experiments/make_scenario_figures.py
-    -> experiments/thesis/figures/scen_S{1..5}.png
+    -> experiments/thesis/figures/scen_S{1..5}.png   (individual)
+    -> experiments/thesis/figures/scen_all.{png,pdf} (combined 2x3, for thesis)
 """
 
 from __future__ import annotations
@@ -22,7 +23,10 @@ from matplotlib.transforms import Affine2D
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common.scenarios import SCENARIOS  # noqa: E402
 
-plt.rcParams["font.sans-serif"] = ["Noto Sans CJK JP", "Noto Sans CJK TC", "sans-serif"]
+plt.rcParams["font.sans-serif"] = [
+    "Arial Unicode MS", "Noto Sans CJK TC", "Noto Sans CJK JP",
+    "Heiti TC", "Hiragino Sans GB", "sans-serif",
+]
 plt.rcParams["axes.unicode_minus"] = False
 
 # fixed categorical palette (validated reference instance; groups keep slots)
@@ -73,67 +77,67 @@ def draw_walls(ax, specs):
                 markersize=2, zorder=4.5)
 
 
-def _wrap(s: str, width: int = 34) -> str:
+def _wrap(s: str, width: int) -> str:
     import textwrap
     return "\n".join(textwrap.wrap(s, width))
 
 
-def base_fig(title, subtitle, read, xlim, ylim, note_xy=(0.02, 0.02)):
-    fig, ax = plt.subplots(figsize=(7.0, 6.2))
+def setup_ax(ax, title, subtitle, read, xlim, ylim, compact,
+             note_xy=(0.02, 0.02)):
+    fs_title, fs_note, wrap_w = (15, 11, 34) if compact else (12, 9, 34)
     ax.set_xlim(*xlim)
     ax.set_ylim(*ylim)
-    ax.set_aspect("equal")
     ax.grid(color=GRID, linewidth=0.8)
-    ax.tick_params(labelsize=8, color=GRID)
+    ax.tick_params(labelsize=8.5 if compact else 8, color=GRID)
     for side in ax.spines.values():
         side.set_color(GRID)
-    ax.set_title(title + "\n" + subtitle, loc="left", fontsize=12, color=INK,
-                 pad=8)
-    ax.text(*note_xy, _wrap("要讀的行為：" + read), transform=ax.transAxes, fontsize=9,
-            color=INK, va="bottom",
-            bbox=dict(boxstyle="round,pad=0.45", facecolor="#f6f6f2",
-                      edgecolor=GRID))
-    return fig, ax
+    ax.set_title(title + "\n" + subtitle, loc="left", fontsize=fs_title,
+                 color=INK, pad=8)
+    if compact:
+        # fill the grid cell (aligned titles); note goes below the panel so it
+        # can never cover the drawing
+        ax.set_aspect("equal", adjustable="datalim")
+        ax.set_xlabel(_wrap("觀察重點：" + read, 30), fontsize=fs_note,
+                      loc="left", color=INK, labelpad=10)
+        ax.xaxis.label.set_bbox(dict(boxstyle="round,pad=0.45",
+                                     facecolor="#f6f6f2", edgecolor=GRID))
+    else:
+        ax.set_aspect("equal")
+        ax.text(*note_xy, _wrap("觀察重點：" + read, wrap_w),
+                transform=ax.transAxes,
+                fontsize=fs_note, color=INK, va="bottom",
+                bbox=dict(boxstyle="round,pad=0.45", facecolor="#f6f6f2",
+                          edgecolor=GRID))
 
 
-def finish(fig, path):
-    fig.tight_layout()
-    fig.savefig(path, dpi=150, facecolor="white")
-    plt.close(fig)
-    print("wrote", path)
-
-
-def main() -> int:
-    out = Path(__file__).resolve().parent / "thesis/figures"
-    out.mkdir(parents=True, exist_ok=True)
-
-    # -- S1 crossing --------------------------------------------------------
+def scene_s1(ax, compact=False):
     specs = SCENARIOS["S1"](0)
-    fig, ax = base_fig(
-        "S1 十字交叉（crossing）",
-        "兩隊各 2 隻，路線互相垂直，在中央同時交會",
-        "優先權讓行（高優先隊直行、低優先隊繞/等）、對稱時的交會死鎖（F2）、"
-        "交會區最小間距",
-        (-6.5, 6.5), (-6.5, 6.5))
+    setup_ax(ax,
+             "S1 交叉（crossing）",
+             "兩隊各 2 台，路徑十字交會於中央",
+             "優先權讓行（高優先隊直行、低優先隊繞行或等待）、"
+             "對稱交會的死鎖風險、交會區最小間距",
+             (-6.5, 6.5), (-6.5, 6.5), compact)
     for s in specs:
         c = group_color(specs, s)
         draw_capsule(ax, s.x, s.y, s.yaw, c)
         draw_route(ax, s, c)
     ax.add_patch(Circle((0, 0), 2.0, facecolor="none", edgecolor="#e34948",
                         linewidth=1.2, linestyle=(0, (3, 3)), zorder=2))
-    ax.annotate("交會衝突區", (0.1, 2.15), fontsize=9, color="#e34948")
-    ax.annotate("G0 隊（西→東）", (-6.2, 1.9), fontsize=9, color=PALETTE[0])
-    ax.annotate("G1 隊（南→北）", (1.7, -5.8), fontsize=9, color=PALETTE[1])
-    finish(fig, out / "scen_S1.png")
+    fs = 12 if compact else 9
+    ax.annotate("交會衝突區", (0.1, 2.15), fontsize=fs, color="#e34948")
+    ax.annotate("G0 隊（西→東）", (-6.2, 1.9), fontsize=fs, color=PALETTE[0])
+    ax.annotate("G1 隊（南→北）", (1.7, -4.5), fontsize=fs, color=PALETTE[1])
 
-    # -- S2 head-on ---------------------------------------------------------
+
+def scene_s2(ax, compact=False):
     specs = SCENARIOS["S2"](0)
-    fig, ax = base_fig(
-        "S2 頭對頭互換（head-on swap）",
-        "兩隻互換位置，航線正對；起點僅 ±0.15 m 側向抖動",
-        "swirl 同向繞行是否打破僵局、速度感知（TTC）的提前反應、"
-        "0.7 m 硬底線是否守住",
-        (-5.6, 5.6), (-4.2, 4.2))
+    setup_ax(ax,
+             "S2 對頭（head-on swap）",
+             "兩台正面互換位置，航線正對；起點僅 ±0.15 m 側向擾動",
+             "切向繞行能否打破對稱僵局、速度感知預測的提前反應、"
+             "0.7 m 硬性底線是否守住",
+             (-5.6, 5.6), (-4.2, 4.2), compact)
     for s in specs:
         c = group_color(specs, s)
         draw_capsule(ax, s.x, s.y, s.yaw, c)
@@ -141,7 +145,8 @@ def main() -> int:
     a = specs[0]
     ax.add_patch(Circle((a.x, a.y), 0.7, facecolor="none", edgecolor="#e34948",
                         linewidth=1.1, linestyle=(0, (3, 3)), zorder=2))
-    ax.annotate("硬底線 0.7 m", (a.x - 0.6, a.y + 0.85), fontsize=8.5,
+    fs = 12 if compact else 9
+    ax.annotate("硬性底線 0.7 m", (a.x - 0.6, a.y + 0.85), fontsize=fs - 0.5,
                 color="#e34948")
     # expected mutual circulation: two curved arrows around the midpoint
     for sgn in (+1, -1):
@@ -149,36 +154,37 @@ def main() -> int:
                                      connectionstyle=f"arc3,rad={0.35 * sgn}",
                                      arrowstyle="-|>", mutation_scale=11,
                                      color=MUT, linewidth=1.2, zorder=3))
-    ax.annotate("期望：同向繞行錯身（swirl）", (-2.5, 1.9), fontsize=9, color=MUT)
-    finish(fig, out / "scen_S2.png")
+    ax.annotate("期望：同向切向繞行錯車", (-2.5, 1.9), fontsize=fs, color=MUT)
 
-    # -- S3 bottleneck ------------------------------------------------------
+
+def scene_s3(ax, compact=False):
     specs = SCENARIOS["S3"](0)
-    fig, ax = base_fig(
-        "S3 瓶頸漏斗（bottleneck）",
-        "4 隻從南側經 1.6 m 缺口到北側；路線統一經缺口中心",
-        "漏斗內的排隊與僵持、軟硬分層的讓行（拿掉軟層會怎樣）、"
-        "群擠對硬底線的侵蝕（F7）",
-        (-4.5, 4.5), (-7.5, 7.0))
+    setup_ax(ax,
+             "S3 瓶頸（bottleneck）",
+             "4 台從南側經 1.6 m 縫隙到北側；路徑統一經縫隙中心",
+             "瓶頸前的排隊與僵持、軟硬分層的提早讓行、"
+             "擁擠對硬性底線的侵蝕",
+             (-4.5, 4.5), (-7.5, 7.0), compact)
     draw_walls(ax, specs)
     for s in specs:
         if s.static:
             continue
         draw_capsule(ax, s.x, s.y, s.yaw, PALETTE[0])
         draw_route(ax, s, PALETTE[0])
-    ax.annotate("牆（點鏈，硬約束）", (-3.4, 0.45), fontsize=9, color=INK)
-    ax.annotate("1.6 m 缺口（單車道：一次只過一隻）", (0.0, -1.05), fontsize=8.5,
-                color="#e34948", ha="center")
-    finish(fig, out / "scen_S3.png")
+    fs = 12 if compact else 9
+    ax.annotate("牆（點鏈，硬約束）", (-3.4, 0.45), fontsize=fs, color=INK)
+    ax.annotate("1.6 m 縫隙（一次僅容一台通過）", (0.0, -1.05),
+                fontsize=fs - 0.5, color="#e34948", ha="center")
 
-    # -- S4 corridor --------------------------------------------------------
+
+def scene_s4(ax, compact=False):
     specs = SCENARIOS["S4"](0)
-    fig, ax = base_fig(
-        "S4 窄走廊會車（corridor pass）",
-        "2.2 m 走廊內兩隻對向通過——必須錯車，繞不出去",
-        "長條身體的幾何處理：膠囊模型允許貼身錯車；圓盤模型不是誤判安全"
-        "（內接）就是判定過不去（外接）→ E3.4 / ORCA 的機制",
-        (-5.2, 5.2), (-3.4, 3.4))
+    setup_ax(ax,
+             "S4 走廊（corridor pass）",
+             "2.2 m 走廊內兩台對向會車，必須錯車、無法繞出",
+             "長條身體的幾何處理：膠囊模型允許貼身錯車；"
+             "內接圓盤誤判安全、外接圓盤判定無法通過",
+             (-5.2, 5.2), (-3.4, 3.4), compact)
     draw_walls(ax, specs)
     for s in specs:
         if s.static:
@@ -186,25 +192,57 @@ def main() -> int:
         c = group_color(specs, s)
         draw_capsule(ax, s.x, s.y, s.yaw, c)
         draw_route(ax, s, c)
-    ax.annotate("走廊寬 2.2 m", (-1.3, 1.35), fontsize=9, color=INK)
-    ax.annotate("期望：靠邊側身錯車", (-1.85, -1.5), fontsize=9, color=MUT)
-    finish(fig, out / "scen_S4.png")
+    fs = 12 if compact else 9
+    ax.annotate("走廊寬 2.2 m", (-1.3, 1.35), fontsize=fs, color=INK)
+    ax.annotate("期望：靠邊側身錯車", (-1.85, -1.5), fontsize=fs, color=MUT)
 
-    # -- S5 cruise ----------------------------------------------------------
+
+def scene_s5(ax, compact=False):
     specs = SCENARIOS["S5"](0)
-    fig, ax = base_fig(
-        "S5 開放巡航（random cruise）",
-        "N 隻（預設 6，可掃到 16）隨機起訖、各自獨立任務",
-        "長期統計（間距維持 vs 完成時間的整體平衡）、規模/密度壓力（E4.5）、"
-        "混入非合作者的效應（E4.4）",
-        (-7.0, 7.0), (-7.0, 7.0))
+    setup_ax(ax,
+             "S5 巡航（random cruise）",
+             "N 台（預設 6，可掃至 16）隨機起訖、各自獨立任務",
+             "間距維持與完成時間的長期平衡、規模與密度壓力、"
+             "混入非合作代理的效應",
+             (-7.0, 7.0), (-7.0, 7.0), compact)
     for i, s in enumerate(specs):
         c = PALETTE[i % len(PALETTE)]
         draw_capsule(ax, s.x, s.y, s.yaw, c)
         draw_route(ax, s, c)
-    ax.annotate("±6 m 固定場地（N 增加 = 密度上升）", (-6.7, 6.35), fontsize=9,
-                color=MUT)
-    finish(fig, out / "scen_S5.png")
+    ax.annotate("±6 m 固定場地（N 增加 = 密度上升）", (-6.7, 6.35),
+                fontsize=12 if compact else 9, color=MUT)
+
+
+SCENES = [("S1", scene_s1), ("S2", scene_s2), ("S3", scene_s3),
+          ("S4", scene_s4), ("S5", scene_s5)]
+
+
+def main() -> int:
+    out = Path(__file__).resolve().parent / "thesis/figures"
+    out.mkdir(parents=True, exist_ok=True)
+
+    # individual figures (working copies)
+    for key, draw in SCENES:
+        fig, ax = plt.subplots(figsize=(7.0, 6.2))
+        draw(ax, compact=False)
+        fig.tight_layout()
+        path = out / f"scen_{key}.png"
+        fig.savefig(path, dpi=150, facecolor="white")
+        plt.close(fig)
+        print("wrote", path)
+
+    # combined landscape 2x3 grid (thesis figure; last cell blank)
+    fig, axes = plt.subplots(2, 3, figsize=(16.5, 10.0),
+                             constrained_layout=True)
+    flat = axes.ravel()
+    for (key, draw), ax in zip(SCENES, flat):
+        draw(ax, compact=True)
+    flat[-1].axis("off")
+    for ext in ("png", "pdf"):
+        path = out / f"scen_all.{ext}"
+        fig.savefig(path, dpi=150, facecolor="white")
+        print("wrote", path)
+    plt.close(fig)
     return 0
 
 
