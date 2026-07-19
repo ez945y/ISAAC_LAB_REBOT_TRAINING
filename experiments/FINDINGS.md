@@ -209,6 +209,50 @@ monotonically (S2 Isaac 0.710→0.639 at 100 ms). Against measured p99.9 =
 0.53 ms this is an EMPIRICAL margin of ≥75× (flat to 40 ms) and ~190× to the
 first mild degradation — closing RQ1's real-latency question without hardware.
 
+## RQ5 experiments (E5.1–E5.2) — verdict (2026-07-19)
+
+RQ5 (paper77 wording, reinstated after thesis-v2 D3 parked it): 運行時所收集
+之失敗樣本是否具備完整性與再利用價值？ Grounded in the multi-robot setting;
+data lives in `results/e51_lerobot/` (regenerable), tables in
+`results/e51_lerobot/summary.md` + `results/e52_distill/summary.md`.
+
+**E5.1 完整性 — PASS.** dam + raw pools over S2/S3/S5 × seeds 0–9 →
+two LeRobot v3 datasets (120 per-agent ego episodes each; 43 853 / 38 752
+frames; 8.9 / 7.7 MB), round-tripped through the official `LeRobotDataset`
+reader (frame counts + shapes verified). Boundary-event log: 321 dam events
+(guard_intervention 164 / hard_slack 94 / violation_dog 63) + 99 raw events;
+field completeness 1.000, context-window completeness 0.745 (dam; long
+interventions touch episode edges) / 0.960 (raw); ≥2 event types in every
+scenario. Pool is seed-identical to the thesis E2 reference (e.g. dam S5
+seed4 minDD 0.484/52 viol matches e2_full exactly) — recording is
+non-invasive.
+
+**E5.2 再利用價值 — PARTIAL, two-sided (this is the thesis story):**
+- **Unguarded student (bc_dam, 42-dim reactive MLP, 20 epochs): the guard is
+  NOT distillable.** Safety transfers only in the simple scene (S2 floor
+  0.000→0.348 vs bc_raw 0.037) and collapses in congested ones (S3: 889 viol
+  steps, wall violations, 30 % deadlock). Compounding-error BC cannot
+  reproduce a constraint solver ⇒ runtime filtering stays necessary even
+  after retraining — supports the architecture, not just the dataset.
+- **Guarded student (bc_dam+dam): the collect→retrain loop measurably pays.**
+  Guard intervention rate drops vs nominal+dam in ALL scenarios with zero
+  violations: S2 0.291→0.102 (−65 %), S3 0.879→0.609, S5 0.208→0.136.
+  Control bc_raw+dam stays high (S2 0.259) ⇒ the reduction comes from the
+  guard-corrected actions in the data, not from BC smoothing. This is the
+  quantified 「再訓練前後違規頻率變化」 the old thesis's future-work item (3)
+  asked for (in-sim version).
+- **Honest cost**: students are slow/conservative (S2 makespan 6.1 vs 5.96
+  but S3 47 s with 0.6 completion; floors run high, 1.1–1.7 m) — 30 sim
+  episodes of training data is thin; scale/architecture (history, chunking)
+  is future work, and the liveness loss must be reported alongside the
+  intervention-rate win.
+
+**F14 (finding)**: a runtime safety filter's corrections are reusable as
+training signal (intervention rate −35…−65 % after naive BC retraining) yet
+the filter itself is not replaceable by the retrained policy — the two claims
+come from the same dataset and jointly justify "collect at runtime, retrain
+offline, keep the guard on".
+
 ## Handoff notes (historical, kinesim phase)
 
 1. **DAM 0.7 breaking change**: dam 0.7 renamed `SafetyGuard`→`Guardrail` and

@@ -1,7 +1,8 @@
 # Thesis Experiments — Progress & Handoff
 
 Branch: `exp/thesis-experiments` (forked from `feat/go2-squad-dispatch` after its PR).
-Maps to the RQ design (RQ1–RQ4; RQ5 dropped). One experiment script at a time:
+Maps to the RQ design (RQ1–RQ4; RQ5 reinstated 2026-07-19 as E5.x — failure-sample
+collection + reuse, see below). One experiment script at a time:
 finish + fake-data-validate the current one before starting the next.
 
 ## Isaac machine environment (rst_spark, DGX Spark / aarch64) — read this first here
@@ -132,6 +133,51 @@ maps a real diff-drive safety-liveness trade-off (b120 safe everywhere but S4
 30 % completion), Isaac↔kinesim floors ±0.03; E1.3 empirical latency margin
 ≥75× (actuation-side, distinct from E4.2's perception-side).
 
+## RQ5 experiments (E5.1–E5.2) — ✅ COMPLETE (kinesim, 2026-07-19)
+
+Verdict in `FINDINGS.md` § RQ5 (+F14); numbers in `results/e51_lerobot/summary.md`
+and `results/e52_distill/summary.md`. Headlines: E5.1 two LeRobot v3 datasets
+(120+120 ego episodes, 82.6k frames, 420 boundary events, field completeness
+1.000, load-back verified, seed-identical to the e2_full reference); E5.2
+guard-corrected data cuts the guard's intervention rate 35–65 % after naive BC
+retraining (S2 0.291→0.102, control bc_raw+dam 0.259) with 0 violations, while
+the UNGUARDED student collapses in congested scenes — reusable data, non-
+distillable guard. Isaac-in-the-loop recollection = future work (registry twin).
+
+RQ5 (paper77 wording): 運行時所收集之失敗樣本是否具備完整性與再利用價值，
+能支援後續模型優化？ Thesis-v2 D3 downgraded this to future work; E5.x is the
+"下一版實驗" that closes it, re-grounded in the multi-robot setting. Two claims,
+one experiment each:
+
+- **E5.1 完整性 — collection + LeRobot export** (`run_e51_collect.py`,
+  helper `common/lerobot_export.py`): runs the SAME (scenario, seed) grid
+  under two filters — `dam` (guard-corrected **training-data pool**) and `raw`
+  (failure-rich **raw-data pool**) — S2/S3/S5 × seeds 0–9. A `RecordingFilter`
+  captures, at decision time, a per-agent ego view (42-dim body frame: current
+  target + final goal + own vel + 6 nearest neighbours × (rel pos, rel vel,
+  same_group, static)), the raw proposal, the verified action and guard
+  telemetry (decision/delta/hard-slack + exact capsule distances). Export =
+  one **LeRobot v3 dataset per pool** (`results/e51_lerobot/go2squad_{dam,raw}`,
+  50 fps, parquet, no video; extra channels `action.raw`, `guard.*`,
+  `observation.min_{dog,wall}_capsule_m`) + sidecars
+  `meta/episode_manifest.jsonl` and `meta/boundary_events.jsonl` (RSMF-style
+  events: intervention / qp_reject / hard_slack / violation_{dog,wall} runs
+  with ±0.5 s context windows). Quality table = field completeness, window
+  completeness, semantic diversity (paper77 表5.5 analogue) + load-back check
+  through the official `LeRobotDataset` reader.
+- **E5.2 再利用價值 — BC distillation closed loop** (`run_e52_distill.py`):
+  train an MLP student per pool (loaded THROUGH the LeRobot reader — the
+  round trip is part of the claim), then run students **unguarded** on
+  held-out seeds 100–109 against `nominal+raw` (failure baseline) and
+  `nominal+dam` (teacher reference). bc_dam ≪ bc_raw on violations ⇒ the
+  guard-corrected pool demonstrably carries transferable safety behaviour —
+  a data-driven reuse proof, not just log grading. bc_raw is the control for
+  "BC merely smooths".
+
+Fake-data smoke (stdlib): `python3 experiments/run_e51_collect.py --methods
+raw,stop --scenarios S2 --seeds 2 --export none`. Full runs need the local DAM
+venv (lerobot 0.4.4 is installed there).
+
 ## Status (compact)
 
 Detailed result blurbs + findings F1–F11 + decision log: **`experiments/FINDINGS.md`**.
@@ -153,6 +199,8 @@ live progress: `python experiments/isaac/status.py`.
 | E4.3 slack collation | ✅ | ✅ done — Isaac Pearson(slack,viol) +0.17 vs kinesim +0.50: dual-channel conclusion STRONGER on real embodiment |
 | E4.4 rogue | ✅ | ✅ dose-dependent dip, no catastrophe |
 | E4.5 scale | ✅ | ✅ 100% liveness at every N, 0 falls @16 dogs, p99 1.35 ms; density erosion deeper (N≥12) |
+| E5.1 LeRobot collection | ✅ (240 eps, 82.6k frames, 420 events, load-back OK) | ⏳ future (pool recollect via registry twin) |
+| E5.2 BC reuse loop | ✅ (intervention −35…−65%, guard non-distillable) | ⏳ future |
 
 Systematic embodiment deltas so far: makespan +18–20 % (policy under-tracks
 ~20 %), hard floors ~0.05–0.17 m lower, small viol counts where kinesim had 0.
@@ -180,6 +228,10 @@ python3 experiments/run_e42_obsnoise.py --seeds 20      # E4.2 obs noise + laten
 python3 experiments/run_e43_slack.py                    # E4.3 slack collation (analysis only)
 python3 experiments/run_e44_rogue.py    --seeds 20      # E4.4 non-cooperative agents
 python3 experiments/run_e45_scale.py    --seeds 20      # E4.5 scale sweep
+
+# E5 (RQ5) — LeRobot collection + reuse loop (local DAM venv; lerobot 0.4.4):
+"$VENV" experiments/run_e51_collect.py --methods dam,raw --scenarios S2,S3,S5 --seeds 10
+"$VENV" experiments/run_e52_distill.py --data experiments/results/e51_lerobot
 
 # implementation-consistency gate (run after ANY guard/pydam change):
 "$VENV" experiments/tests/test_pydam_vs_dam.py
