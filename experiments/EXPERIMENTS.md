@@ -21,7 +21,7 @@ export LD_PRELOAD="/lib/aarch64-linux-gnu/libgomp.so.1"
   + examples/stackfiles/jetbot_lane_safety.yaml are in `git stash`
   ("pre-0.7-local-mods")). The venv imports it editable-style; `Guardrail` works.
   Sanity: kinesim S2+dam reproduces the thesis numbers exactly
-  (makespan 5.96 s, minDD 0.784, 0 viol).
+  (team completion time 5.96 s, minDD 0.784, 0 viol).
 - venv also has: torch 2.10 (cu130), osqp 1.0.5, scipy, yaml. **No pyrvo2** →
   ORCA (B2) cannot run here; Isaac-side E2 skips orca.
 - **Isaac-in-the-loop rerun of E2/E3.x/E4.x lives in `experiments/isaac/`**
@@ -49,7 +49,7 @@ python experiments/isaac/compare.py                              # → isaac/res
   regenerate any time with `python experiments/isaac/compare.py`):
   - **e32 swirl** ✅ story holds (0.6 → minDD 0.70/0 viol; off → 0.55 w/ viols;
     kinesim's perfect-symmetry 0.088 m standoff doesn't materialise — real
-    gait asymmetry breaks the tie). makespan +18–20 % (under-tracking).
+    gait asymmetry breaks the tie). team completion time +18–20 % (under-tracking).
   - **e31 priority** ✅ yielding + floor ≈; residual 10 % non-completion on
     both sides (Isaac labels it deadlock, kinesim plain timeout).
   - **e34 capsule vs disc** ✅ headline claim reproduces exactly (capsule
@@ -60,7 +60,7 @@ python experiments/isaac/compare.py                              # → isaac/res
     erosion — the embodiment effect the experiment predicts). No falls at
     vmax 2.0.
   - Systematic embodiment deltas so far (consistent, explainable):
-    makespan +18–20 %, floors ~0.05–0.15 m lower, small viol-step counts
+    team completion time +18–20 %, floors ~0.05–0.15 m lower, small viol-step counts
     where kinesim had zero.
   Backend probe findings baked in: (1) go2 asset root-prim z reads ~0.22
   standing / ~0.10 mid-gait → fall detection is tilt-only; (2) policy
@@ -225,7 +225,7 @@ live progress: `python experiments/isaac/status.py`.
 | RQ5 收集（原始/對照/修正資料池） | — | ✅ 完成（900+360+360 局，欄位完整率 1.000，修正資料池事件最密 534） |
 | RQ5 再利用（初版→改良/對照策略→測試） | — | ✅ 完成，雙面結論（介入率 S5 −78%/S2 −36%、贏對照組；但完成率換安全）見 F15 |
 
-Systematic embodiment deltas so far: makespan +18–20 % (policy under-tracks
+Systematic embodiment deltas so far: team completion time +18–20 % (policy under-tracks
 ~20 %), hard floors ~0.05–0.17 m lower, small viol counts where kinesim had 0.
 
 ## How to run
