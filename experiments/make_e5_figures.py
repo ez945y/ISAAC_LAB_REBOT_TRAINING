@@ -79,11 +79,12 @@ def save(fig, stem: str) -> None:
     print(f"wrote {OUT / stem}.png / .pdf")
 
 
-# 中文標籤（正文一律中文，程式代號只在資料鍵）
-POOL_ZH = {"base": "原始資料", "extra": "對照資料", "damfix": "護欄修正資料"}
+# 中文標籤（用論文正文的詞：策略/過濾器/原始·對照·修正資料/控制器；
+# 程式代號只在資料鍵）
+POOL_ZH = {"base": "原始資料", "extra": "對照資料", "damfix": "修正資料"}
 POOL_SEEDS = {"base": 150, "extra": 60, "damfix": 60}
-COND_ZH = {"nominal+dam": "控制器＋護欄", "bc_v0+dam": "初版模型＋護欄",
-           "bc_v1c+dam": "對照模型＋護欄", "bc_v1+dam": "改良模型＋護欄"}
+COND_ZH = {"nominal+dam": "控制器＋過濾器", "bc_v0+dam": "初版策略＋過濾器",
+           "bc_v1c+dam": "對照策略＋過濾器", "bc_v1+dam": "改良策略＋過濾器"}
 
 
 def fig_completeness(q: dict) -> None:
@@ -103,7 +104,7 @@ def fig_completeness(q: dict) -> None:
     ax.set_xticks(list(xs))
     ax.set_xticklabels([POOL_ZH[p] for p in pools])
     ax.set_ylabel("每個收集局的邊界事件數")
-    ax.set_title("資料池品質：護欄修正資料的事件最密（模型犯錯多之處，修正紀錄就密）",
+    ax.set_title("資料池品質：修正資料的事件最密（策略犯錯多之處，修正紀錄就密）",
                  fontsize=9.5, loc="left")
     save(fig, "e5_1_completeness")
 
@@ -121,7 +122,7 @@ def _grouped_intervention(ax, b: dict, scen: str, conds: list) -> None:
                     textcoords="offset points", ha="center", fontsize=8.5, color=INK)
     ax.set_xticks(list(xs))
     ax.set_xticklabels([COND_ZH[c] for c in conds], fontsize=7.5, rotation=12)
-    ax.set_ylabel("護欄介入率（越低＝越少靠護欄）")
+    ax.set_ylabel("過濾器介入率（越低＝越少靠過濾器）")
     ax.set_title(scen, fontsize=9.5, loc="left")
 
 
@@ -133,7 +134,7 @@ def fig_reuse(b: dict) -> None:
                           ["nominal+dam", "bc_v0+dam", "bc_v1c+dam", "bc_v1+dam"])
     top = max(a1.get_ylim()[1], a2.get_ylim()[1])
     a1.set_ylim(0, top); a2.set_ylim(0, top)
-    fig.suptitle("再利用價值：重訓後的改良模型最少依賴護欄，且勝過吃等量資料的對照模型",
+    fig.suptitle("再利用價值：重訓後的改良策略最少依賴過濾器，且勝過吃等量資料的對照策略",
                  fontsize=10, x=0.01, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     save(fig, "e5_2_reuse_intervention")
@@ -151,13 +152,13 @@ def fig_tradeoff(b: dict) -> None:
                    color=colors[c], zorder=3, edgecolor="white", linewidth=0.8)
         ax.annotate(COND_ZH[c], xy=(d["all_done_rate"], d["viol_steps_dog"]),
                     xytext=(6, 4), textcoords="offset points", fontsize=8, color=INK)
-    ax.set_xlabel("完成率（越右＝越能走到終點，liveness）")
+    ax.set_xlabel("完成率（越右＝越能走到終點）")
     ax.set_ylabel("違規步數（越低＝越安全）")
     ax.set_xlim(0, 1.08)
     ax.annotate("理想在右下：又安全又完成", xy=(1.08, ax.get_ylim()[0]),
                 xytext=(-4, 4), textcoords="offset points", ha="right",
                 fontsize=7.5, color=INK2)
-    ax.set_title("S5 的雙面代價：改良模型最安全，卻也最走不到終點（完成率 0.15）",
+    ax.set_title("S5 的雙面代價：改良策略最安全，卻也最走不到終點（完成率 0.15）",
                  fontsize=9.5, loc="left")
     save(fig, "e5_3_safety_liveness_tradeoff")
 
