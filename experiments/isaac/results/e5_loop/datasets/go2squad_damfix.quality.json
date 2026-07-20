@@ -1,0 +1,20 @@
+{
+  "root": "/home/rst_spark/ISAAC_LAB_REBOT_TRAINING/experiments/isaac/results/e5_loop/datasets/go2squad_damfix",
+  "episodes": 360,
+  "frames": 199637,
+  "events": 534,
+  "field_completeness": 1.0,
+  "window_completeness": 0.7808988764044944,
+  "event_types": {
+    "guard_intervention": 408,
+    "hard_slack": 75,
+    "violation_dog": 51
+  },
+  "types_per_scenario": {
+    "S5": [
+      "guard_intervention",
+      "hard_slack",
+      "violation_dog"
+    ]
+  }
+}

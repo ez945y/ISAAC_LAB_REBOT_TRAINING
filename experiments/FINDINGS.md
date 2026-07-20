@@ -209,49 +209,91 @@ monotonically (S2 Isaac 0.710→0.639 at 100 ms). Against measured p99.9 =
 0.53 ms this is an EMPIRICAL margin of ≥75× (flat to 40 ms) and ~190× to the
 first mild degradation — closing RQ1's real-latency question without hardware.
 
-## RQ5 experiments (E5.1–E5.2) — verdict (2026-07-19)
+## RQ5 — 失敗樣本的收集與再利用（Isaac 全流程結論，2026-07-20）
 
-RQ5 (paper77 wording, reinstated after thesis-v2 D3 parked it): 運行時所收集
-之失敗樣本是否具備完整性與再利用價值？ Grounded in the multi-robot setting;
-data lives in `results/e51_lerobot/` (regenerable), tables in
-`results/e51_lerobot/summary.md` + `results/e52_distill/summary.md`.
+RQ5 問的是：**運行時收集到的失敗樣本，是不是完整、而且能拿來讓模型變好？**
+本結論來自完全在 Isaac（真 Go2 四足 + 真 dam 護欄）上跑的閉環實驗
+（`run_e5_loop.py`），報告在 `isaac/results/e5_loop/REPORT.md`，圖規格在
+`experiments/E5_FIGURES.md`。名詞與程式代號的對照表在 EXPERIMENTS.md § RQ5。
 
-**E5.1 完整性 — PASS.** dam + raw pools over S2/S3/S5 × seeds 0–9 →
-two LeRobot v3 datasets (120 per-agent ego episodes each; 43 853 / 38 752
-frames; 8.9 / 7.7 MB), round-tripped through the official `LeRobotDataset`
-reader (frame counts + shapes verified). Boundary-event log: 321 dam events
-(guard_intervention 164 / hard_slack 94 / violation_dog 63) + 99 raw events;
-field completeness 1.000, context-window completeness 0.745 (dam; long
-interventions touch episode edges) / 0.960 (raw); ≥2 event types in every
-scenario. Pool is seed-identical to the thesis E2 reference (e.g. dam S5
-seed4 minDD 0.484/52 viol matches e2_full exactly) — recording is
-non-invasive.
+> 舊版（`run_e51_collect.py`/`run_e52_distill.py`，已提交 03b0535，結論見下方
+> F14）三個要害：全在輕量模擬器、蒸餾的是手寫控制器而非模型本身、每池只有
+> 30 局。本版取代之：改在 Isaac、糾正的是模型自己犯的錯、規模放大到百局級。
 
-**E5.2 再利用價值 — PARTIAL, two-sided (this is the thesis story):**
-- **Unguarded student (bc_dam, 42-dim reactive MLP, 20 epochs): the guard is
-  NOT distillable.** Safety transfers only in the simple scene (S2 floor
-  0.000→0.348 vs bc_raw 0.037) and collapses in congested ones (S3: 889 viol
-  steps, wall violations, 30 % deadlock). Compounding-error BC cannot
-  reproduce a constraint solver ⇒ runtime filtering stays necessary even
-  after retraining — supports the architecture, not just the dataset.
-- **Guarded student (bc_dam+dam): the collect→retrain loop measurably pays.**
-  Guard intervention rate drops vs nominal+dam in ALL scenarios with zero
-  violations: S2 0.291→0.102 (−65 %), S3 0.879→0.609, S5 0.208→0.136.
-  Control bc_raw+dam stays high (S2 0.259) ⇒ the reduction comes from the
-  guard-corrected actions in the data, not from BC smoothing. This is the
-  quantified 「再訓練前後違規頻率變化」 the old thesis's future-work item (3)
-  asked for (in-sim version).
-- **Honest cost**: students are slow/conservative (S2 makespan 6.1 vs 5.96
-  but S3 47 s with 0.6 completion; floors run high, 1.1–1.7 m) — 30 sim
-  episodes of training data is thin; scale/architecture (history, chunking)
-  is future work, and the liveness loss must be reported alongside the
-  intervention-rate win.
+### 第一問「完整性」— 通過
 
-**F14 (finding)**: a runtime safety filter's corrections are reusable as
-training signal (intervention rate −35…−65 % after naive BC retraining) yet
-the filter itself is not replaceable by the retrained policy — the two claims
-come from the same dataset and jointly justify "collect at runtime, retrain
-offline, keep the guard on".
+三個資料池都匯出成 LeRobot v3 格式，並全部透過官方讀取器讀回來訓練（讀回成功
+本身就是格式可再利用的證明）：
+
+| 資料池 | 局數 | 幀數 | 邊界事件 | 欄位完整率 | 事件型別 |
+|---|---|---|---|---|---|
+| 原始資料 | 900 | 593 472 | 384 | 1.000 | 違規 384 |
+| 對照資料 | 360 | 220 295 | 141 | 1.000 | 違規 141 |
+| 護欄修正資料 | 360 | 199 637 | 534 | 1.000 | 護欄介入 408 / 硬鬆弛 75 / 違規 51 |
+
+欄位完整率全部 1.000（每筆事件的必要欄位都在）。值得記的一點：**護欄修正資料
+只用 60 種子，卻有 534 個事件，比原始資料 150 種子的 384 個還密**——因為初版
+模型較弱、護欄介入頻繁，模型犯錯多的地方修正紀錄就密，這正是「運行時失敗樣本」
+該有的樣子。誠實註記：上下文視窗完整率 0.62–0.78（不是 1.0），因為很多違規事件
+發生在接近終點、貼到該局結尾，前後 ±0.5 秒視窗被截斷——這是幾何必然，不是缺漏。
+
+### 第二問「再利用價值」— 通過，但是雙面的（這才是論文故事）
+
+只看部署情境（模型掛在護欄後面跑，訓練沒見過的種子）：
+
+**S2 探針（訓練沒見過的場景型態，2 狗對衝）—— 乾淨的勝利：**
+
+| 條件 | 完成率 | 平均耗時 | 護欄介入率 | 違規步 | 最小間距 |
+|---|---|---|---|---|---|
+| 控制器 + 護欄 | 1.00 | 7.1 s | 0.281 | 1.3 | 0.71 |
+| 初版模型 + 護欄 | 1.00 | 7.1 s | 0.293 | 10.7 | 0.65 |
+| **改良模型 + 護欄** | 1.00 | 7.2 s | **0.179** | **0** | **0.92** |
+
+改良模型：一樣快、完全完成、護欄介入率降 36 %、零違規、間距更大。初版模型沒有
+進步（0.293）——所以進步是護欄修正資料帶來的，不是「訓練過就會變好」。
+
+**S5（訓練場景的保留種子，6 狗巡航）—— 修正確實有效，但暴露代價：**
+
+| 條件 | 完成率 | 平均耗時 | 護欄介入率 | 違規步 | 最小間距 |
+|---|---|---|---|---|---|
+| 控制器 + 護欄 | 0.95 | 11.0 s | 0.232 | 16.3 | 0.85 |
+| 對照模型 + 護欄 | 0.35 | 42.2 s | 0.109 | 16.1 | 0.85 |
+| **改良模型 + 護欄** | **0.15** | 52.3 s | **0.050** | **2.95** | **1.04** |
+
+- **關鍵對照（證明是「護欄修正」而非「資料變多」）**：改良模型護欄介入率 0.050，
+  對照模型 0.109（改良低一半）；違規步 2.95 對 16.1。對照模型吃了**同樣多**的資料，
+  只是那些資料沒有護欄修正，效果就差一截——排除了「只是資料比較多」這個解釋。
+- **護欄不可拿掉**：三個模型只要**關掉護欄**，在 S5 一律崩潰（違規步 1000 以上、
+  最小間距掉到 0.44）。單幀反應式模型學不會一個約束求解器 → 就算重訓過，運行時
+  護欄仍是必要的。這支持的是「架構」，不只是「資料」。
+
+### 必須誠實並列的代價
+
+改良模型在擁擠的 S5 **完成率只剩 0.15、平均耗時爆到 52 s**（控制器是 0.95 / 11 s）。
+天真的單幀模仿把「安全」學成「過度保守」：它學會拉大間距（1.04 m）、少讓護欄介入，
+代價是在 6 狗場景裡走不到終點。所以「介入率下降」和「完成率崩掉」是綁在一起的，
+**論文必須兩者並列，不能只報介入率的好消息**。相對地，S2 那組是無瑕的（又快、又
+安全、又完成），代價只出現在高密度的多機器人場景。
+
+### 結論三句話
+
+1. 護欄修正資料可再利用：重訓後的改良模型需要護欄的程度，明顯低於控制器、也低於
+   吃等量資料的對照模型，且此結論在訓練沒見過的 S2 場景上零樣本成立。
+2. 護欄不可蒸餾：任何模型一關掉護欄就在擁擠場景崩潰。
+3. 天真重訓有代價：把安全學成過度保守，擁擠場景完成率崩到 0.15——資料有價值，但
+   重訓配方要換更強的模仿方式（加入歷史、動作分塊，或只挑真正的修正樣本訓練）才能
+   同時保住完成率。這是下一步。
+
+**F15（發現）**：運行時安全護欄的糾正動作，可作為訓練訊號再利用——把它回收重訓，
+模型需要護欄介入的頻率下降（S2 −36 %、S5 −78 %），且勝過吃等量普通資料的對照組，
+證明價值來自「糾正」本身。但同一批資料也顯示兩件事：護欄本身無法被重訓後的模型
+取代（關掉即崩），且天真的單幀重訓會以完成率換安全（S5 完成率 0.95→0.15）。三者
+共同支持論證：**運行時收集、離線重訓、護欄持續掛著，並且要用更強的模仿配方**。
+
+**F14（舊版，kinesim，已被 F15 取代但保留紀錄）**：輕量模擬器版本得到方向一致的
+結論——護欄糾正可作訓練訊號（天真 BC 重訓後介入率 −35…−65 %），但護欄不可被重訓
+模型取代。Isaac 版（F15）以真實四足、糾正模型本身、百局級規模與對照組坐實了它，
+並讓「過度保守的代價」在多機器人場景中量化顯現。
 
 ## Handoff notes (historical, kinesim phase)
 

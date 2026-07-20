@@ -133,50 +133,72 @@ maps a real diff-drive safety-liveness trade-off (b120 safe everywhere but S4
 30 % completion), Isaac↔kinesim floors ±0.03; E1.3 empirical latency margin
 ≥75× (actuation-side, distinct from E4.2's perception-side).
 
-## RQ5 experiments (E5.1–E5.2) — ✅ COMPLETE (kinesim, 2026-07-19)
+## RQ5 實驗 — 失敗樣本的收集與再利用（Isaac 全流程，2026-07-19 重新設計）
 
-Verdict in `FINDINGS.md` § RQ5 (+F14); numbers in `results/e51_lerobot/summary.md`
-and `results/e52_distill/summary.md`. Headlines: E5.1 two LeRobot v3 datasets
-(120+120 ego episodes, 82.6k frames, 420 boundary events, field completeness
-1.000, load-back verified, seed-identical to the e2_full reference); E5.2
-guard-corrected data cuts the guard's intervention rate 35–65 % after naive BC
-retraining (S2 0.291→0.102, control bc_raw+dam 0.259) with 0 violations, while
-the UNGUARDED student collapses in congested scenes — reusable data, non-
-distillable guard. Isaac-in-the-loop recollection = future work (registry twin).
+RQ5 問的是：**系統運行時收集到的失敗樣本，是不是「完整」、而且能拿來讓模型
+變得更好？** 第一版（舊腳本 `run_e51_collect.py` / `run_e52_distill.py`，已提交
+於 03b0535，全在輕量模擬器上跑）有三個要害：(1) 完全沒用 Isaac；(2) 兩次都是拿
+「手寫控制器」去做模仿，不是糾正模型本身；(3) 每個資料池只有 30 局，太少。這一版
+（`run_e5_loop.py`）改成**完全在 Isaac（真 Go2 四足 + 真 dam 護欄）上跑的閉環**，
+並嚴格對照原本規劃的三步流程：
 
-RQ5 (paper77 wording): 運行時所收集之失敗樣本是否具備完整性與再利用價值，
-能支援後續模型優化？ Thesis-v2 D3 downgraded this to future work; E5.x is the
-"下一版實驗" that closes it, re-grounded in the multi-robot setting. Two claims,
-one experiment each:
+| 原本規劃的步驟 | 這一版怎麼做 |
+|---|---|
+| ① 收集訓練資料 | **收集甲**：控制器直接開、不加護欄，跑 S5 → 得到「原始資料池」 |
+| ② 測試（不加護欄） | **測試階段**：把只用原始資料訓出的「初版模型」關掉護欄跑，看它多不安全 |
+| ③ 收集護欄資料、再訓練、再測 | **收集乙**：初版模型上線、護欄即時糾正它的錯、把糾正紀錄回收成「護欄修正資料池」→ 訓「改良模型」→ 再測 |
 
-- **E5.1 完整性 — collection + LeRobot export** (`run_e51_collect.py`,
-  helper `common/lerobot_export.py`): runs the SAME (scenario, seed) grid
-  under two filters — `dam` (guard-corrected **training-data pool**) and `raw`
-  (failure-rich **raw-data pool**) — S2/S3/S5 × seeds 0–9. A `RecordingFilter`
-  captures, at decision time, a per-agent ego view (42-dim body frame: current
-  target + final goal + own vel + 6 nearest neighbours × (rel pos, rel vel,
-  same_group, static)), the raw proposal, the verified action and guard
-  telemetry (decision/delta/hard-slack + exact capsule distances). Export =
-  one **LeRobot v3 dataset per pool** (`results/e51_lerobot/go2squad_{dam,raw}`,
-  50 fps, parquet, no video; extra channels `action.raw`, `guard.*`,
-  `observation.min_{dog,wall}_capsule_m`) + sidecars
-  `meta/episode_manifest.jsonl` and `meta/boundary_events.jsonl` (RSMF-style
-  events: intervention / qp_reject / hard_slack / violation_{dog,wall} runs
-  with ±0.5 s context windows). Quality table = field completeness, window
-  completeness, semantic diversity (paper77 表5.5 analogue) + load-back check
-  through the official `LeRobotDataset` reader.
-- **E5.2 再利用價值 — BC distillation closed loop** (`run_e52_distill.py`):
-  train an MLP student per pool (loaded THROUGH the LeRobot reader — the
-  round trip is part of the claim), then run students **unguarded** on
-  held-out seeds 100–109 against `nominal+raw` (failure baseline) and
-  `nominal+dam` (teacher reference). bc_dam ≪ bc_raw on violations ⇒ the
-  guard-corrected pool demonstrably carries transferable safety behaviour —
-  a data-driven reuse proof, not just log grading. bc_raw is the control for
-  "BC merely smooths".
+**名詞對照**（正文一律用中文說法，程式代號放這裡供重現，不在敘述中出現）：
 
-Fake-data smoke (stdlib): `python3 experiments/run_e51_collect.py --methods
-raw,stop --scenarios S2 --seeds 2 --export none`. Full runs need the local DAM
-venv (lerobot 0.4.4 is installed there).
+| 本文說法 | 意思 | 程式代號 |
+|---|---|---|
+| 原始資料池 | 控制器直接跑、失敗多、違規多的原始紀錄 | `base` |
+| 對照資料池 | 同樣多的額外原始紀錄，一樣沒有護欄修正 | `extra` |
+| 護欄修正資料池 | 初版模型上線後、被護欄糾正的那些時刻 | `damfix` |
+| 初版模型 | 只用原始資料池訓練出來的模型 | `v0` |
+| 改良模型 | 用「原始資料池 + 護欄修正資料池」訓練 | `v1` |
+| 對照模型 | 用「原始資料池 + 對照資料池」訓練（資料量相同，但沒有護欄修正） | `v1c` |
+| 測試 | 用訓練時沒見過的場景種子來評估 | `bench` |
+
+**為什麼要多一組「對照資料池／對照模型」**：改良模型若比初版好，可能是「護欄修正
+有價值」，也可能只是「多餵了資料」。對照模型吃的是**同樣多、但沒有護欄修正**的資料。
+唯有改良模型贏過對照模型，才能證明是**護欄修正本身**帶來安全，而不是資料變多——
+少了這組控制，口試委員一句「你只是資料比較多」就破功。
+
+**場景選擇**：訓練用 **S5**（隨機起點/終點、6 隻狗巡航），因為它是唯一「換一個種子
+就換一整局」的場景，資料才有多樣性；**S2**（兩狗對衝）每個種子只差 ±0.15 m、幾乎
+同一條軌跡，所以留著當「訓練沒見過的場景型態」的零樣本泛化探針。
+
+**資料格式**：每個資料池匯出成一份 LeRobot v3 資料集（parquet + jsonl，50 fps），
+每一幀含 42 維機體座標觀測（目前航點 + 終點 + 自身速度 + 最近 6 鄰居的相對位置/速度/
+同組旗標/牆旗標）、護欄核可後的動作、控制器的原始提案、以及護欄遙測（有沒有介入、
+修正量、硬約束鬆弛、精確膠囊距離）；另附兩個側車檔：episode 清單、邊界事件紀錄
+（介入／拒解／硬鬆弛／違規，每筆帶前後各 ±0.5 秒的上下文視窗）。三個模型全部
+**透過官方 LeRobot 讀取器載入訓練**——這個「寫出去、再讀回來訓練」的來回本身，
+就是「格式可再利用」的證明。
+
+**本次規模（精簡版，全部每局存檔、可斷點續跑）**：原始資料 150 種子、對照資料
+60 種子、護欄修正 60 種子；測試用訓練沒見過的種子（S5 每條件 20 個 + S2 探針每
+條件 10 個）。結果出爐後寫入 `FINDINGS.md` § RQ5，報告在
+`isaac/results/e5_loop/REPORT.md`。
+
+```bash
+source ~/IsaacLab/env_isaaclab/bin/activate
+export LD_PRELOAD=/lib/aarch64-linux-gnu/libgomp.so.1
+python experiments/run_e5_loop.py --backend isaac \
+    --base-seeds 150 --extra-seeds 60 --fix-seeds 60 --bench-seeds 20 --probe-seeds 10
+# 產出：experiments/isaac/results/e5_loop/{datasets/, policies/, collect_*/, bench/, REPORT.md}
+# 斷了就重跑同一行，已完成的局會自動略過續跑。
+# kinesim 端到端小規模冒煙（分鐘級，驗管線用）：加 --backend kinesim --smoke
+```
+
+**結果（2026-07-20 跑完，6.3 小時）**：完整結論與數字在 `FINDINGS.md` § RQ5（+F15），
+圖規格在 `E5_FIGURES.md`，原始表格在 `isaac/results/e5_loop/REPORT.md`。三句話：
+(1) 護欄修正資料可再利用——改良模型需要護欄的程度低於控制器、也低於吃等量資料的
+對照模型（S5 介入率 0.050 vs 0.109 vs 0.232），且在訓練沒見過的 S2 場景零樣本成立
+（0.179 vs 0.281）；(2) 護欄不可拿掉——任何模型關掉護欄在擁擠場景一律崩（違規步
+1000+）；(3) 誠實代價——天真的單幀重訓把安全學成過度保守，S5 完成率崩到 0.15
+（控制器 0.95），論文須與介入率下降並列。
 
 ## Status (compact)
 
@@ -199,8 +221,9 @@ live progress: `python experiments/isaac/status.py`.
 | E4.3 slack collation | ✅ | ✅ done — Isaac Pearson(slack,viol) +0.17 vs kinesim +0.50: dual-channel conclusion STRONGER on real embodiment |
 | E4.4 rogue | ✅ | ✅ dose-dependent dip, no catastrophe |
 | E4.5 scale | ✅ | ✅ 100% liveness at every N, 0 falls @16 dogs, p99 1.35 ms; density erosion deeper (N≥12) |
-| E5.1 LeRobot collection | ✅ (240 eps, 82.6k frames, 420 events, load-back OK) | ⏳ future (pool recollect via registry twin) |
-| E5.2 BC reuse loop | ✅ (intervention −35…−65%, guard non-distillable) | ⏳ future |
+| RQ5 舊版（kinesim） | ✅ 已提交 03b0535，但被下方 Isaac 閉環取代（手寫控制器蒸餾、30 局，說服力不足） | — |
+| RQ5 收集（原始/對照/護欄修正資料池） | — | ✅ 完成（900+360+360 局，欄位完整率 1.000，護欄修正池事件最密 534） |
+| RQ5 再利用（初版→改良/對照模型→測試） | — | ✅ 完成，雙面結論（介入率 S5 −78%/S2 −36%、贏對照組；但完成率換安全）見 F15 |
 
 Systematic embodiment deltas so far: makespan +18–20 % (policy under-tracks
 ~20 %), hard floors ~0.05–0.17 m lower, small viol counts where kinesim had 0.
@@ -229,9 +252,14 @@ python3 experiments/run_e43_slack.py                    # E4.3 slack collation (
 python3 experiments/run_e44_rogue.py    --seeds 20      # E4.4 non-cooperative agents
 python3 experiments/run_e45_scale.py    --seeds 20      # E4.5 scale sweep
 
-# E5 (RQ5) — LeRobot collection + reuse loop (local DAM venv; lerobot 0.4.4):
-"$VENV" experiments/run_e51_collect.py --methods dam,raw --scenarios S2,S3,S5 --seeds 10
-"$VENV" experiments/run_e52_distill.py --data experiments/results/e51_lerobot
+# RQ5 — 失敗樣本收集與再利用閉環（Isaac 全流程，見上方 RQ5 段落）:
+source ~/IsaacLab/env_isaaclab/bin/activate
+export LD_PRELOAD=/lib/aarch64-linux-gnu/libgomp.so.1
+python experiments/run_e5_loop.py --backend isaac \
+    --base-seeds 150 --extra-seeds 60 --fix-seeds 60 --bench-seeds 20 --probe-seeds 10
+# 舊版（kinesim，已被上式取代，保留供對照）:
+# "$VENV" experiments/run_e51_collect.py --methods dam,raw --scenarios S2,S3,S5 --seeds 10
+# "$VENV" experiments/run_e52_distill.py --data experiments/results/e51_lerobot
 
 # implementation-consistency gate (run after ANY guard/pydam change):
 "$VENV" experiments/tests/test_pydam_vs_dam.py

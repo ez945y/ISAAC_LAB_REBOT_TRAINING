@@ -1,0 +1,16 @@
+{
+  "root": "/home/rst_spark/ISAAC_LAB_REBOT_TRAINING/experiments/isaac/results/e5_loop/datasets/go2squad_extra",
+  "episodes": 360,
+  "frames": 220295,
+  "events": 141,
+  "field_completeness": 1.0,
+  "window_completeness": 0.6312056737588653,
+  "event_types": {
+    "violation_dog": 141
+  },
+  "types_per_scenario": {
+    "S5": [
+      "violation_dog"
+    ]
+  }
+}
